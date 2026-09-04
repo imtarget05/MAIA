@@ -19,12 +19,32 @@ def _chunk_hash(text: str) -> str:
 
 class QdrantStore:
     def __init__(self, url: str, collection: str, dim: int, api_key: str = ""):
-        kwargs = {"url": url}
-        if api_key:
-            kwargs["api_key"] = api_key
-        self.client = QdrantClient(**kwargs)
         self.collection = collection
         self.dim = dim
+        # Some PaaS sandboxes (e.g. Streamlit Community Cloud) only allow
+        # outbound TCP on 443. Try the given URL first, then fall back to :443.
+        self.url = url.rstrip("/")
+        candidates = [self.url]
+        if ":6333" in self.url:
+            candidates.append(self.url.replace(":6333", ":443"))
+        last_err: Exception | None = None
+        self.client = None
+        for candidate in candidates:
+            kwargs = {"url": candidate, "prefer_grpc": False, "timeout": 30}
+            if api_key:
+                kwargs["api_key"] = api_key
+            try:
+                client = QdrantClient(**kwargs)
+                client.get_collections()  # connectivity probe
+                self.client = client
+                self.url = candidate
+                break
+            except Exception as e:  # try next candidate
+                last_err = e
+        if self.client is None:
+            raise ConnectionError(
+                f"Cannot reach Qdrant at {url} (tried {candidates}): {last_err}"
+            )
         self.ensure_collection()
 
     def ensure_collection(self):

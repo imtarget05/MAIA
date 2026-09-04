@@ -28,10 +28,16 @@ st.caption("Documents → Chunking → HF Embeddings → Qdrant → Hybrid + Rer
 
 with st.sidebar:
     st.header("System")
+    if "localhost" in settings.QDRANT_URL:
+        st.error(
+            "⚠️ QDRANT_URL is still localhost — Streamlit secrets were not loaded. "
+            "Go to app → Settings → Secrets and add QDRANT_URL / QDRANT_API_KEY."
+        )
     try:
         _, store, _, reranker, llm = build_stack()
         st.metric("Qdrant points", store.count())
         st.write(f"Collection: `{settings.QDRANT_COLLECTION}`")
+        st.write(f"Qdrant: `{settings.QDRANT_URL}`")
         st.write(f"Embed: `{settings.EMBED_MODEL}` ({llm.mode})")
         st.write(f"LLM: `{settings.CLOUDFLARE_MODEL}` (mode={llm.mode})")
         st.write(f"Rerank: {reranker.mode}")
