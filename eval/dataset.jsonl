@@ -1,0 +1,6 @@
+{"question": "MAIA RAG pipeline gồm những bước nào?", "gold_chunk_ids": [], "gold_keywords": ["ingestion", "chunking", "embedding", "qdrant", "retrieval", "llm"]}
+{"question": "Embedding model nào được dùng và bao nhiêu dimensions?", "gold_chunk_ids": [], "gold_keywords": ["bge-small", "384", "FastEmbed", "HuggingFace"]}
+{"question": "Hybrid search hoạt động thế nào?", "gold_chunk_ids": [], "gold_keywords": ["dense", "BM25", "RRF", "fusion"]}
+{"question": "Reranking dùng model gì?", "gold_chunk_ids": [], "gold_keywords": ["cross-encoder", "MiniLM", "top-3"]}
+{"question": "Failure mode khi retrieval sai chunk?", "gold_chunk_ids": [], "gold_keywords": ["wrong context", "wrong answer", "hybrid", "reranking"]}
+{"question": "Khi thiếu bằng chứng hệ thống phải làm gì?", "gold_chunk_ids": [], "gold_keywords": ["not enough evidence", "0.3", "hallucinating"]}
