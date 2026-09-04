@@ -1,8 +1,21 @@
 """MAIA Streamlit UI - Full + citation/evidence display (verify: citation)."""
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+
+# Map Streamlit Cloud secrets (.streamlit/secrets.toml) -> env vars
+# so maia.config (pydantic-settings) picks them up. Local .env still works.
+try:
+    import streamlit as st
+
+    if hasattr(st, "secrets"):
+        for k, v in st.secrets.items():
+            if isinstance(v, str) and k not in os.environ:
+                os.environ[k] = v
+except Exception:
+    pass
 
 import streamlit as st
 

@@ -13,7 +13,8 @@ from .vector_store import QdrantStore
 
 def build_stack():
     embedder = Embedder(model=settings.EMBED_MODEL, dim=settings.EMBED_DIM)
-    store = QdrantStore(url=settings.QDRANT_URL, collection=settings.QDRANT_COLLECTION, dim=embedder.dim)
+    store = QdrantStore(url=settings.QDRANT_URL, collection=settings.QDRANT_COLLECTION,
+                        dim=embedder.dim, api_key=settings.QDRANT_API_KEY)
     retriever = HybridRetriever(
         store, embedder, storage_dir=settings.STORAGE_DIR,
         top_k_dense=settings.TOP_K_DENSE, top_k_bm25=settings.TOP_K_BM25,

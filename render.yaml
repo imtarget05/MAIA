@@ -1,0 +1,29 @@
+# Render Blueprint — MAIA RAG API (free tier)
+# Deploy: Render Dashboard -> New -> Blueprint -> select this repo
+services:
+  - type: web
+    name: maia-rag-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: PYTHONPATH=src uvicorn maia.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: QDRANT_URL
+        sync: false   # e.g. https://your-cluster.gcp.cloud.qdrant.io:6333
+      - key: QDRANT_API_KEY
+        sync: false   # from Qdrant Cloud dashboard
+      - key: QDRANT_COLLECTION
+        value: maia_knowledge
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_MODEL
+        value: "@cf/meta/llama-3.1-8b-instruct"
+      - key: DATA_DIR
+        value: data/samples
+      - key: STORAGE_DIR
+        value: /tmp/storage   # ephemeral on free tier; BM25 cache auto-rebuilds from Qdrant

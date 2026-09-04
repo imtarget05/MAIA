@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_COLLECTION: str = "maia_knowledge"
+    QDRANT_API_KEY: str = ""
 
     EMBED_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBED_DIM: int = 384

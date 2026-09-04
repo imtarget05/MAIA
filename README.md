@@ -119,6 +119,24 @@ python -m pytest tests/ -q
 | `RRF_K` | 60 | Reciprocal Rank Fusion constant |
 | `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` | — | Workers AI creds (empty → MOCK mode) |
 
+## Deployment (all free tier)
+
+| Component | Platform | Notes |
+|---|---|---|
+| Vector DB | [Qdrant Cloud](https://cloud.qdrant.io) — free 1GB cluster | Copy cluster URL + API key into `QDRANT_URL` / `QDRANT_API_KEY` |
+| API (FastAPI) | [Render](https://render.com) — free web service | Blueprint included (`render.yaml`); sleeps after 15 min idle, wakes on request |
+| UI (Streamlit) | [Streamlit Community Cloud](https://share.streamlit.io) — always-on free | Configure via App → Settings → Secrets (see `.streamlit/secrets.toml.example`) |
+| LLM | Cloudflare Workers AI — free tier | Existing `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`; empty → MOCK mode |
+
+### Deploy steps
+
+1. **Qdrant Cloud:** create free cluster → get URL + API key.
+2. **Render:** New → Blueprint → select repo → fill `QDRANT_URL`, `QDRANT_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` when prompted → Deploy. Health check: `GET /health`.
+3. **Streamlit Cloud:** New app → select repo → main file `app_streamlit.py` → in Secrets paste the keys from `.streamlit/secrets.toml.example` with real values.
+4. **First ingestion:** `POST /ingest` on the Render API URL, or run `python -m maia.cli ingest` locally pointed at Qdrant Cloud (`.env` with the same `QDRANT_URL`/`QDRANT_API_KEY`) — data persists in Qdrant Cloud, so any later restart is stateless-safe.
+
+> **Free-tier note:** Render's filesystem is ephemeral — the BM25 cache (`storage/bm25_corpus.pkl`) is rebuilt automatically from Qdrant on boot (`retriever._load_or_rebuild()`), so no data loss. Ingested uploads land in Qdrant Cloud and survive restarts. Both UI and API are stateless; scale-to-zero only costs a cold-start.
+
 ## Cleanup policy
 
 Safe to delete (regenerated automatically): `storage/` (BM25 cache), `qdrant_data/`, `__pycache__/`, `.pytest_cache/` — all covered by `.gitignore`.

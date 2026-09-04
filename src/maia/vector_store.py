@@ -18,8 +18,11 @@ def _chunk_hash(text: str) -> str:
 
 
 class QdrantStore:
-    def __init__(self, url: str, collection: str, dim: int):
-        self.client = QdrantClient(url=url)
+    def __init__(self, url: str, collection: str, dim: int, api_key: str = ""):
+        kwargs = {"url": url}
+        if api_key:
+            kwargs["api_key"] = api_key
+        self.client = QdrantClient(**kwargs)
         self.collection = collection
         self.dim = dim
         self.ensure_collection()
