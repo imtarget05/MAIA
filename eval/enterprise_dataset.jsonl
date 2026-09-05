@@ -1,0 +1,8 @@
+{"question": "Tôi làm mất laptop công ty. Tôi cần làm gì?", "intent": "security", "gold_keywords": ["IT Help Desk", "1 giờ", "Section 7.1", "Security Policy"], "expected_action": "create_it_ticket"}
+{"question": "Chính sách nghỉ phép như thế nào?", "intent": "hr_policy", "gold_keywords": ["12", "ngày phép", "Leave Policy"], "expected_action": null}
+{"question": "Tôi muốn xin nghỉ phép 5 ngày từ 10/09", "intent": "leave_request", "gold_keywords": ["Leave Policy", "approval"], "expected_action": "create_leave_request"}
+{"question": "Số ngày phép còn lại của tôi là bao nhiêu?", "intent": "leave_balance", "gold_keywords": ["ngày phép"], "expected_action": "check_leave_balance"}
+{"question": "Cách request VPN?", "intent": "vpn", "gold_keywords": ["VPN", "vpn.company.com", "IT Help"], "expected_action": null}
+{"question": "Laptop bị hỏng thì liên hệ bộ phận nào?", "intent": "it_help", "gold_keywords": ["IT Help Desk", "ext 202"], "expected_action": null}
+{"question": "Chi phí công tác được hoàn như thế nào?", "intent": "expense", "gold_keywords": ["Expense Policy", "reimbursement"], "expected_action": null}
+{"question": "Nhân viên mới cần làm gì ngày đầu?", "intent": "onboarding", "gold_keywords": ["Onboarding", "IT Help Desk", "SSO"], "expected_action": null}

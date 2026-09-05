@@ -1,0 +1,5 @@
+{"question": "MAIA uses which embedding model and dimension?", "gold_chunk_ids": ["0", "1"], "gold_keywords": ["bge-small", "384", "FastEmbed", "HuggingFace"]}
+{"question": "How does hybrid search fuse dense and sparse results?", "gold_chunk_ids": ["2", "3"], "gold_keywords": ["dense", "BM25", "RRF", "fusion"]}
+{"question": "Which failure mode degrades RAG answers the most?", "gold_chunk_ids": ["4", "5"], "gold_keywords": ["context", "hallucination", "wrong context", "evidence"]}
+{"question": "What vector database stores MAIA embeddings?", "gold_chunk_ids": ["6"], "gold_keywords": ["Qdrant", "collection", "COSINE", "vector database"]}
+{"question": "How does Kafka parallelize embedding ingestion?", "gold_chunk_ids": ["7", "8"], "gold_keywords": ["Kafka", "partition", "consumer group", "worker"]}

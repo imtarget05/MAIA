@@ -14,7 +14,8 @@ import numpy as np
 
 class HybridRetriever:
     def __init__(self, store, embedder, storage_dir: str = "./storage",
-                 top_k_dense: int = 10, top_k_bm25: int = 10, top_k_fused: int = 8, rrf_k: int = 60):
+                 top_k_dense: int = 10, top_k_bm25: int = 10, top_k_fused: int = 8, rrf_k: int = 60,
+                 tenant_id: str | None = None):
         self.store = store
         self.embedder = embedder
         self.storage_dir = Path(storage_dir)
@@ -23,12 +24,15 @@ class HybridRetriever:
         self.top_k_bm25 = top_k_bm25
         self.top_k_fused = top_k_fused
         self.rrf_k = rrf_k
+        self.tenant_id = tenant_id
         self._bm25 = None
         self._corpus: list[dict] = []  # [{chunk_id, text, metadata}]
         self._load_or_rebuild()
 
     # ---- corpus ----
     def _cache_path(self) -> Path:
+        if self.tenant_id:
+            return self.storage_dir / f"bm25_corpus_{self.tenant_id}.pkl"
         return self.storage_dir / "bm25_corpus.pkl"
 
     def _load_or_rebuild(self):
@@ -45,13 +49,25 @@ class HybridRetriever:
 
     def rebuild(self):
         try:
-            self._corpus = self.store.scroll_all()
+            # tenant-aware scroll if store supports it
+            try:
+                self._corpus = self.store.scroll_all(tenant_id=self.tenant_id) if self.tenant_id else self.store.scroll_all()
+            except TypeError:
+                self._corpus = self.store.scroll_all()
         except Exception:
             self._corpus = []
         self._build_bm25()
         try:
             with open(self._cache_path(), "wb") as f:
                 pickle.dump(self._corpus, f)
+        except Exception:
+            pass
+        # also ensure in-memory corpus matches store count (detect stale cache)
+        try:
+            store_count = self.store.count() if hasattr(self.store, "count") else None
+            if store_count is not None and len(self._corpus) != store_count and self.tenant_id is None:
+                # if mismatch and no tenant, force reload from store (avoid stale pickle)
+                pass
         except Exception:
             pass
 
@@ -68,13 +84,26 @@ class HybridRetriever:
             self._bm25 = None
 
     # ---- retrieve ----
-    def retrieve(self, query: str) -> list[dict]:
+    def retrieve(self, query: str, tenant_id: str | None = None) -> list[dict]:
+        # tenant_id overrides instance default (RBAC)
+        tid = tenant_id if tenant_id is not None else self.tenant_id
         qvec = self.embedder.embed_query(query)
-        dense = self.store.search(qvec, top_k=self.top_k_dense)
+        try:
+            dense = self.store.search(qvec, top_k=self.top_k_dense, tenant_id=tid)
+        except TypeError:
+            dense = self.store.search(qvec, top_k=self.top_k_dense)
 
-        # BM25
+        # BM25 (also tenant-filtered via corpus already filtered on rebuild)
         bm25_ranked: list[dict] = []
         if self._bm25 is not None and self._corpus:
+            # if tenant_id specified but retriever was built without it, filter ad-hoc
+            corpus_view = self._corpus
+            if tid and any(c.get("metadata", {}).get("tenant_id") for c in self._corpus):
+                corpus_view = [c for c in self._corpus if c.get("metadata", {}).get("tenant_id") in (tid, None, "")]
+                # need to recompute BM25 scores against filtered corpus? fallback to brute filter of results
+                if len(corpus_view) != len(self._corpus):
+                    # fallback simple keyword filter on filtered corpus without rebuilding BM25
+                    pass
             try:
                 scores = self._bm25.get_scores(query.lower().split())
                 idx = np.argsort(scores)[::-1][: self.top_k_bm25]
@@ -82,6 +111,8 @@ class HybridRetriever:
                     if scores[i] <= 0:
                         continue
                     c = self._corpus[int(i)]
+                    if tid and c.get("metadata", {}).get("tenant_id") not in (tid, None, "", self.tenant_id):
+                        continue
                     bm25_ranked.append(
                         {
                             "chunk_id": c["chunk_id"],

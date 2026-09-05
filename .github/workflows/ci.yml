@@ -1,0 +1,61 @@
+name: MAIA CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Offline tests + benchmark
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    env:
+      PYTHONPATH: src
+      # Force deterministic offline hash embedding: no HF Hub download,
+      # no network, no localhost Qdrant/Kafka needed.
+      MAIA_EMBED_FORCE_HASH: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run offline test suite
+        run: python -m pytest tests/ -q
+
+      - name: Run benchmark smoke (workers 1,2,4)
+        run: python -m maia.benchmark --docs 20 --workers 1,2,4 --partitions 8
+
+      - name: Run evaluation loop (BM25 baseline vs hybrid)
+        run: PYTHONPATH=src python -m maia.loops.evaluation_loop eval/retrieval_dataset.jsonl
+
+  dryrun:
+    name: Air-gapped import / bytecode check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Byte-compile every module (no network)
+        run: python -m compileall -q src/
+      - name: Import stream modules without confluent-kafka
+        run: |
+          export PYTHONPATH=src
+          python -c "from maia.stream import producer, worker, store, transport, events, metrics; from maia.benchmark import run_benchmark; print('OK: all stream modules + benchmark import WITHOUT confluent-kafka')"
+      - name: Validate Grafana dashboard JSON
+        run: python -c "import json; json.load(open('grafana/maia-dashboard.json')); print('dashboard JSON OK')"

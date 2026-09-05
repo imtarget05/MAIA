@@ -11,6 +11,33 @@ User Question → Query Embedding → Hybrid Retrieval (dense + BM25 → RRF)
              → Rerank → Context Assembly → LLM → Grounded Answer + Citations
 ```
 
+## Kafka Streaming Ingestion (PROJECT 2)
+
+The embedding step is parallelized through Kafka so it scales horizontally:
+
+```
+Parser ──> topic.doc.chunks ──> [Embedding Worker x N] ──> Vector DB (Qdrant)
+                                    └─> DLQ (failures) + metrics / Prometheus
+```
+
+- **Consumer group** `embedding-workers`: 1 partition → 1 consumer; workers scale `1 → 2 → 4 → 8` by re-partitioning.
+- **Partitioning modes** (`KAFKA_PARTITIONING`): `ordered` (key=`document_id`, per-doc order, hot-partition risk) or `max-throughput` (key=`hash(doc+chunk)`, parallel). See [`docs/PROJECT_2_STREAMING.md`](docs/PROJECT_2_STREAMING.md).
+- **Correct offset ordering**: commit **after** the vector upsert succeeds (§6) → at-least-once + idempotent upsert (`uuid5(chunk_id)`) ⇒ effectively exactly-once, no duplicates on restart.
+- **Failures** → inline retries (`KAFKA_MAX_RETRIES`) then `topic.doc.chunks.dlq` + `topic.doc.embedding.failed`.
+- **Metrics** (Prometheus): consumer lag, throughput, p95 embedding latency → `GET /metrics` → Grafana dashboard (`grafana/maia-dashboard.json`).
+
+```bash
+# Offline (default, no broker needed)
+PYTHONPATH=src python -m maia.cli stream produce      # parse → topic.doc.chunks
+PYTHONPATH=src python -m maia.cli stream worker 4      # embed → upsert → commit
+PYTHONPATH=src python -m maia.benchmark --docs 50 --workers 1,2,4,8
+PYTHONPATH=src python -m maia.cli stream metrics       # prometheus text
+
+# Real Kafka via Docker Compose
+docker compose up -d kafka kafka-ui qdrant worker     # kafka-ui @ http://localhost:8080
+docker compose up -d --scale worker=4                  # scale workers
+```
+
 ## Architecture
 
 ```
@@ -75,6 +102,10 @@ PYTHONPATH=src uvicorn maia.api:app --reload --port 8000
 | POST | `/ingest/upload` | Upload and ingest files (.md/.txt/.pdf) |
 | POST | `/query` | `{ "question": "...", "top_k": 3 }` |
 | GET | `/collections/count` | Points in collection |
+| POST | `/ingest/stream` | Parse `DATA_DIR` → produce chunks to `topic.doc.chunks` |
+| POST | `/stream/run-workers` | Run `n` embedding workers (embed→upsert→commit) |
+| GET | `/stream/lag` | Consumer lag for `embedding-workers` |
+| GET | `/metrics` | Prometheus text (maia_* metrics) |
 
 ### UI
 
@@ -106,6 +137,11 @@ python -m pytest tests/ -q
 - [x] Grounded answering with explicit "no evidence" guard
 - [x] Formal RAG evaluation — `src/maia/eval.py` + `eval/dataset.jsonl`
 - [x] Citation/evidence display — `citations[]` in API + Streamlit expanders
+- [x] **Kafka streaming ingestion (PROJECT 2)** — chunk events, consumer group, parallel workers
+- [x] Idempotent vector upsert + commit-after-success (spec §6–7)
+- [x] Failed-chunk → DLQ + `embedding.failed` event handling
+- [x] Consumer lag, throughput, p95 latency metrics + Grafana dashboard
+- [x] Batch benchmark (`maia.benchmark`), Docker Compose (Kafka), integration tests
 
 ## Configuration (`.env`)
 
@@ -118,6 +154,13 @@ python -m pytest tests/ -q
 | `SIMILARITY_THRESHOLD` | 0.3 | Evidence guard on dense score |
 | `RRF_K` | 60 | Reciprocal Rank Fusion constant |
 | `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` | — | Workers AI creds (empty → MOCK mode) |
+| `STREAM_TRANSPORT` | `inmemory` | `inmemory` (offline) or `kafka` (real broker) |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka broker address |
+| `KAFKA_NUM_PARTITIONS` | `4` | Partition count for `topic.doc.chunks` |
+| `KAFKA_CONSUMER_GROUP` | `embedding-workers` | Consumer group id |
+| `KAFKA_PARTITIONING` | `ordered` | `ordered` or `max-throughput` (see docs §4) |
+| `KAFKA_WORKERS` | `2` | Default worker count to scale to |
+| `KAFKA_MAX_RETRIES` / `KAFKA_RETRY_BACKOFF_MS` | `3` / `250` | Retry policy before DLQ |
 
 ## Deployment (all free tier)
 

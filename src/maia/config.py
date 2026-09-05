@@ -26,6 +26,38 @@ class Settings(BaseSettings):
 
     STORAGE_DIR: str = "./storage"
     DATA_DIR: str = "./data/samples"
+    ENTERPRISE_DATA_DIR: str = "./data/enterprise"
+
+    # --- MAIA Receptionist / Agent ---
+    TENANT_ID: str = "default"
+    DEFAULT_EMPLOYEE_ID: str = "emp_001"
+    MAX_HISTORY_TURNS: int = 8
+    AGENT_MAX_ITER: int = 3
+    AGENT_EVIDENCE_THRESHOLD: float = 0.3
+    AGENT_GROUNDING_THRESHOLD: float = 0.15
+    HR_MOCK_DB_PATH: str = "./storage/hr_mock.json"
+    # HRIS real connector (optional, falls back to mock)
+    HRIS_ENABLED: bool = False
+    HRIS_BASE_URL: str = ""
+    HRIS_API_KEY: str = ""
+    HRIS_TIMEOUT_SEC: int = 5
+
+    # --- Kafka streaming ingestion (PROJECT 2) ---
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_TOPIC_CHUNKS: str = "topic.doc.chunks"
+    KAFKA_TOPIC_DLQ: str = "topic.doc.chunks.dlq"
+    KAFKA_TOPIC_FAILED: str = "topic.doc.embedding.failed"
+    KAFKA_NUM_PARTITIONS: int = 4
+    KAFKA_CONSUMER_GROUP: str = "embedding-workers"
+    # Partitioning mode:
+    #   "ordered"         -> key = document_id (all chunks of a doc -> 1 partition)
+    #   "max-throughput"  -> key = hash(document_id + chunk_id) (spread across partitions)
+    KAFKA_PARTITIONING: str = "ordered"
+    KAFKA_WORKERS: int = 2
+    KAFKA_MAX_RETRIES: int = 3
+    KAFKA_RETRY_BACKOFF_MS: int = 250
+    KAFKA_SKIP_EMBEDDED: bool = True  # idempotency: skip re-embedding already-stored chunks
+    STREAM_TRANSPORT: str = "inmemory"  # inmemory | kafka
 
     class Config:
         env_file = ".env"

@@ -1,0 +1,5 @@
+# Optional production Kafka client for the streaming pipeline (PROJECT 2).
+# Not part of the base requirements.txt because it needs native librdkafka and
+# is only required when running against a real broker (STREAM_TRANSPORT=kafka).
+# Offline tests/benchmarks use the dependency-free InMemoryBroker instead.
+confluent-kafka>=2.3,<3.0

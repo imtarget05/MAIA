@@ -35,6 +35,15 @@ class CloudflareLLM:
         except Exception as e:
             return f"[LLM error: {e}] Fallback answer from context only (mock). " + self._mock(messages)
 
+    def chat_stream(self, messages: list[dict]):
+        """Yield answer chunks for SSE."""
+        ans = self.chat(messages)
+        import re
+        parts = re.split(r"(?<=[.!?])\s+", ans)
+        for p in parts:
+            if p:
+                yield p + " "
+
     @staticmethod
     def _mock(messages: list[dict]) -> str:
         user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")

@@ -5,6 +5,7 @@ Falls back to deterministic hash embedding if fastembed unavailable
 (useful for CI/offline tests - NOT for production quality).
 """
 import hashlib
+import os
 import numpy as np
 
 
@@ -14,16 +15,20 @@ class Embedder:
         self.dim = dim
         self._backend = None
         self._mode = "hash"
-        try:
-            from fastembed import TextEmbedding
+        # MAIA_EMBED_FORCE_HASH=1 -> deterministic offline hash embedding
+        # (no model download, no HF Hub/network). Used by CI/CD and offline tests.
+        force_hash = os.environ.get("MAIA_EMBED_FORCE_HASH", "").strip()
+        if not force_hash:
+            try:
+                from fastembed import TextEmbedding
 
-            self._backend = TextEmbedding(model_name=model)
-            # probe dim
-            vec = list(self._backend.embed(["hello"]))[0]
-            self.dim = len(vec)
-            self._mode = "fastembed"
-        except Exception as e:
-            print(f"[embeddings] fastembed unavailable ({e}), using hash fallback dim={dim}")
+                self._backend = TextEmbedding(model_name=model)
+                # probe dim
+                vec = list(self._backend.embed(["hello"]))[0]
+                self.dim = len(vec)
+                self._mode = "fastembed"
+            except Exception as e:
+                print(f"[embeddings] fastembed unavailable ({e}), using hash fallback dim={dim}")
 
     @property
     def mode(self) -> str:

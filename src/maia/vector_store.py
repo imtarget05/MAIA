@@ -59,11 +59,14 @@ class QdrantStore:
             )
 
     def upsert(self, vectors, chunks) -> int:
+        from .config import settings as _s
         points = []
         for vec, ch in zip(vectors, chunks):
             payload = dict(ch.metadata)
             payload["text"] = ch.text
             payload["chunk_hash"] = _chunk_hash(ch.text)
+            # RBAC: ensure tenant_id present (payload filter)
+            payload.setdefault("tenant_id", _s.TENANT_ID)
             # stable UUID from chunk_id so re-ingest overwrites (dedup)
             pid = str(uuid.uuid5(uuid.NAMESPACE_URL, payload.get("chunk_id", payload["chunk_hash"])))
             points.append(PointStruct(id=pid, vector=vec.tolist(), payload=payload))
@@ -72,8 +75,45 @@ class QdrantStore:
         self.client.upsert(collection_name=self.collection, points=points)
         return len(points)
 
-    def search(self, query_vec, top_k: int = 10, score_threshold: float | None = None) -> list[dict]:
+    def upsert_one(self, chunk_id: str, vector, payload: dict) -> str:
+        """Idempotent single-chunk upsert used by the streaming embedding workers.
+
+        The point id is a stable UUID derived from ``chunk_id`` (spec §7) so a
+        restart/redelivery with the same ``chunk_id`` overwrites instead of
+        inserting a duplicate vector. Returns the stable point id.
+        """
+        from .config import settings as _s
+        payload = dict(payload)
+        payload["chunk_hash"] = _chunk_hash(payload.get("text", ""))
+        payload.setdefault("tenant_id", _s.TENANT_ID)
+        pid = str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+        vec = vector.tolist() if hasattr(vector, "tolist") else list(vector)
+        self.client.upsert(
+            collection_name=self.collection,
+            points=[PointStruct(id=pid, vector=vec, payload=payload)],
+        )
+        return pid
+
+    def exists(self, chunk_id: str) -> bool:
+        """Idempotency probe used by streaming workers (spec §7): true if the
+        chunk's stable point id is already stored -> skip re-embedding."""
+        pid = str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+        try:
+            return bool(self.client.retrieve(collection_name=self.collection, ids=[pid]))
+        except Exception:  # noqa: BLE001 - treat lookup failure as not-found
+            return False
+
+    def search(self, query_vec, top_k: int = 10, score_threshold: float | None = None, tenant_id: str | None = None, extra_filter: Filter | None = None) -> list[dict]:
         vec = query_vec.tolist() if hasattr(query_vec, "tolist") else list(query_vec)
+        qfilter: Filter | None = extra_filter
+        if tenant_id:
+            tenant_cond = FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))
+            if qfilter and qfilter.must:
+                qfilter.must.append(tenant_cond)
+            elif qfilter:
+                qfilter.must = [tenant_cond]
+            else:
+                qfilter = Filter(must=[tenant_cond])
         # qdrant-client >=1.10 uses query_points; older uses search
         try:
             res = self.client.query_points(
@@ -81,6 +121,7 @@ class QdrantStore:
                 query=vec,
                 limit=top_k,
                 score_threshold=score_threshold,
+                query_filter=qfilter,
             )
             hits = res.points if hasattr(res, "points") else res
         except AttributeError:
@@ -89,7 +130,19 @@ class QdrantStore:
                 query_vector=vec,
                 limit=top_k,
                 score_threshold=score_threshold,
+                query_filter=qfilter,
             )
+        except TypeError:
+            # older client without query_filter support for query_points
+            res = self.client.query_points(
+                collection_name=self.collection,
+                query=vec,
+                limit=top_k,
+                score_threshold=score_threshold,
+            )
+            hits = res.points if hasattr(res, "points") else res
+            if tenant_id:
+                hits = [h for h in hits if (h.payload or {}).get("tenant_id") in (tenant_id, None, "")]
         out = []
         for r in hits:
             p = dict(r.payload or {})
@@ -117,9 +170,12 @@ class QdrantStore:
         except Exception:
             return 0
 
-    def scroll_all(self, limit: int = 10000) -> list[dict]:
+    def scroll_all(self, limit: int = 10000, tenant_id: str | None = None) -> list[dict]:
         """For BM25 corpus rebuild + eval."""
-        pts, _ = self.client.scroll(collection_name=self.collection, limit=limit, with_payload=True)
+        qfilter = None
+        if tenant_id:
+            qfilter = Filter(must=[FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))])
+        pts, _ = self.client.scroll(collection_name=self.collection, limit=limit, with_payload=True, scroll_filter=qfilter)
         out = []
         for p in pts:
             payload = dict(p.payload or {})

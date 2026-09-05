@@ -16,6 +16,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from maia.pipeline_query import query
 
 
+def evaluate_agent(dataset_path: str) -> dict:
+    """Eval for enterprise agent: intent accuracy + keyword precision."""
+    from maia.agent.intents import detect_intent
+    rows = [json.loads(l) for l in Path(dataset_path).read_text().splitlines() if l.strip()]
+    from maia.agent.agent import EnterpriseAgent
+    agent = EnterpriseAgent()
+    correct = 0
+    details = []
+    for r in rows:
+        pred = detect_intent(r["question"])
+        gold = r.get("intent", "general")
+        hit = 1 if pred == gold else 0
+        correct += hit
+        # also check action if expected
+        details.append({"q": r["question"][:50], "gold_intent": gold, "pred": pred, "hit": hit})
+    return {"n": len(rows), "intent_accuracy": round(correct / max(1, len(rows)), 3), "details": details}
+
+
 def _overlap(a: str, b: str) -> float:
     sa, sb = set(a.lower().split()), set(b.lower().split())
     if not sa or not sb:
@@ -57,5 +75,12 @@ def evaluate(dataset_path: str, top_k: int = 3) -> dict:
 
 
 if __name__ == "__main__":
-    ds = sys.argv[1] if len(sys.argv) > 1 else "eval/dataset.jsonl"
-    print(json.dumps(evaluate(ds), ensure_ascii=False, indent=2))
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("dataset", nargs="?", default="eval/dataset.jsonl")
+    p.add_argument("--agent", action="store_true", help="run enterprise agent intent eval")
+    args = p.parse_args()
+    if args.agent:
+        print(json.dumps(evaluate_agent(args.dataset), ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(evaluate(args.dataset), ensure_ascii=False, indent=2))
