@@ -2,6 +2,9 @@
 
 <!-- generated-by: repo-harness refresh-current-status v1 -->
 
+> **Status**: ACCEPTED + COMMITTED — Vibe Review (2026-09-10) → `3ac6d18`
+> **Reason**: All 5 review blockers resolved (stray file, CI pytest install, dead test_retrieval_regression ref, 193 ruff auto-fixes + \u200b, pyright:543 RunnableConfig), plus a found-and-fixed regression (`pq.ingest_data_dir` re-export). Full offline suite **277 passed, 2 skipped**. 212 files committed in `3ac6d18`.
+
 > **Status**: Complete — Spec-Alignment Hardening (Option 1)
 > **Reason**: EN recall root-caused (hash-mode, not missing data); contact_usability CI gate (≥0.8) wired; spec open questions closed, v1 scope locked
 
