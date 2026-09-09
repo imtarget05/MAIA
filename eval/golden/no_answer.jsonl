@@ -1,0 +1,6 @@
+{"question": "Chính sách cho vay mua nhà của công ty như thế nào?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "general", "expect_refusal": true}
+{"question": "Lương của CEO công ty là bao nhiêu?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "general", "expect_refusal": true}
+{"question": "Cách nấu phở bò chuẩn vị Hà Nội?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "general", "expect_refusal": true}
+{"question": "Chính sách nghỉ hưu sớm tuổi 50 như thế nào?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "general", "expect_refusal": true}
+{"question": "Công ty có chương trình stock option cho nhân viên không?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "general", "expect_refusal": true}
+{"question": "Chính sách nhận nuôi thú cưng tại văn phòng?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "general", "expect_refusal": true}

@@ -1,0 +1,483 @@
+/* ====================================================================
+   MAIA — Material Design 3 Theme (Google Modern · Enterprise)
+   Single token system: light default, dark via prefers-color-scheme + toggle
+   ==================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ---------- Light tokens (default) ---------- */
+:root {
+  --maia-bg: #FFFFFF;
+  --maia-bg-soft: #F8F9FA;
+  --maia-card: #FFFFFF;
+  --maia-ink: #202124;
+  --maia-ink-soft: #3C4043;
+  --maia-mute: #5F6368;
+  --maia-faint: #80868B;
+  --maia-accent: #1A73E8;
+  --maia-accent-deep: #1557B0;
+  --maia-accent-soft: #E8F0FE;
+  --maia-accent-faint: #F5F9FF;
+  --maia-moss: #188038;
+  --maia-moss-soft: #E6F4EA;
+  --maia-line: #DADCE0;
+  --maia-line-soft: #E8EAED;
+  --maia-shadow: 0 1px 2px rgba(60,64,67,.10), 0 1px 3px 1px rgba(60,64,67,.06);
+  --maia-shadow-sm: 0 1px 2px rgba(60,64,67,.08);
+  --maia-r-sm: 8px;
+  --maia-r-md: 8px;
+  --maia-r-lg: 8px;
+  --maia-sans: 'Inter', 'Be Vietnam Pro', system-ui, sans-serif;
+  --maia-surface: #FFFFFF;
+  --maia-surface-hover: #F5F9FF;
+  --maia-surface-active: #E8F0FE;
+  --maia-warn-bg: #FEF7E0;
+  --maia-warn-text: #B06000;
+  --maia-warn-border: #FCE8B2;
+  --maia-error-bg: #FCE8E6;
+  --maia-error-text: #C5221F;
+  --maia-error-border: #FAD2CF;
+  --maia-info-bg: #E8F0FE;
+  --maia-info-text: #1A73E8;
+  --maia-info-border: #D2E3FC;
+  --maia-chip-bg: #F1F3F4;
+  --maia-chip-text: #5F6368;
+  --maia-chip-border: #E8EAED;
+  --maia-cited-bg: #F5F9FF;
+  --maia-cited-border: #D2E3FC;
+  --maia-cited-accent: #1A73E8;
+  --maia-cited-mark-bg: #FFF3C4;
+  --maia-cited-mark-border: #F6C343;
+  --maia-scrollbar: #DADCE0;
+  --maia-scrollbar-track: #FFFFFF;
+  --maia-sysdot-bg: var(--maia-moss);
+}
+
+/* ---------- Dark tokens ---------- */
+/* Auto-detect system preference (overridden by data-theme attr from JS toggle) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --maia-bg: #131314;
+  --maia-bg-soft: #1E1F20;
+  --maia-card: #1E1F20;
+  --maia-ink: #E3E3E3;
+  --maia-ink-soft: #C7C7C7;
+  --maia-mute: #9AA0A6;
+  --maia-faint: #6E7681;
+  --maia-accent: #A8C7FA;
+  --maia-accent-deep: #8AB4F8;
+  --maia-accent-soft: #00305B;
+  --maia-accent-faint: #00274A;
+  --maia-moss: #81C995;
+  --maia-moss-soft: #0D3021;
+  --maia-line: #3C4043;
+  --maia-line-soft: #2D2E30;
+  --maia-shadow: 0 1px 3px 1px rgba(0,0,0,.30);
+  --maia-shadow-sm: 0 1px 2px rgba(0,0,0,.24);
+  --maia-surface: #1E1F20;
+  --maia-surface-hover: #2D2E30;
+  --maia-surface-active: #00305B;
+  --maia-warn-bg: #3B2D00;
+  --maia-warn-text: #FDD663;
+  --maia-warn-border: #5C4A00;
+  --maia-error-bg: #3C1109;
+  --maia-error-text: #F28B82;
+  --maia-error-border: #5C1D11;
+  --maia-info-bg: #00305B;
+  --maia-info-text: #A8C7FA;
+  --maia-info-border: #1A5276;
+  --maia-chip-bg: #2D2E30;
+  --maia-chip-text: #C7C7C7;
+  --maia-chip-border: #3C4043;
+  --maia-cited-bg: #00305B;
+  --maia-cited-border: #1A5276;
+  --maia-cited-accent: #A8C7FA;
+  --maia-cited-mark-bg: #5C4A00;
+  --maia-cited-mark-border: #FDD663;
+  --maia-scrollbar: #3C4043;
+  --maia-scrollbar-track: #1E1F20;
+  --maia-sysdot-bg: var(--maia-moss);
+  }
+}
+
+/* Explicit manual toggle (always applies regardless of system preference) */
+[data-theme="dark"],
+.dark {
+  --maia-bg: #131314;
+  --maia-bg-soft: #1E1F20;
+  --maia-card: #1E1F20;
+  --maia-ink: #E3E3E3;
+  --maia-ink-soft: #C7C7C7;
+  --maia-mute: #9AA0A6;
+  --maia-faint: #6E7681;
+  --maia-accent: #A8C7FA;
+  --maia-accent-deep: #8AB4F8;
+  --maia-accent-soft: #00305B;
+  --maia-accent-faint: #00274A;
+  --maia-moss: #81C995;
+  --maia-moss-soft: #0D3021;
+  --maia-line: #3C4043;
+  --maia-line-soft: #2D2E30;
+  --maia-shadow: 0 1px 3px 1px rgba(0,0,0,.30);
+  --maia-shadow-sm: 0 1px 2px rgba(0,0,0,.24);
+  --maia-surface: #1E1F20;
+  --maia-surface-hover: #2D2E30;
+  --maia-surface-active: #00305B;
+  --maia-warn-bg: #3B2D00;
+  --maia-warn-text: #FDD663;
+  --maia-warn-border: #5C4A00;
+  --maia-error-bg: #3C1109;
+  --maia-error-text: #F28B82;
+  --maia-error-border: #5C1D11;
+  --maia-info-bg: #00305B;
+  --maia-info-text: #A8C7FA;
+  --maia-info-border: #1A5276;
+  --maia-chip-bg: #2D2E30;
+  --maia-chip-text: #C7C7C7;
+  --maia-chip-border: #3C4043;
+  --maia-cited-bg: #00305B;
+  --maia-cited-border: #1A5276;
+  --maia-cited-accent: #A8C7FA;
+  --maia-cited-mark-bg: #5C4A00;
+  --maia-cited-mark-border: #FDD663;
+  --maia-scrollbar: #3C4043;
+  --maia-scrollbar-track: #1E1F20;
+  --maia-sysdot-bg: var(--maia-moss);
+}
+
+/* ---------- Global reset ---------- */
+html, body, [class*="css"] { font-family: var(--maia-sans); }
+.stApp { background: var(--maia-bg); color: var(--maia-ink); background-image: none; }
+.stApp ::selection { background: var(--maia-accent-soft); }
+.block-container { max-width: 63rem !important; padding-top: 2.2rem !important; padding-bottom: 5.2rem !important; }
+
+/* ---------- Hide default chrome ---------- */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header[data-testid="stHeader"] { background: transparent; }
+div[data-testid="stToolbar"] { opacity: 0.55; }
+
+/* ---------- Scrollbar ---------- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--maia-scrollbar); border-radius: 8px; border: 2px solid var(--maia-scrollbar-track); }
+::-webkit-scrollbar-track { background: transparent; }
+:focus-visible { outline: 2px solid var(--maia-accent) !important; outline-offset: 2px; border-radius: 4px; }
+
+/* ====================================================================
+   TOPBAR / BRAND
+   ==================================================================== */
+.maia-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 2px 10px; }
+.maia-brand { display: flex; align-items: center; gap: 10px; }
+.maia-mark {
+  width: 32px; height: 32px; border-radius: 9px; display: inline-flex;
+  align-items: center; justify-content: center;
+  font-weight: 700; font-size: 17px; color: #fff; flex: none;
+  background: var(--maia-accent);
+  box-shadow: var(--maia-shadow-sm);
+}
+[data-theme="dark"] .maia-mark,
+.dark .maia-mark { background: #8AB4F8; color: #1E1F20; }
+.maia-brand-name { font-weight: 600; font-size: 17.5px; letter-spacing: -0.2px; line-height: 1.05; }
+.maia-brand small { display: block; font-weight: 500; font-size: 11px; color: var(--maia-mute); letter-spacing: 0.2px; }
+.maia-topstatus { display: inline-flex; align-items: center; gap: 14px; }
+.maia-sysdot {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600;
+  color: var(--maia-mute); border: 1px solid var(--maia-line); background: var(--maia-card);
+  border-radius: 8px; padding: 5px 11px; box-shadow: var(--maia-shadow-sm);
+}
+.maia-sysdot i { width: 7px; height: 7px; border-radius: 50%; background: var(--maia-sysdot-bg); display: inline-block; }
+.maia-sysdot.local i { background: #D9A13B; }
+
+/* ====================================================================
+   HERO / EMPTY STATE
+   ==================================================================== */
+.maia-empty {
+  max-width: 44rem; margin: 26px auto 10px; text-align: center;
+  animation: maia-rise 0.45s ease both;
+}
+.maia-empty .maia-mark { width: 40px; height: 40px; font-size: 20px; border-radius: 11px; }
+.maia-empty-brand { display: inline-flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.maia-empty h1 { margin: 0; font-size: clamp(24px, 2.8vw, 30px); font-weight: 600; letter-spacing: -0.4px; }
+.maia-empty .maia-empty-tag { margin: 2px 0 0; font-size: 15.5px; font-weight: 600; color: var(--maia-ink); }
+.maia-empty .maia-empty-sub { margin: 7px auto 0; max-width: 34rem; font-size: 13px; line-height: 1.6; color: var(--maia-mute); }
+.maia-capab { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
+.maia-empty .maia-capab { justify-content: center; }
+.maia-capab span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--maia-mute); }
+.maia-capab span b { color: var(--maia-moss); font-weight: 700; font-size: 11px; }
+
+/* ====================================================================
+   SUGGESTION CHIPS (Material cards)
+   ==================================================================== */
+.maia-sugrow { max-width: 44rem; margin: 0 auto; }
+.maia-sugrow div[data-testid="stButton"] > button {
+  text-align: left !important; justify-content: flex-start !important;
+  background: var(--maia-card) !important; border: 1px solid var(--maia-line) !important;
+  border-radius: var(--maia-r-md) !important; padding: 11px 13px !important;
+  min-height: 64px !important; font-size: 12.5px !important; font-weight: 600 !important;
+  color: var(--maia-ink) !important; box-shadow: var(--maia-shadow-sm) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.maia-sugrow div[data-testid="stButton"] > button:hover {
+  background: var(--maia-surface-hover) !important; border-color: var(--maia-accent) !important;
+  color: var(--maia-accent) !important; box-shadow: 0 1px 3px rgba(0,0,0,.12) !important;
+}
+
+/* ====================================================================
+   STATUS PILLS (Material chips)
+   ==================================================================== */
+.maia-pill {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
+  padding: 4px 12px; border-radius: 999px; border: 1px solid transparent; letter-spacing: 0.1px;
+}
+.pill-ok { background: var(--maia-moss-soft); color: var(--maia-moss); }
+.pill-warn { background: var(--maia-warn-bg); color: var(--maia-warn-text); }
+.pill-bad { background: var(--maia-error-bg); color: var(--maia-error-text); }
+.pill-info { background: var(--maia-info-bg); color: var(--maia-info-text); }
+.pill-mute { background: var(--maia-chip-bg); color: var(--maia-chip-text); }
+
+/* ====================================================================
+   CARDS / QUOTES / EVIDENCE
+   ==================================================================== */
+.maia-card {
+  background: var(--maia-card); border: 1px solid var(--maia-line);
+  border-radius: var(--maia-r-md); padding: 14px 16px;
+  box-shadow: var(--maia-shadow-sm); animation: maia-rise 0.4s ease both;
+}
+.maia-quote {
+  border-left: 3px solid var(--maia-accent); background: var(--maia-bg-soft);
+  border-radius: 0 8px 8px 0; padding: 9px 13px; font-size: 13.5px;
+  line-height: 1.65; color: var(--maia-ink-soft);
+}
+.maia-big-id { font-size: 24px; font-weight: 700; letter-spacing: -0.3px; }
+.maia-meta { color: var(--maia-mute); font-size: 12.5px; }
+
+/* Evidence badge + source rows */
+.maia-ev-badge {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600;
+  padding: 6px 13px; border-radius: 8px; border: 1px solid var(--maia-info-border);
+  background: var(--maia-info-bg); color: var(--maia-info-text); cursor: pointer;
+  transition: box-shadow 0.18s, transform 0.18s;
+}
+.maia-ev-badge:hover { box-shadow: 0 2px 8px rgba(0,0,0,.10); transform: translateY(-1px); }
+.maia-ev-badge .chev { font-size: 10px; opacity: 0.7; }
+.maia-src-row {
+  display: flex; gap: 12px; align-items: flex-start; padding: 12px 2px;
+  border-bottom: 1px solid var(--maia-line-soft);
+}
+.maia-src-row:last-child { border-bottom: none; }
+.maia-src-num {
+  flex: none; width: 26px; height: 26px; border-radius: 8px; display: inline-flex;
+  align-items: center; justify-content: center; font-weight: 700; font-size: 12.5px;
+  color: var(--maia-accent); background: var(--maia-accent-soft);
+}
+.maia-src-name { font-weight: 600; font-size: 13px; line-height: 1.35; color: var(--maia-ink); }
+.maia-src-path { font-size: 11.5px; color: var(--maia-mute); margin-top: 1px; }
+
+/* Cited zone + full-source reader */
+.maia-cited {
+  border: 1px solid var(--maia-cited-border); border-left: 3px solid var(--maia-cited-accent);
+  background: var(--maia-cited-bg); border-radius: 8px; padding: 10px 13px; margin: 8px 0;
+}
+.maia-cited-label { font-size: 11px; font-weight: 600; letter-spacing: 0.3px; color: var(--maia-accent); margin-bottom: 6px; }
+.maia-cited-text { font-size: 13.5px; line-height: 1.7; color: var(--maia-ink); }
+mark.maia-cited-mark {
+  background: var(--maia-cited-mark-bg); color: inherit; border-radius: 3px;
+  padding: 1px 2px; box-shadow: inset 0 -2px 0 var(--maia-cited-mark-border);
+}
+mark.maia-cited-mark:target { outline: 2px solid var(--maia-accent); }
+.maia-source-full {
+  font-size: 13.5px; line-height: 1.75; color: var(--maia-ink-soft);
+  background: var(--maia-card); border: 1px solid var(--maia-line);
+  border-radius: 8px; padding: 14px 16px; max-height: 420px; overflow-y: auto; white-space: pre-wrap;
+}
+
+/* No-evidence card */
+.maia-noev {
+  background: var(--maia-card); border: 1px solid var(--maia-warn-border);
+  border-left: 3px solid #D9A13B; border-radius: var(--maia-r-md);
+  padding: 16px 18px; box-shadow: var(--maia-shadow-sm); animation: maia-rise 0.4s ease both;
+}
+.maia-noev-title { font-weight: 700; font-size: 13.5px; color: var(--maia-warn-text); display: flex; align-items: center; gap: 8px; }
+.maia-noev p { margin: 8px 0 0; font-size: 14px; line-height: 1.7; color: var(--maia-ink-soft); }
+.maia-noev .maia-noev-note { font-size: 12.5px; color: var(--maia-mute); margin-top: 8px; line-height: 1.6; }
+
+/* ====================================================================
+   SIDEBAR
+   ==================================================================== */
+section[data-testid="stSidebar"] { background: var(--maia-bg-soft); border-right: 1px solid var(--maia-line); }
+section[data-testid="stSidebar"] .block-container { padding-top: 0.9rem !important; }
+.maia-side-head { display: flex; align-items: baseline; justify-content: space-between; margin: 2px 2px 6px; }
+.maia-side-head h3 {
+  margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--maia-mute);
+}
+.maia-side-head span { font-size: 11px; color: var(--maia-faint); }
+.maia-side-group {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--maia-faint); margin: 12px 2px 5px;
+}
+.maia-session {
+  border: 1px solid transparent; background: transparent; border-radius: var(--maia-r-sm);
+  padding: 7px 10px; margin-bottom: 2px; position: relative;
+  transition: background 0.18s, border-color 0.18s;
+}
+.maia-session:hover { background: var(--maia-surface-hover); border-color: var(--maia-line-soft); }
+.maia-session.active { background: var(--maia-surface-active); border-color: transparent; box-shadow: none; }
+.maia-session.active::before {
+  content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px;
+  border-radius: 3px; background: var(--maia-accent);
+}
+.maia-session-title {
+  font-weight: 500; font-size: 12.5px; color: var(--maia-ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.maia-session.active .maia-session-title { color: var(--maia-accent); font-weight: 600; }
+.maia-session-sub { display: none; }
+.maia-side-foot { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--maia-line-soft); }
+section[data-testid="stSidebar"] .stButton>button[data-testid="stBaseButton-tertiary"] {
+  color: var(--maia-faint) !important;
+}
+
+/* ====================================================================
+   CHAT MESSAGES
+   ==================================================================== */
+div[data-testid="stChatMessage"] {
+  background: transparent !important; border: none !important;
+  box-shadow: none !important; padding: 0.45rem 0.2rem !important;
+  max-width: 52rem; margin: 0 auto; animation: maia-rise 0.35s ease both;
+}
+div[data-testid="stChatMessage"] [data-testid*="Avatar"] {
+  border-radius: 9px !important; overflow: hidden;
+  box-shadow: var(--maia-shadow-sm); border: 1px solid var(--maia-line);
+  flex: none !important; z-index: 0 !important;
+}
+div[data-testid="stChatMessage"] { position: relative; z-index: 0; overflow: visible; }
+div[data-testid="stChatMessage"] p, div[data-testid="stChatMessage"] li {
+  font-size: 14.4px; line-height: 1.72;
+}
+.maia-user-bubble {
+  background: var(--maia-surface); border: 1px solid var(--maia-line);
+  border-radius: 20px 20px 5px 20px; padding: 10px 15px; font-size: 14.2px;
+  line-height: 1.62; box-shadow: var(--maia-shadow-sm);
+  margin: 2px 0 2px auto; max-width: 650px; width: fit-content;
+}
+.maia-cap, div[data-testid="stCaptionContainer"] {
+  color: var(--maia-faint) !important; font-size: 11.5px !important; letter-spacing: 0.15px;
+}
+.maia-ev-cap { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
+
+/* ====================================================================
+   COMPOSER (sticky, prominent)
+   ==================================================================== */
+div[data-testid="stBottom"] > div[data-testid="stBottomBlockContainer"] {
+  max-width: 52rem !important; margin: 0 auto;
+}
+div[data-testid="stBottom"] { background: linear-gradient(180deg, transparent, var(--maia-bg) 26%); }
+div[data-testid="stChatInput"] {
+  border-radius: 12px !important; background: var(--maia-card) !important;
+  border: 1px solid var(--maia-line) !important; box-shadow: var(--maia-shadow-sm) !important;
+}
+div[data-testid="stChatInput"] textarea {
+  font-family: var(--maia-sans); font-size: 14.5px !important;
+}
+div[data-testid="stChatInput"] textarea::placeholder { color: var(--maia-faint); }
+div[data-testid="stChatInput"]:focus-within {
+  border-color: var(--maia-accent) !important;
+  box-shadow: 0 0 0 1px var(--maia-accent) !important;
+}
+
+/* ====================================================================
+   BUTTONS / INPUTS / WIDGETS (Material)
+   ==================================================================== */
+.stButton > button {
+  border-radius: var(--maia-r-sm) !important; font-weight: 500 !important;
+  font-size: 13px !important; border: 1px solid var(--maia-line) !important;
+  background: var(--maia-card) !important; color: var(--maia-ink) !important;
+  box-shadow: var(--maia-shadow-sm);
+  transition: transform 0.12s ease, box-shadow 0.15s, border-color 0.15s !important;
+  min-height: 36px;
+}
+.stButton > button:hover {
+  border-color: var(--maia-accent) !important; transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,.10) !important;
+}
+.stButton > button:active { transform: translateY(0); }
+
+button[data-testid="stBaseButton-primary"] {
+  background: var(--maia-accent) !important; border: none !important;
+  color: #fff !important; border-radius: 8px !important; font-weight: 500 !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.15) !important;
+}
+[data-theme="dark"] button[data-testid="stBaseButton-primary"],
+.dark button[data-testid="stBaseButton-primary"] {
+  color: #1E1F20 !important;
+}
+button[data-testid="stBaseButton-primary"]:hover {
+  background: var(--maia-accent-deep) !important; box-shadow: 0 1px 3px rgba(0,0,0,.25) !important;
+}
+
+button[data-testid="stBaseButton-secondary"] {
+  background: var(--maia-card) !important; border: 1px solid var(--maia-line) !important;
+  color: var(--maia-accent) !important; border-radius: 8px !important; font-weight: 500 !important;
+}
+button[data-testid="stBaseButton-secondary"]:hover {
+  background: var(--maia-surface-hover) !important; border-color: var(--maia-accent) !important;
+}
+
+button[data-testid="stBaseButton-tertiary"] {
+  border-color: transparent !important; box-shadow: none !important;
+  color: var(--maia-accent) !important; min-height: 30px;
+}
+
+section[data-testid="stSidebar"] .stButton>button { min-height: 32px; font-size: 12px !important; }
+div[data-testid="stTextInput"] input, div[data-testid="stChatInput"] {
+  border-radius: var(--maia-r-sm) !important;
+}
+div[data-testid="stTextInput"] input {
+  border: 1px solid var(--maia-line) !important; font-size: 13px !important;
+  background: var(--maia-card) !important; color: var(--maia-ink) !important;
+}
+div[data-testid="stTextInput"] input:focus {
+  border-color: var(--maia-accent) !important; box-shadow: 0 0 0 1px var(--maia-accent) !important;
+}
+div[data-testid="stSlider"] [data-baseweb="slider"] { accent-color: var(--maia-accent); }
+details[data-testid="stExpander"] {
+  border: 1px solid var(--maia-line) !important; border-radius: var(--maia-r-sm) !important;
+  background: var(--maia-card) !important; box-shadow: var(--maia-shadow-sm);
+}
+div[data-testid="stAlert"] { border-radius: var(--maia-r-sm) !important; border: 1px solid var(--maia-line) !important; }
+div[data-testid="stPopover"] > button {
+  border-radius: var(--maia-r-sm) !important; border: 1px solid var(--maia-line) !important;
+  background: var(--maia-card) !important; box-shadow: var(--maia-shadow-sm); font-size: 15px !important; min-height: 32px;
+}
+div[data-testid="stPopoverBody"] {
+  border-radius: var(--maia-r-md) !important; border: 1px solid var(--maia-line) !important;
+  box-shadow: var(--maia-shadow); background: var(--maia-card);
+}
+div[data-testid="stStatusWidget"] {
+  border-radius: var(--maia-r-md) !important; max-width: 52rem; margin: 0 auto;
+  border: 1px solid var(--maia-line) !important;
+}
+div[data-testid="stToast"] { border-radius: var(--maia-r-sm) !important; font-family: var(--maia-sans); }
+
+/* ====================================================================
+   FOOTER
+   ==================================================================== */
+.maia-foot { text-align: center; color: var(--maia-faint); font-size: 11.5px; padding: 18px 0 6px; letter-spacing: 0.2px; }
+.maia-foot b { font-weight: 600; color: var(--maia-mute); }
+
+/* ====================================================================
+   ANIMATIONS
+   ==================================================================== */
+@keyframes maia-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes maia-pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ====================================================================
+   RESPONSIVE
+   ==================================================================== */
+@media (max-width: 768px) {
+  .maia-empty { margin-top: 14px; }
+  .maia-empty h1 { font-size: 22px; }
+  .block-container { max-width: 100% !important; padding-left: 12px !important; padding-right: 12px !important; }
+  section.main [data-testid="stChatMessage"] { max-width: 100%; }
+}

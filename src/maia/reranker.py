@@ -3,7 +3,7 @@
 Primary: cross-encoder/ms-marco-MiniLM-L-6-v2 via sentence-transformers
 Fallback (no torch): keep RRF order, expose rerank_score = fused_score.
 """
-from typing import Optional
+import sys
 
 
 class Reranker:
@@ -15,7 +15,7 @@ class Reranker:
 
             self._model = CrossEncoder(model)
         except Exception as e:
-            print(f"[reranker] CrossEncoder unavailable ({e}), using score fallback")
+            print(f"[reranker] CrossEncoder unavailable ({e}), using score fallback", file=sys.stderr)
 
     @property
     def mode(self) -> str:
@@ -35,7 +35,7 @@ class Reranker:
                 c["rerank_score"] = float(s)
             return sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)[:top_k]
         except Exception as e:
-            print(f"[reranker] predict failed: {e}")
+            print(f"[reranker] predict failed: {e}", file=sys.stderr)
             for c in candidates:
                 c["rerank_score"] = float(c.get("fused_score", 0.0))
             return sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)[:top_k]

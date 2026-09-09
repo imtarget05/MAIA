@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "active_plan": {
+    "marker_file": ".ai/harness/active-plan",
+    "directory": "plans",
+    "archive_directory": "plans/archive",
+    "glob": "plan-*.md",
+    "active_worktree_marker_file": ".ai/harness/active-worktree",
+    "source_of_truth": "per-worktree explicit marker with active-worktree owner",
+    "lifecycle": {
+      "annotation_end": "Annotating",
+      "approved": "Approved",
+      "executing": "Executing",
+      "terminal_start": "Complete"
+    },
+    "statuses": [
+      "Draft",
+      "Annotating",
+      "Approved",
+      "Executing",
+      "Blocked",
+      "Review",
+      "Complete",
+      "Completed",
+      "Done",
+      "Fulfilled",
+      "Archived",
+      "Abandoned",
+      "Superseded"
+    ]
+  },
+  "tasks": {
+    "todo_file": "tasks/todos.md",
+    "current_status_file": "tasks/current.md",
+    "lessons_file": "tasks/lessons.md",
+    "research_dir": "docs/researches",
+    "workstreams_dir": "tasks/workstreams",
+    "contracts_dir": "tasks/contracts",
+    "reviews_dir": "tasks/reviews",
+    "notes_dir": "tasks/notes"
+  },
+  "context": {
+    "map_file": ".ai/context/context-map.json",
+    "capability_registry_file": ".ai/context/capabilities.json",
+    "capability_match_rule": "longest-prefix; same-length ambiguity fails",
+    "capability_source": "registry",
+    "capability_source_rule": "single authority selected by capability_source; registry reads .ai/context/capabilities.json, archcontext reads .archcontext/model/nodes/*.yaml; no dual-read and no fallback"
+  },
+  "worktree_strategy": {
+    "base_branch": "main",
+    "review_base": "main",
+    "merge_back": {
+      "target": "main"
+    }
+  },
+  "harness": {
+    "policy_file": ".ai/harness/policy.json",
+    "checks_file": ".ai/harness/checks/latest.json",
+    "handoff_file": ".ai/harness/handoff/current.md",
+    "helper_runtime_dir": "package:assets/templates/helpers",
+    "helper_source": "package"
+  },
+  "operations": {
+    "dir": "deploy",
+    "private_dir": "_ops",
+    "rule": "Track deployment material in deploy/ and keep private local operations state in ignored _ops/."
+  },
+  "documentation": {
+    "profile": "minimal-agentic",
+    "reference_source": "user-level-runtime-docs",
+    "reference_stub_marker": "<!-- repo-harness: reference-config-stub v1 -->",
+    "reference_resolver": "repo-harness docs path <doc-id>"
+  },
+  "external_tooling": {
+    "routing": {
+      "simple": "waza"
+    }
+  },
+  "agentic_development": {
+    "routing": {
+      "product_discovery": "parent-agent:geju",
+      "complex_engineering_plan": "parent-agent:geju",
+      "design_plan": "parent-agent:geju",
+      "design_options_choice": "convention:design-options",
+      "small_or_medium_plan": "waza:think",
+      "bug_or_regression": "waza:hunt",
+      "post_implementation_review": "waza:check"
+    },
+    "due_diligence": {
+      "levels": [
+        "P1_GLOBAL_ARCHITECTURE",
+        "P2_DATA_FLOW_TRACE",
+        "P3_DESIGN_DECISION"
+      ],
+      "explicit_report_required_for": [
+        "complex_engineering_plan",
+        "hunt",
+        "risky_refactor",
+        "deployment",
+        "auth_payment_data",
+        "shared_contract"
+      ]
+    }
+  },
+  "circuit_breakers": {
+    "guard_repeat": 2,
+    "review": {
+      "lite": 1,
+      "standard": 1,
+      "strict": 2
+    },
+    "semantic_reviews_per_work_package": 1,
+    "subagents": {
+      "default": 2,
+      "strict_explicit_contract": 3
+    },
+    "repair_loops": 2,
+    "cross_model_consults_default": 0
+  },
+  "upgrade": {
+    "strategy_version": 1,
+    "remove_only_ownership": "known_generated",
+    "unknown_files": "preserve-or-archive"
+  }
+}

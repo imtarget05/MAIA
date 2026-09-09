@@ -15,4 +15,15 @@ MAIA is designed as two pipelines plus five operational loops so the system is a
 
   RAG Guardrails — input/output safety + prompt injection defense (boundary tags)  -> guardrails.py
   Document Lifecycle — full versioning (doc_id, version, embedding/chunking ver)  -> document_lifecycle.py
+  Corrective RAG (CRAG)        — retrieval grading, refinement, web fallback      -> corrective_rag.py
 """
+
+from .corrective_rag import (
+    CorrectiveResult,
+    CorrectiveRetriever,
+    GradeLabel,
+    GradeResult,
+    KnowledgeRefiner,
+    RetrievalGrader,
+    WebSearchFallback,
+)

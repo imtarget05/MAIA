@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md",
+    "docs/spec.md",
+    ".ai/context/context-map.json",
+    ".ai/context/capabilities.json",
+    ".ai/harness/handoff/current.md",
+    ".ai/harness/handoff/resume.md",
+    "tasks/current.md"
+  ],
+  "permission": {
+    "bash": {
+      "git status *": "allow",
+      "git diff *": "allow",
+      "git log *": "allow",
+      "codegraph *": "allow",
+      "repo-harness *": "allow",
+      "bun *": "ask",
+      "*": "ask"
+    }
+  }
+}

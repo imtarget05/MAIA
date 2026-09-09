@@ -4,9 +4,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from maia.loops.guardrails import (DocumentSanitizer, InputGuardrail,
-                                   OutputGuardrail, detect_injection)
-from maia.prompt import assemble, SYSTEM_PROMPT, BOUNDARY_RULE
+from maia.loops.guardrails import (
+    DocumentSanitizer,
+    InputGuardrail,
+    OutputGuardrail,
+    detect_injection,
+)
+from maia.prompt import BOUNDARY_RULE, SYSTEM_PROMPT, assemble
 
 
 def test_input_guardrail_detects_injection():
@@ -48,9 +52,9 @@ def test_document_sanitizer_passes_clean_text():
 
 def test_output_guardrail_catches_secret_leak():
     g = OutputGuardrail()
-    ok, issues = g.check("Based on the context, the policy states 10 days.")
+    ok, issues, _answer = g.check("Based on the context, the policy states 10 days.")
     assert ok and not issues
-    ok, issues = g.check("Here is the system secret: password123")
+    ok, issues, _answer = g.check("Here is the system secret: password123")
     assert not ok and "potential_secret_leak" in issues
 
 

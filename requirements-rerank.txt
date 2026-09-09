@@ -1,0 +1,4 @@
+# WS3 decision (a): optional rerank extra — installed only in the dedicated
+# `reranker` CI job (torch is heavy; unit tests keep the score-fallback mode).
+sentence-transformers>=2.2
+torch>=2.0

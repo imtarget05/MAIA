@@ -59,7 +59,7 @@ services:
       - KAFKA_WORKERS=4
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION=maia_knowledge
-      - EMBED_MODEL=BAAI/bge-small-en-v1.5
+      - EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
     command: ["python", "-m", "maia.cli", "stream", "worker", "4"]
     restart: unless-stopped
 

@@ -16,9 +16,45 @@ from __future__ import annotations
 import time
 
 from ..config import settings
-from .events import ChunkEvent, FailedEvent
+from .dlq_handler import DLQHandler
+from .events import ChunkEvent
 from .metrics import MetricsRegistry, registry
 from .transport import InMemoryBroker
+
+
+class MessageValidator:
+    """Validates ChunkEvent messages before processing."""
+
+    def validate(self, event: ChunkEvent) -> bool:
+        return bool(event.chunk_id and event.text and event.text.strip())
+
+
+class RetryManager:
+    """Handles retry logic with exponential backoff for transient failures."""
+
+    def __init__(self, max_retries: int, retry_backoff_ms: int,
+                 metrics: MetricsRegistry) -> None:
+        self.max_retries = max_retries
+        self.retry_backoff_ms = retry_backoff_ms
+        self.metrics = metrics
+
+    def run(self, operation) -> Exception | None:
+        """Execute ``operation`` with retries.
+
+        Returns ``None`` on success, or the last ``Exception`` after
+        exhausting all retries.
+        """
+        last_err: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                operation(attempt)
+                return None
+            except Exception as e:  # noqa: BLE001 - transient embed/upsert errors
+                last_err = e
+                self.metrics.inc("maia_embedding_failures_total")
+                if attempt < self.max_retries:
+                    time.sleep((self.retry_backoff_ms * attempt) / 1000.0)
+        return last_err
 
 
 class EmbeddingWorker:
@@ -47,6 +83,9 @@ class EmbeddingWorker:
         self.member_index = member_index
         self.worker_count = worker_count
         self.partitions: list[int] = transport.assign(group, member_index, worker_count)
+        self._dlq_handler = DLQHandler(transport, dlq_topic, failed_topic, metrics)
+        self.validator = MessageValidator()
+        self.retry_manager = RetryManager(max_retries, retry_backoff_ms, metrics)
         # activity-facing counters for utilization metric
         self.polls = 0
         self.processed = 0
@@ -58,7 +97,7 @@ class EmbeddingWorker:
         """Handle one message. Returns True when handled (offset can be committed)."""
         t0 = time.monotonic()
         event = ChunkEvent.model_validate_json(msg.value)
-        if not self._validate(event):
+        if not self.validator.validate(event):
             # keep event.attempt semantics; DLQ immediately (not retryable)
             self._to_dlq(event, "validation error: empty text", attempts=event.attempt + 1)
             self.processed += 1
@@ -74,43 +113,29 @@ class EmbeddingWorker:
             except Exception:  # noqa: BLE001 - a failed existence probe is non-fatal
                 pass
 
-        last_err: Exception | None = None
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                vector = self.embedder.embed([event.text])[0]
-                payload = dict(event.metadata)
-                payload.update({"text": event.text, "chunk_id": event.chunk_id,
-                                "document_id": event.document_id})
-                self.store.upsert_one(event.chunk_id, vector, payload)
-                latency = time.monotonic() - t0
-                self.metrics.observe_latency(latency)
-                self.metrics.inc("maia_embeddings_total")
-                self.processed += 1
-                return True
-            except Exception as e:  # noqa: BLE001 - transient embed/upsert errors
-                last_err = e
-                self.metrics.inc("maia_embedding_failures_total")
-                if attempt < self.max_retries:
-                    time.sleep((self.retry_backoff_ms * attempt) / 1000.0)
-
-        # exhausted retries -> DLQ + failed event (spec §8)
-        error = str(last_err) if last_err else "unknown error"
-        self._to_dlq(event, error, attempts=self.max_retries)
-        self.failed += 1
-        self.processed += 1
+        err = self.retry_manager.run(lambda attempt: self._embed_and_upsert(event, t0))
+        if err is not None:
+            # exhausted retries -> DLQ + failed event (spec §8)
+            error = str(err) if err else "unknown error"
+            self._to_dlq(event, error, attempts=self.max_retries)
+            self.failed += 1
+            self.processed += 1
         return True
 
-    def _validate(self, event: ChunkEvent) -> bool:
-        return bool(event.chunk_id and event.text and event.text.strip())
+    def _embed_and_upsert(self, event: ChunkEvent, t0: float) -> None:
+        vector = self.embedder.embed([event.text])[0]
+        payload = dict(event.metadata)
+        payload.update({"text": event.text, "chunk_id": event.chunk_id,
+                        "document_id": event.document_id})
+        self.store.upsert_one(event.chunk_id, vector, payload)
+        latency = time.monotonic() - t0
+        self.metrics.observe_latency(latency)
+        self.metrics.inc("maia_embeddings_total")
+        self.processed += 1
 
     def _to_dlq(self, event: ChunkEvent, error: str, attempts: int | None = None) -> None:
         attempts = attempts if attempts is not None else event.attempt + 1
-        dlq = FailedEvent(chunk_id=event.chunk_id, document_id=event.document_id,
-                          error=error, attempt=attempts).model_dump_json().encode("utf-8")
-        # DLQ keyed by chunk_id for stable ordering/grouping in dead-letter inspection
-        self.transport.produce(self.dlq_topic, event.chunk_id, dlq)
-        self.transport.produce(self.failed_topic, event.chunk_id, dlq)
-        self.metrics.inc("maia_dlq_total")
+        self._dlq_handler.route_to_dlq(event, error, attempts)
 
     # ---- consume loop --------------------------------------------------------
     def step(self) -> int:
@@ -154,8 +179,8 @@ def run_workers(worker_count: int, transport: InMemoryBroker, store, embedder,
 
     def _target(idx: int):
         worker = EmbeddingWorker(name=f"worker-{idx}", transport=transport, store=store,
-                                 embedder=embedder, metrics=metrics,
-                                 member_index=idx, worker_count=worker_count, **kw)
+                                  embedder=embedder, metrics=metrics,
+                                  member_index=idx, worker_count=worker_count, **kw)
         results[idx] = worker.run(drain=drain)
 
     for idx in range(worker_count):

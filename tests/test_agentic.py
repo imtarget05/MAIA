@@ -1,17 +1,21 @@
-import sys, tempfile, pathlib
+import pathlib
+import sys
+import tempfile
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from maia.agent.session import session_store, SessionStore
-from maia.embeddings import Embedder
-from maia.stream.store import InMemoryVectorStore
-from maia.retriever import HybridRetriever
-from maia.reranker import Reranker
-from maia.llm import CloudflareLLM
+from maia.agent import hris
+from maia.agent.agentic import AgenticRetriever
+from maia.agent.session import session_store
 from maia.chunking import Chunk
 from maia.config import settings
-from maia.agent.agentic import AgenticRetriever, evidence_check
-from maia.agent import hris
+from maia.embeddings import Embedder
+from maia.llm import CloudflareLLM
+from maia.reranker import Reranker
+from maia.retriever import HybridRetriever
+from maia.stream.store import InMemoryVectorStore
+
 
 def _store_with_tenants():
     embedder = Embedder()
@@ -88,10 +92,18 @@ def test_agentic_tool_chain_lost_laptop():
         agent = EnterpriseAgent(embedder, store, retrA, reranker, llm, tenant_id="tenantA")
         r = agent.chat("Tôi bị mất laptop, phải làm gì và tạo ticket IT giúp tôi.", session_id="ut_chain_s", employee_id="emp_chain")
         assert r["plan"]["tool"]=="create_it_ticket"
-        assert r["action"] is not None
-        assert r["action"]["verify"]["verified"] is True
+        # C1: proposed, NOT executed
+        assert r["status"]=="needs_approval"
+        assert r["action"] is None
+        assert r["pending_action"]["type"]=="create_it_ticket"
+        assert r["pending_action"]["params"]["ticket_type"]=="lost_device"
         assert len(r["citations"])>0
         assert r["evidence"]["attempts"]>=1
+        # approve -> executes once with verify
+        r2 = agent.confirm_action("ut_chain_s", employee_id="emp_chain", approved=True)
+        assert r2["status"]=="action_completed"
+        assert r2["action"]["verify"]["verified"] is True
+        assert r2["action"]["result"]["type"]=="lost_device"
     finally:
         settings.HR_MOCK_DB_PATH = old
         pathlib.Path(tmp).unlink(missing_ok=True)

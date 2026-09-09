@@ -1,0 +1,50 @@
+{
+  "baseline_for": "C2 embedding benchmark (hard rule: baseline BEFORE any model change)",
+  "date": "2026-09-06",
+  "embed_model": "BAAI/bge-small-en-v1.5",
+  "embed_dim": 384,
+  "qdrant_collection": "maia_knowledge",
+  "qdrant_points": 11,
+  "rerank_mode": "fallback (no sentence-transformers)",
+  "code_version": "P0+P1 (evidence gate + needs_approval + typed response)",
+  "rag_eval": {
+    "n": 6,
+    "hit@k": 1.0,
+    "recall@k": 1.0,
+    "context_precision": 0.764,
+    "faithfulness_proxy": 0.825,
+    "relevance_proxy": 0.625
+  },
+  "agent_intent_eval": {
+    "n": 10,
+    "intent_accuracy": 1.0
+  },
+  "retrieval_baseline_vs_hybrid": {
+    "k": 5,
+    "baseline_BM25": {
+      "n": 5,
+      "k": 5,
+      "recall@k": 0.5,
+      "precision@k": 0.2,
+      "mrr@k": 0.29,
+      "ndcg@k": 0.3776,
+      "citation_correctness": 0.2
+    },
+    "hybrid": {
+      "n": 5,
+      "k": 5,
+      "recall@k": 0.5,
+      "precision@k": 0.2,
+      "mrr@k": 0.34,
+      "ndcg@k": 0.4022,
+      "citation_correctness": 0.2
+    },
+    "improvement": {
+      "recall@k": 0.0,
+      "precision@k": 0.0,
+      "mrr@k": 0.05,
+      "ndcg@k": 0.0246,
+      "citation_correctness": 0.0
+    }
+  }
+}

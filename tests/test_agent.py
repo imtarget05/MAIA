@@ -1,10 +1,12 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from maia.agent.intents import detect_intent, slots_for_intent
-from maia.agent.tools import check_leave_balance, create_leave_request, create_it_ticket
 from maia.agent.session import SessionStore
+from maia.agent.tools import check_leave_balance, create_it_ticket, create_leave_request
+
 
 def test_intent_leave_request():
     assert detect_intent("Tôi muốn xin nghỉ phép 5 ngày") == "leave_request"
@@ -31,7 +33,8 @@ def test_slots_no_days():
     assert "days" not in s
 
 def test_leave_balance_mock():
-    import tempfile, os, json
+    import tempfile
+
     from maia.config import settings
     # use temp file to avoid polluting real storage
     tmp = tempfile.mktemp(suffix=".json")
@@ -69,12 +72,12 @@ def test_create_it_ticket():
 
 def test_agent_chat_needs_clarification():
     from maia.agent.agent import EnterpriseAgent
-    from maia.embeddings import Embedder
-    from maia.stream.store import InMemoryVectorStore
-    from maia.retriever import HybridRetriever
-    from maia.reranker import Reranker
-    from maia.llm import CloudflareLLM
     from maia.chunking import Chunk
+    from maia.embeddings import Embedder
+    from maia.llm import CloudflareLLM
+    from maia.reranker import Reranker
+    from maia.retriever import HybridRetriever
+    from maia.stream.store import InMemoryVectorStore
 
     # minimal in-memory stack
     embedder = Embedder()
@@ -97,8 +100,9 @@ def test_agent_chat_needs_clarification():
     assert res["needs_clarification"] is True
     assert res["intent"] == "leave_request"
 
-    # full slots -> creates request (use temp HR db)
+    # full slots -> PROPOSES request (C1: no side effect without approval)
     import tempfile
+
     from maia.config import settings
     tmp = tempfile.mktemp(suffix=".json")
     old = settings.HR_MOCK_DB_PATH
@@ -106,8 +110,16 @@ def test_agent_chat_needs_clarification():
     try:
         res2 = agent.chat("Tôi muốn xin nghỉ phép 2 ngày từ 15/09", session_id="test_full_001", employee_id="emp_agent_test")
         assert res2["intent"] == "leave_request"
-        assert res2["action"] is not None
-        assert res2["action"]["result"]["ok"] is True
+        assert res2["status"] == "needs_approval"
+        assert res2["action"] is None  # nothing executed yet
+        assert res2["pending_action"]["type"] == "create_leave_request"
+        # nothing was deducted before approval
+        assert check_leave_balance("emp_agent_test")["balance"] == 12
+        # approve -> executes exactly once
+        res3 = agent.confirm_action("test_full_001", employee_id="emp_agent_test", approved=True)
+        assert res3["status"] == "action_completed"
+        assert res3["action"]["result"]["ok"] is True
+        assert check_leave_balance("emp_agent_test")["balance"] == 10
     finally:
         settings.HR_MOCK_DB_PATH = old
         try: Path(tmp).unlink()

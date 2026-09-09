@@ -1,0 +1,15 @@
+{"question": "Số ngày phép năm của tôi là bao nhiêu vậy?", "gold_chunk_ids": ["1410374725e1_0"], "gold_keywords": ["12 ngày"], "intent": "leave_balance"}
+{"question": "Cho mình hỏi mỗi năm được nghỉ bao nhiêu ngày phép?", "gold_chunk_ids": ["1410374725e1_0"], "gold_keywords": ["12 ngày"], "intent": "leave_balance"}
+{"question": "Annual leave entitlement là gì vậy?", "gold_chunk_ids": ["1410374725e1_0"], "gold_keywords": ["12 ngày"], "intent": "hr_policy"}
+{"question": "Laptop bị mất phải report với ai và trong thời gian nào?", "gold_chunk_ids": ["71001089b8a9_1"], "gold_keywords": ["1 giờ", "202"], "intent": "security"}
+{"question": "Company laptop bị mất cache report cho IT dept ntn?", "gold_chunk_ids": ["71001089b8a9_1"], "gold_keywords": ["1 giờ"], "intent": "security"}
+{"question": "Muốn kết nối vào mạng nội bộ từ nhà thì làm sao?", "gold_chunk_ids": ["63a16140e921_0", "63a16140e921_1"], "gold_keywords": ["VPN"], "intent": "vpn"}
+{"question": "Tôi bị claim expense cho chuyến công tác, quy trình như thế nào?", "gold_chunk_ids": ["b0e856ca8d21_0", "b0e856ca8d21_1"], "gold_keywords": ["Finance portal", "hóa đơn"], "intent": "expense"}
+{"question": "Nhân viên mới onboarding cần đọc những chính sách nào?", "gold_chunk_ids": ["5ab50401ad36_2"], "gold_keywords": ["HR_Policy", "Leave_Policy", "VPN_Guide"], "intent": "onboarding"}
+{"question": "Được nghỉ phép bao nhiêu ngày một năm nhỉ?", "gold_chunk_ids": ["1410374725e1_0"], "gold_keywords": ["12 ngày"], "intent": "leave_balance"}
+{"question": "Chính sách ngày nghỉ năm như thế nào?", "gold_chunk_ids": ["1410374725e1_0"], "gold_keywords": ["12 ngày"], "intent": "hr_policy"}
+{"question": "Điện thoại công ty bị mất, tôi cần làm gì?", "gold_chunk_ids": ["71001089b8a9_1"], "gold_keywords": ["1 giờ"], "intent": "security"}
+{"question": "Làm sao để truy cập mạng công ty khi ở ngoài văn phòng?", "gold_chunk_ids": ["63a16140e921_0", "63a16140e921_1"], "gold_keywords": ["VPN"], "intent": "vpn"}
+{"question": "Trình duyệt chi phí đi công tác thế nào?", "gold_chunk_ids": ["b0e856ca8d21_0", "b0e856ca8d21_1"], "gold_keywords": ["Finance portal"], "intent": "expense"}
+{"question": "Quy trình cho nhân viên mới vào công ty gồm những gì?", "gold_chunk_ids": ["5ab50401ad36_2"], "gold_keywords": ["onboarding"], "intent": "onboarding"}
+{"question": "Máy in trong office bị hỏng thì báo ai?", "gold_chunk_ids": ["63a16140e921_2"], "gold_keywords": ["it-help@company.com"], "intent": "vpn"}

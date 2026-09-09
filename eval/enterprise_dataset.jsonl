@@ -6,3 +6,5 @@
 {"question": "Laptop bị hỏng thì liên hệ bộ phận nào?", "intent": "it_help", "gold_keywords": ["IT Help Desk", "ext 202"], "expected_action": null}
 {"question": "Chi phí công tác được hoàn như thế nào?", "intent": "expense", "gold_keywords": ["Expense Policy", "reimbursement"], "expected_action": null}
 {"question": "Nhân viên mới cần làm gì ngày đầu?", "intent": "onboarding", "gold_keywords": ["Onboarding", "IT Help Desk", "SSO"], "expected_action": null}
+{"question": "Tôi làm mất laptop, tạo ticket IT giúp tôi.", "intent": "security", "gold_keywords": ["IT Help Desk", "1 giờ", "Section 7.1", "Security Policy"], "expected_action": "create_it_ticket"}
+{"question": "Bộ phận nào cung cấp máy tính cho nhân viên làm việc?", "intent": "general", "gold_keywords": [], "expected_action": null}

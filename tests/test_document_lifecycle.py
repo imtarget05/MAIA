@@ -14,7 +14,8 @@ def _embedder():
 
 
 def _new_mgr(tmp="**/tmp_lc.json"):
-    import tempfile, os
+    import os
+    import tempfile
     fd, path = tempfile.mkstemp(suffix=".json")
     os.close(fd)
     return DocumentLifecycleManager(InMemoryVectorStore(), _embedder(), index_path=path), path
@@ -73,12 +74,12 @@ def test_change_embedding_model_tags_version():
     mgr, path = _new_mgr()
     mgr.upload("doc_m", "Model version content. " * 30)
     m1 = mgr.get_manifest("doc_m")
-    assert m1.embedding_model == "BAAI/bge-small-en-v1.5"
+    assert m1.embedding_model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     # Change model config.
     res = mgr.change_embedding_model("bge-m3", "v2")
     assert res["model"] == "bge-m3" and res["version"] == "v2"
     # Old manifest keeps its version.
-    assert m1.embedding_model == "BAAI/bge-small-en-v1.5"
+    assert m1.embedding_model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     # New upload uses the new model.
     m2 = mgr.upload("doc_n", "New doc after model change. " * 30)
     assert m2.embedding_model == "bge-m3" and m2.embedding_version == "v2"
@@ -104,7 +105,7 @@ def test_manifest_tracks_all_fields():
     assert m.document_version == 1
     assert m.filename == "full.pdf"
     assert m.content_hash != ""
-    assert m.embedding_model == "BAAI/bge-small-en-v1.5"
+    assert m.embedding_model == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     assert m.embedding_version == "v1"
     assert m.chunking_version == "recursive:v2"
     assert m.chunk_size == 512

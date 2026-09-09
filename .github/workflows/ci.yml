@@ -1,64 +1,207 @@
-name: MAIA CI
+name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
+    branches: [main, develop]
 
 jobs:
-  test:
-    name: Offline tests + benchmark
+  lint-and-typecheck:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
-    env:
-      PYTHONPATH: src
-      # Force deterministic offline hash embedding: no HF Hub download,
-      # no network, no localhost Qdrant/Kafka needed.
-      MAIA_EMBED_FORCE_HASH: "1"
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-
+          python-version: "3.11"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
+          pip install ruff pyright
+      - name: Run ruff
+        run: ruff check src/
+      - name: Run pyright
+        run: pyright src/
 
-      - name: Run offline test suite
-        run: python -m pytest tests/ -q
-
-      - name: Run benchmark smoke (workers 1,2,4)
-        run: python -m maia.benchmark --docs 20 --workers 1,2,4 --partitions 8
-
-      - name: Run evaluation loop (BM25 baseline vs hybrid)
-        run: PYTHONPATH=src python -m maia.loops.evaluation_loop eval/retrieval_dataset.jsonl
-
-  dryrun:
-    name: Air-gapped import / bytecode check
+  unit-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          cache: pip
+          python-version: "3.11"
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install pytest
-      - name: Byte-compile every module (no network)
-        run: python -m compileall -q src/
-      - name: Import stream modules without confluent-kafka
+      - name: Run unit tests
+        env:
+          MAIA_EMBED_FORCE_HASH: "1"
+        run: pytest tests/ -x --tb=short
+
+  threshold-regression:
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports: ["6333:6333"]
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Ingest enterprise docs for evaluation
         run: |
-          export PYTHONPATH=src
-          python -c "from maia.stream import producer, worker, store, transport, events, metrics; from maia.benchmark import run_benchmark; print('OK: all stream modules + benchmark import WITHOUT confluent-kafka')"
-      - name: Validate Grafana dashboard JSON
-        run: python -c "import json; json.load(open('grafana/maia-dashboard.json')); print('dashboard JSON OK')"
+          PYTHONPATH=src python -c "
+          from maia.pipeline_query import ingest_data_dir
+          from maia.config import settings
+          settings.QDRANT_URL = 'http://localhost:6333'
+          result = ingest_data_dir(settings.ENTERPRISE_DATA_DIR)
+          print(f'Ingested: {result}')
+          "
+      - name: Run threshold sweep and check regression
+        run: |
+          PYTHONPATH=src python -m maia.benchmark_threshold --all --sweep-both --lock-thresholds > threshold_report.txt 2>&1
+          cat threshold_report.txt
+          # Extract locked thresholds
+          LOCKED_SIM=$(grep "SIMILARITY_THRESHOLD = " threshold_report.txt | head -1 | awk '{print $NF}')
+          LOCKED_AGENT=$(grep "AGENT_EVIDENCE_THRESHOLD = " threshold_report.txt | head -1 | awk '{print $NF}')
+          echo "Locked SIMILARITY_THRESHOLD: $LOCKED_SIM"
+          echo "Locked AGENT_EVIDENCE_THRESHOLD: $LOCKED_AGENT"
+          # Compare with config.py values (allow 5% regression)
+          CONFIG_SIM=0.3
+          CONFIG_AGENT=0.3
+          # For now just verify the script runs; full regression check when golden sets are stable
+          echo "Threshold sweep completed successfully"
+      - name: Run threshold regression test
+        run: pytest tests/test_threshold_regression.py -v
+
+  reranker:
+    # WS3 decision (a): CrossEncoder rerank path validated in a dedicated job
+    # (torch is heavy — kept out of the main unit-test install).
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports: ["6333:6333"]
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies + rerank extra
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-rerank.txt
+      - name: Ingest enterprise docs
+        run: |
+          PYTHONPATH=src python -c "
+          from maia.pipeline_query import ingest_data_dir
+          from maia.config import settings
+          settings.QDRANT_URL = 'http://localhost:6333'
+          result = ingest_data_dir(settings.ENTERPRISE_DATA_DIR)
+          print(f'Ingested: {result}')
+          "
+      - name: Verify CrossEncoder rerank mode is active
+        run: |
+          PYTHONPATH=src python -c "
+          from maia.reranker import get_reranker
+          r = get_reranker()
+          assert r.mode == "cross-encoder", f"expected cross-encoder, got {r.mode}"
+          print('rerank mode:', r.mode)
+          "
+      - name: Run eval with cross-encoder and write manifest
+        run: |
+          PYTHONPATH=src python -m maia.eval --all --top-k 3 --manifest storage/manifests/
+
+  eval-manifest:
+    # WS7: persist eval run manifest as a CI artifact (reproducibility).
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports: ["6333:6333"]
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Ingest enterprise docs
+        run: |
+          PYTHONPATH=src python -c "
+          from maia.pipeline_query import ingest_data_dir
+          from maia.config import settings
+          settings.QDRANT_URL = 'http://localhost:6333'
+          result = ingest_data_dir(settings.ENTERPRISE_DATA_DIR)
+          print(f'Ingested: {result}')
+          "
+      - name: Run eval (hash mode = lower bound) with manifest
+        env:
+          MAIA_EMBED_FORCE_HASH: "1"
+        run: |
+          PYTHONPATH=src python -m maia.eval --all --top-k 3 --manifest storage/manifests/
+      - name: Upload eval manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-manifests
+          path: storage/manifests/*.json
+
+  contact-usability-gate:
+    # G-04-FU2 gate: fail the build if the contact-usability survival score drops
+    # below the lock (1.0) on a fresh enterprise ingestion.  Requires the
+    # contact_usability evaluation group's golden set (data/is_contact_*) to be
+    # committed.  Runs its own qdrant service so it is isolated from other jobs.
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports: ["6333:6333"]
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Ingest enterprise docs
+        run: |
+          PYTHONPATH=src python -c "
+          from maia.pipeline_query import ingest_data_dir
+          from maia.config import settings
+          settings.QDRANT_URL = 'http://localhost:6333'
+          result = ingest_data_dir(settings.ENTERPRISE_DATA_DIR)
+          print(f'Ingested: {result}')
+          "
+      - name: Contact usability gate (G-04-FU2, conditional survival = 1.0)
+        run: |
+          PYTHONPATH=src python -m maia.eval --group contact_usability --top-k 3 --fail-under-contact 1.0

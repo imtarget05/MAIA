@@ -10,7 +10,33 @@ import hashlib
 import uuid
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
+
+from .config import settings
+from .loops.resilience import CircuitBreaker, CircuitOpenError, RetryConfig, with_retry
+
+# G-06: per-dependency circuit breakers. Lazily initialized (client may be
+# created at import time before settings are fully loaded in some paths).
+_qdrant_breaker: CircuitBreaker | None = None
+_qdrant_retry = RetryConfig(max_retries=settings.RELIABILITY_MAX_RETRIES,
+                            backoff_base=settings.RELIABILITY_RETRY_BACKOFF_SEC,
+                            retryable=(TimeoutError, ConnectionError, OSError))
+
+
+def _get_qdrant_breaker() -> CircuitBreaker:
+    global _qdrant_breaker
+    if _qdrant_breaker is None:
+        threshold = settings.RELIABILITY_QDRANT_THRESHOLD or settings.RELIABILITY_FAILURE_THRESHOLD
+        _qdrant_breaker = CircuitBreaker("qdrant", failure_threshold=threshold,
+                                         recovery_timeout=settings.RELIABILITY_RECOVERY_TIMEOUT_SEC)
+    return _qdrant_breaker
 
 
 def _chunk_hash(text: str) -> str:
@@ -30,7 +56,8 @@ class QdrantStore:
         last_err: Exception | None = None
         self.client = None
         for candidate in candidates:
-            kwargs = {"url": candidate, "prefer_grpc": False, "timeout": 30}
+            kwargs = {"url": candidate, "prefer_grpc": False, "timeout": 30,
+                      "check_compatibility": False}
             if api_key:
                 kwargs["api_key"] = api_key
             try:
@@ -114,6 +141,16 @@ class QdrantStore:
                 qfilter.must = [tenant_cond]
             else:
                 qfilter = Filter(must=[tenant_cond])
+        # G-06: wrap the external Qdrant call with circuit breaker + retry.
+        # On CircuitOpenError / timeout → graceful degraded (empty results),
+        # letting the evidence gate refuse cleanly instead of hanging.
+        try:
+            return with_retry(_qdrant_retry, _get_qdrant_breaker().call,
+                             self._do_search, vec, top_k, score_threshold, qfilter, tenant_id)
+        except (CircuitOpenError, TimeoutError, ConnectionError, OSError):
+            return []
+
+    def _do_search(self, vec, top_k, score_threshold, qfilter, tenant_id) -> list[dict]:
         # qdrant-client >=1.10 uses query_points; older uses search
         try:
             res = self.client.query_points(

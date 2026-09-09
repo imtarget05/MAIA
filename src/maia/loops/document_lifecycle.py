@@ -36,7 +36,7 @@ class DocumentManifest:
     document_version: int = 1
     filename: str = ""
     content_hash: str = ""
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_version: str = "v1"
     chunking_version: str = "recursive:v2"
     chunk_size: int = 512
@@ -51,7 +51,7 @@ class DocumentManifest:
 class DocumentLifecycleManager:
     def __init__(self, store, embedder, index_path: str = "./storage/document_lifecycle.json",
                  chunk_size: int = 512, chunk_overlap: int = 50,
-                 embedding_model: str = "BAAI/bge-small-en-v1.5",
+                 embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
                  embedding_version: str = "v1",
                  chunking_version: str = "recursive:v2"):
         self.store = store

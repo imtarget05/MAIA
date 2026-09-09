@@ -1,10 +1,12 @@
 """Query pipeline (§5): question -> embed -> hybrid retrieve -> rerank
 -> context assembly -> LLM -> grounded answer + citations (§10 outputs 4,5,6)."""
+import time
+
 from .config import settings
 from .embeddings import Embedder
-from .ingestion import load_documents
-from .chunking import split_documents
+from .ingestion_pipeline import ingest_data_dir  # noqa: F401  (canonical ingest entry — re-exported; tests + CI import it from here)
 from .llm import CloudflareLLM
+from .pipeline_wiring import PipelineTracer
 from .prompt import assemble, build_messages
 from .reranker import Reranker
 from .retriever import HybridRetriever
@@ -26,46 +28,69 @@ def build_stack(tenant_id: str | None = None):
     return embedder, store, retriever, reranker, llm
 
 
-def _enrich_chunks_with_tenant(chunks, tenant_id: str | None):
-    tid = tenant_id or settings.TENANT_ID
-    for c in chunks:
-        c.metadata.setdefault("tenant_id", tid)
-    return chunks
+def query(question: str, top_k_final: int | None = None, tenant_id: str | None = None,
+          session_id: str | None = None) -> dict:
+    # MAIA-07: create tracer at request entry
+    tracer = PipelineTracer()
+    tracer.log("query_input", query=question, tenant=tenant_id, session=session_id)
 
-
-def ingest_data_dir(data_dir: str | None = None, tenant_id: str | None = None) -> dict:
-    data_dir = data_dir or settings.DATA_DIR
-    embedder, store, retriever, _, _ = build_stack(tenant_id=tenant_id)
-    docs = load_documents(data_dir)
-    if not docs:
-        return {"docs": 0, "chunks": 0, "collection": settings.QDRANT_COLLECTION}
-    chunks = split_documents(docs, chunk_size=settings.CHUNK_SIZE, chunk_overlap=settings.CHUNK_OVERLAP)
-    chunks = _enrich_chunks_with_tenant(chunks, tenant_id)
-    vecs = embedder.embed([c.text for c in chunks])
-    n = store.upsert(vecs, chunks)
-    retriever.rebuild()
-    return {"docs": len(docs), "chunks": n, "collection": settings.QDRANT_COLLECTION,
-            "embed_mode": embedder.mode, "total_points": store.count(), "tenant_id": retriever.tenant_id}
-
-
-def query(question: str, top_k_final: int | None = None, tenant_id: str | None = None) -> dict:
     _, store, retriever, reranker, llm = build_stack(tenant_id=tenant_id)
     top_k_final = top_k_final or settings.TOP_K_FINAL
-    candidates = retriever.retrieve(question, tenant_id=retriever.tenant_id)
+    candidates = retriever.retrieve(question, tenant_id=retriever.tenant_id,
+                                    session_id=session_id)
+    tracer.log("retrieval", n_candidates=len(candidates),
+               tenant_filter=tenant_id or settings.TENANT_ID)
+
     reranked = reranker.rerank(question, candidates, top_k=top_k_final)
+    tracer.log("rerank", mode=reranker.mode,
+               top_scores=[round(c.get("rerank_score", 0), 4) for c in reranked[:3]])
+
     context, used = assemble(reranked)
     if not used:
-        return {"answer": "Không tìm thấy bằng chứng liên quan trong knowledge base. Tôi không thể trả lời chắc chắn.",
-                "citations": [], "has_evidence": False, "candidates": [],
-                "llm_mode": llm.mode, "rerank_mode": reranker.mode}
+        tracer.log("evidence_gate", has_evidence=False, refusal_reason="no_candidates")
+        tracer.log("guardrail", ingest_sanitization=True, pii_redaction=True,
+                   input_guardrail=False, output_guardrail=False)
+        tracer.log("response", status="no_evidence", n_citations=0)
+        return _query_response(tracer, llm, reranker, answer="Không tìm thấy bằng chứng liên quan trong knowledge base. Tôi không thể trả lời chắc chắn.",
+                               citations=[], has_evidence=False, candidates=[], refused=False)
+
     # §8.3 missing evidence: threshold on dense score of top-1
     top_dense = max([c.get("dense_score", 0) for c in used], default=0)
     has_evidence = top_dense >= settings.SIMILARITY_THRESHOLD or llm.mode == "mock" and len(used) > 0
     # In mock mode keep evidence True if we retrieved anything (demo-friendly)
     if llm.mode == "mock" and used:
         has_evidence = True
+    # MAIA-04: refuse instead of generating when evidence is too weak
+    # (non-mock mode). The agent path already does this via its evidence gate.
+    if not has_evidence:
+        tracer.log("evidence_gate", has_evidence=False, refusal_reason="below_threshold",
+                   top_dense_score=round(top_dense, 4), threshold=settings.SIMILARITY_THRESHOLD)
+        tracer.log("guardrail", ingest_sanitization=True, pii_redaction=True,
+                   input_guardrail=False, output_guardrail=False)
+        tracer.log("response", status="refused", n_citations=0)
+        return _query_response(tracer, llm, reranker, answer="Không tìm thấy bằng chứng liên quan trong knowledge base. Tôi không thể trả lời chắc chắn.",
+                               citations=[], has_evidence=False, candidates=used, refused=True,
+                               extra={"top_dense_score": round(top_dense, 4)})
+
+    tracer.log("evidence_gate", has_evidence=True, top_dense_score=round(top_dense, 4),
+               threshold=settings.SIMILARITY_THRESHOLD)
+    # MAIA-07: guardrail stage. The query() path applies document sanitization
+    # + PII redaction at ingest time (G-03/G-04); the agent path adds input/output
+    # guardrails per-message. Log which layers are active for this request.
+    tracer.log("guardrail", ingest_sanitization=True, pii_redaction=True,
+               input_guardrail=False, output_guardrail=False)
     messages = build_messages(question, context)
+    t0 = time.time()
     answer = llm.chat(messages)
+    # Display-only cleanup: strip echoed boundary tags + redundant
+    # 'Sources:' footer (UI renders structured citations separately).
+    try:
+        from .answer_format import clean_answer
+        answer = clean_answer(answer)
+    except Exception:
+        pass
+    tracer.log("generation", llm_mode=llm.mode, latency_ms=round((time.time() - t0) * 1000, 1))
+
     citations = [
         {"tag": c.get("cite_tag", f"[S{i+1}]"), "chunk_id": c["chunk_id"],
          "filename": c["metadata"].get("filename", ""), "page": c["metadata"].get("page", ""),
@@ -75,5 +100,21 @@ def query(question: str, top_k_final: int | None = None, tenant_id: str | None =
          "text": c["text"][:600]}
         for i, c in enumerate(used)
     ]
-    return {"answer": answer, "citations": citations, "has_evidence": has_evidence,
-            "candidates": used, "llm_mode": llm.mode, "rerank_mode": reranker.mode}
+    tracer.log("response", status="answered", n_citations=len(citations))
+    return _query_response(tracer, llm, reranker, answer=answer, citations=citations,
+                           has_evidence=True, candidates=used, refused=False)
+
+
+def _query_response(tracer: PipelineTracer, llm, reranker, *, answer, citations,
+                    has_evidence, candidates, refused, extra=None) -> dict:
+    """Build the query response dict, embedding _trace if PIPELINE_TRACE is enabled."""
+    resp = {"answer": answer, "citations": citations, "has_evidence": has_evidence,
+            "candidates": candidates, "llm_mode": llm.mode, "rerank_mode": reranker.mode}
+    if refused:
+        resp["refused"] = True
+    if extra:
+        resp.update(extra)
+    # MAIA-07: embed redacted _trace when enabled
+    if settings.PIPELINE_TRACE:
+        resp["_trace"] = tracer.finalize_redacted()
+    return resp

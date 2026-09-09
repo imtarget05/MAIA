@@ -1,17 +1,57 @@
-"""Enterprise Agent — Agentic RAG: Decide → Retrieve/Memory/Tool → Evidence → Self-correction → Grounding."""
+"""Enterprise Agent — Agentic RAG: Decide → Retrieve/Memory/Tool → Evidence → Self-correction → Grounding.
+
+Response contract (typed, never a bare string):
+    answered | insufficient_evidence | needs_approval | needs_clarification
+    | action_completed | action_cancelled | error
+
+Side-effect tools (create_it_ticket, create_leave_request) NEVER execute
+inside chat(): they return status=needs_approval with a pending_action card.
+Execution happens only in confirm_action() after explicit human approval (C1).
+
+One retrieval packet feeds both answer generation and citations, so the
+answer and its [S1]..[Sn] markers can never diverge.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from ..config import settings
 from ..loops.answer_loop import CitationChecker, GroundingChecker
-from ..loops.guardrails import InputGuardrail, OutputGuardrail
-from ..prompt import assemble, build_agent_messages
-from .intents import detect_intent, slots_for_intent
-from .session import session_store
+from ..loops.guardrails import (
+    DocumentSanitizer,
+    InputGuardrail,
+    OutputGuardrail,
+    OutputValidator,
+)
 from . import hris as hris_conn
-from .tools import create_it_ticket
+from .action_proposer import ActionProposer
+from .intent_router import IntentRouter
+from .intents import detect_intent, slots_for_intent
+from .response_builder import ResponseBuilder
+from .schemas import (
+    INSUFFICIENT_TEXT,
+    ActionResult,
+    AgentResponseModel,
+    Citation,
+    EvidenceSummary,
+    GroundingInfo,
+)
+from .session import session_store
+from .workflow_orchestrator import WorkflowOrchestrator
+
+_INTENT_HINTS: dict[str, list[str]] = {
+    "leave_request": ["Leave Policy annual leave request approval"],
+    "leave_balance": ["Leave Policy annual leave balance"],
+    "hr_policy": ["Leave Policy HR"],
+    "security": ["IT Security Policy lost device report Help Desk"],
+    "it_help": ["IT Help Desk laptop broken support ext 202"],
+    "vpn": ["VPN Guide vpn.company.com access"],
+    "expense": ["Expense Policy reimbursement"],
+    "benefits": ["Benefits insurance wellness"],
+    "onboarding": ["Onboarding Guide SSO first day"],
+    "general": [],
+}
+
 
 @dataclass
 class AgentResponse:
@@ -26,6 +66,7 @@ class AgentResponse:
     needs_clarification: bool = False
     clarification_question: str | None = None
 
+
 class EnterpriseAgent:
     def __init__(self, embedder=None, store=None, retriever=None, reranker=None, llm=None, tenant_id: str | None = None):
         self._embedder = embedder
@@ -36,14 +77,26 @@ class EnterpriseAgent:
         self.tenant_id = tenant_id or settings.TENANT_ID
         self._input_guard = InputGuardrail(max_length=2000)
         self._output_guard = OutputGuardrail()
+        self._output_validator = OutputValidator()
+        self._doc_sanitizer = DocumentSanitizer()
         self._grounding = GroundingChecker(threshold=settings.AGENT_GROUNDING_THRESHOLD)
+        self._workflow = WorkflowOrchestrator(tenant_id=self.tenant_id)
+        self._response_builder = ResponseBuilder(
+            llm=self._llm, reranker=self._reranker,
+            grounding=self._grounding, output_validator=self._output_validator,
+            doc_sanitizer=self._doc_sanitizer, workflow=self._workflow,
+            session_store=session_store)
+        self._intent_router = IntentRouter()
+        self._action_proposer = ActionProposer(
+            response_builder=self._response_builder,
+            session_store=session_store, workflow=self._workflow,
+            hris_conn=hris_conn)
 
     def _ensure_stack(self):
         if self._llm is not None and self._retriever is not None:
             return
         from ..pipeline_query import build_stack
         embedder, store, retriever, reranker, llm = build_stack()
-        # ensure retriever tenant aware
         try:
             if getattr(retriever, "tenant_id", None) != self.tenant_id:
                 retriever.tenant_id = self.tenant_id
@@ -55,47 +108,28 @@ class EnterpriseAgent:
         self._reranker = self._reranker or reranker
         self._llm = self._llm or llm
 
-    def _grounding_and_citation(self, answer: str, context: str, used: list[dict]):
-        cc = CitationChecker(used)
-        cites_valid, _ = cc.check(answer)
-        grounded, score = self._grounding.check(answer, context)
-        return cites_valid, grounded, score
+    def chat(self, question: str, session_id: str = "default", employee_id: str | None = None,
+             top_k_final: int | None = None, tenant_id: str | None = None,
+             gen: dict | None = None, requester_email: str | None = None) -> dict:
+        self._gen = dict(gen or {})
+        self._requester_email = requester_email or ""
+        self._response_builder._gen = self._gen
+        self._response_builder._requester_email = self._requester_email
+        self._action_proposer._requester_email = self._requester_email
+        try:
+            return self._chat_inner(question, session_id, employee_id, top_k_final, tenant_id)
+        except Exception as e:
+            model = AgentResponseModel(
+                status="error",
+                answer="Đã xảy ra lỗi khi xử lý yêu cầu. Vui lòng thử lại.",
+                evidence=EvidenceSummary(reason=f"error:{type(e).__name__}"),
+            )
+            return self._response_builder.respond(model, has_evidence=False, flags=[f"error:{e}"],
+                                  plan={"retrieve": False, "tool": None, "reason": "exception"},
+                                  rewritten_query="", tenant_id=self.tenant_id)
 
-    def _decide(self, intent: str, question: str, slots: dict) -> dict:
-        """Knowledge Agent Decide step (§16): choose Retrieve / Memory / Tool."""
-        plan = {"retrieve": True, "tool": None, "memory": True, "reason": ""}
-        ql = question.lower()
-        if intent == "leave_balance":
-            plan["tool"] = "check_leave_balance"
-            plan["reason"] = "Balance check requires DB tool + retrieve policy for citation"
-        elif intent == "leave_request":
-            if "days" in slots and "start_date" in slots:
-                plan["tool"] = "create_leave_request"
-                plan["reason"] = "All slots present → create request + retrieve policy"
-            else:
-                plan["retrieve"] = False
-                plan["reason"] = "Missing slots → clarification, no retrieval yet"
-        elif intent in ("vpn", "it_help", "security"):
-            # decide if need ticket tool
-            is_howto = ql.strip().startswith("cách") or "cách " in ql[:20]
-            if intent == "security" and ("mất" in ql or "lost" in ql):
-                plan["tool"] = "create_it_ticket"
-            elif intent == "it_help" and any(kw in ql for kw in ["mất laptop","bị hỏng","không khởi động","broken","hỏng"]):
-                plan["tool"] = "create_it_ticket"
-            elif intent == "vpn" and not is_howto and any(kw in ql for kw in ["tạo ticket","create ticket","tạo vpn","giúp tôi","yêu cầu vpn"]):
-                plan["tool"] = "create_it_ticket"
-            plan["reason"] = f"Intent {intent} + tool={plan['tool']} + retrieve for procedure"
-        else:
-            plan["reason"] = "General knowledge question → RAG retrieve"
-        return plan
-
-    def _iterative_retrieve(self, question: str, session_id: str, top_k_final: int | None) -> dict:
-        """Agentic iterative retrieval with evidence check and self-correction (§19)."""
-        from .agentic import AgenticRetriever
-        ar = AgenticRetriever(self._retriever, self._reranker, session_store)
-        return ar.iterative_retrieve(question, session_id=session_id, tenant_id=self.tenant_id, top_k_final=top_k_final)
-
-    def chat(self, question: str, session_id: str = "default", employee_id: str | None = None, top_k_final: int | None = None, tenant_id: str | None = None) -> dict:
+    def _chat_inner(self, question: str, session_id: str = "default", employee_id: str | None = None,
+                    top_k_final: int | None = None, tenant_id: str | None = None) -> dict:
         self._ensure_stack()
         if tenant_id:
             self.tenant_id = tenant_id
@@ -105,25 +139,31 @@ class EnterpriseAgent:
                 pass
         employee_id = employee_id or settings.DEFAULT_EMPLOYEE_ID
 
-        # 1. Input guard
         sanitized, flags = self._input_guard.check(question)
         question = sanitized
 
-        # 2. Memory: query rewrite preview (for tracing)
-        rewritten_preview = session_store.rewrite_query(session_id, question)
+        rewritten_preview = session_store.rewrite_query(session_id, question, tenant_id=self.tenant_id)
 
-        # 3. Intent + slots
+        # WS6: ltm_learn moved out of the hot path — cross-session learning is
+        # opt-in via LTM_LEARN_ON_CHAT (default False) instead of an implicit
+        # side-effect on every chat() call.  Explicit memory writes still go
+        # through POST /memory/store.
+        if settings.LTM_ENABLED and settings.LTM_LEARN_ON_CHAT:
+            try:
+                from .memory import ltm_learn
+                ltm_learn(employee_id, self.tenant_id, question)
+            except Exception:
+                pass
+
         intent = detect_intent(question, self._llm)
         slots = slots_for_intent(question, intent)
-        history_slots = session_store.get_slots(session_id)
+        history_slots = session_store.get_slots(session_id, tenant_id=self.tenant_id)
         for k, v in history_slots.items():
             if k not in slots:
                 slots[k] = v
 
-        # 4. Decide
-        plan = self._decide(intent, question, slots)
+        plan = self._intent_router.decide(intent, question, slots)
 
-        # metrics: conversation
         try:
             from ..stream.metrics import registry
             registry.inc("maia_conversations_total")
@@ -131,124 +171,289 @@ class EnterpriseAgent:
         except Exception:
             pass
 
-        # 5. Handle clarify case
         if intent == "leave_request" and "days" not in slots:
             q = "Bạn muốn xin nghỉ bao nhiêu ngày và từ ngày nào? (Ví dụ: 5 ngày từ 10/09)"
-            session_store.append(session_id, "user", question, intent)
-            return {"answer": q, "intent": intent, "citations": [], "has_evidence": False, "grounding_score": 0.0, "cites_valid": True, "action": None, "slots": slots, "needs_clarification": True, "clarification_question": q, "flags": flags, "plan": plan, "rewritten_query": rewritten_preview, "llm_mode": self._llm.mode, "rerank_mode": self._reranker.mode, "tenant_id": self.tenant_id}
+            session_store.append(session_id, "user", question, intent, tenant_id=self.tenant_id)
+            model = AgentResponseModel(
+                status="needs_clarification", answer=q, intent=intent, slots=slots,
+                needs_clarification=True, clarification_question=q)
+            return self._response_builder.respond(model, has_evidence=False, flags=flags, plan=plan,
+                                  rewritten_query=rewritten_preview, tenant_id=self.tenant_id)
         if intent == "leave_request" and "start_date" not in slots:
             q2 = f"Bạn muốn nghỉ {slots['days']} ngày từ ngày nào? Vui lòng cho biết ngày bắt đầu (VD: 10/09)."
-            session_store.append(session_id, "user", question, intent)
-            return {"answer": q2, "intent": intent, "citations": [], "has_evidence": False, "grounding_score": 0.0, "cites_valid": True, "action": None, "slots": slots, "needs_clarification": True, "clarification_question": q2, "flags": flags, "plan": plan, "rewritten_query": rewritten_preview, "llm_mode": self._llm.mode, "rerank_mode": self._reranker.mode, "tenant_id": self.tenant_id}
+            session_store.append(session_id, "user", question, intent, tenant_id=self.tenant_id)
+            model = AgentResponseModel(
+                status="needs_clarification", answer=q2, intent=intent, slots=slots,
+                needs_clarification=True, clarification_question=q2)
+            return self._response_builder.respond(model, has_evidence=False, flags=flags, plan=plan,
+                                  rewritten_query=rewritten_preview, tenant_id=self.tenant_id)
 
-        # 6. Leave balance - tool + iterative retrieve for citation
         if intent == "leave_balance":
-            bal = hris_conn.check_leave_balance(employee_id)
+            bal = hris_conn.check_leave_balance(employee_id, tenant_id=self.tenant_id)
             try:
                 from ..stream.metrics import registry as _r; _r.inc("maia_tool_calls_total")
-            except Exception: pass
-            iter_res = self._iterative_retrieve(question, session_id, top_k_final) if plan["retrieve"] else {"context": "", "used": [], "attempts": 0, "report": None, "rewritten_queries": []}
-            used = iter_res["used"]; context = iter_res["context"]
-            citations = [{"tag": c.get("cite_tag", f"[S{i+1}]"), "chunk_id": c["chunk_id"], "filename": c["metadata"].get("filename",""), "page": c["metadata"].get("page",""), "section": c["metadata"].get("section",""), "dense_score": c.get("dense_score",0.0), "rerank_score": c.get("rerank_score",0.0), "text": c["text"][:600]} for i,c in enumerate(used)]
-            answer = f"Bạn còn {bal['balance']} ngày phép năm (nhân viên {employee_id}, nguồn: {bal.get('source','mock')})."
+            except Exception:
+                pass
+            iter_res = (self._iterative_retrieve(question, session_id, top_k_final, intent)
+                        if plan["retrieve"] else {"context": "", "used": [], "attempts": 0,
+                                                  "report": None, "rewritten_queries": []})
+            used = iter_res["used"]
+            citations = ResponseBuilder.cards(used)
+            answer = (f"Bạn còn {bal['balance']} ngày phép năm (nhân viên {employee_id}, "
+                      f"nguồn: {bal.get('source', 'mock')}).")
             if used:
-                answer += f" Nguồn: {used[0]['metadata'].get('filename','Leave Policy')} {used[0].get('cite_tag','[S1]')}"
-            session_store.append(session_id, "user", question, intent)
-            session_store.append(session_id, "assistant", answer, intent)
-            return {"answer": answer, "intent": intent, "citations": citations, "has_evidence": bool(used), "grounding_score": 1.0 if used else 0.0, "cites_valid": True, "action": {"type": "check_leave_balance", "result": bal}, "slots": slots, "needs_clarification": False, "flags": flags, "plan": plan, "evidence": {"attempts": iter_res["attempts"], "top_dense": iter_res["report"].top_dense if iter_res["report"] else 0, "reason": iter_res["report"].reason if iter_res["report"] else ""}, "rewritten_query": rewritten_preview, "llm_mode": self._llm.mode, "rerank_mode": self._reranker.mode, "tenant_id": self.tenant_id}
+                answer += f" Nguồn: {used[0]['metadata'].get('filename', 'Leave Policy')} {used[0].get('cite_tag', '[S1]')}"
+            session_store.append(session_id, "user", question, intent, tenant_id=self.tenant_id)
+            session_store.append(session_id, "assistant", answer, intent, tenant_id=self.tenant_id)
+            model = AgentResponseModel(
+                status="answered", answer=answer, intent=intent,
+                citations=[Citation(**c) for c in citations],
+                evidence=EvidenceSummary(**ResponseBuilder.ev_summary(iter_res)),
+                grounding=GroundingInfo(supported=True, score=1.0, cites_valid=True),
+                action=ActionResult(type="check_leave_balance", result=bal),
+                slots=slots)
+            return self._response_builder.respond(model, has_evidence=True, flags=flags, plan=plan,
+                                  rewritten_query=rewritten_preview, tenant_id=self.tenant_id)
 
-        # 7. Leave request with tool + iterative retrieve
-        if intent == "leave_request" and plan["tool"] == "create_leave_request":
-            iter_res = self._iterative_retrieve(question + " leave policy", session_id, top_k_final)
-            used = iter_res["used"]; context = iter_res["context"]
-            result = hris_conn.create_leave_request(employee_id, days=slots["days"], start_date=slots["start_date"])
-            try:
-                from ..stream.metrics import registry as _r; _r.inc("maia_tool_calls_total")
-            except Exception: pass
-            # verify if HRIS returned request
-            verify = None
-            if result.get("ok") and result.get("request_id"):
-                try:
-                    verify = hris_conn.verify_ticket(result["request_id"]) if hasattr(hris_conn, "verify_ticket") else None
-                except Exception:
-                    verify = None
-            citations = [{"tag": c.get("cite_tag", f"[S{i+1}]"), "chunk_id": c["chunk_id"], "filename": c["metadata"].get("filename",""), "page": c["metadata"].get("page",""), "section": c["metadata"].get("section",""), "dense_score": c.get("dense_score",0.0), "rerank_score": c.get("rerank_score",0.0), "text": c["text"][:600]} for i,c in enumerate(used)]
-            if result.get("ok"):
-                history_text = session_store.history_text(session_id)
-                messages = build_agent_messages(question, context, history_text)
-                llm_answer = self._llm.chat(messages)
-                answer = f"Đã tạo yêu cầu nghỉ phép {slots['days']} ngày từ {slots['start_date']}. Mã yêu cầu: {result['request_id']}. Trạng thái: {result['status']}. Số ngày còn lại: {result.get('remaining_balance','?')} (nguồn: {result.get('source','mock')}).\n\n{llm_answer}"
-                cites_valid, _, score = self._grounding_and_citation(answer, context, used)
-            else:
-                answer = result.get("error", "Không thể tạo yêu cầu.")
-                citations = []; cites_valid, score = True, 0.0
-            session_store.append(session_id, "user", question, intent)
-            session_store.append(session_id, "assistant", answer, intent)
-            return {"answer": answer, "intent": intent, "citations": citations, "has_evidence": bool(used), "grounding_score": score if 'score' in locals() else 0.0, "cites_valid": cites_valid, "action": {"type": "create_leave_request", "result": result, "verify": verify, "slots": slots}, "slots": slots, "needs_clarification": False, "flags": flags, "plan": plan, "evidence": {"attempts": iter_res["attempts"], "top_dense": iter_res["report"].top_dense if iter_res["report"] else 0, "reason": iter_res["report"].reason if iter_res["report"] else ""}, "rewritten_query": rewritten_preview, "llm_mode": self._llm.mode, "rerank_mode": self._reranker.mode, "tenant_id": self.tenant_id}
-
-        # 8. Tool chain for IT/VPN/Security (multi-step: retrieve + tool + verify)
-        action = None
-        if plan["tool"] == "create_it_ticket":
-            ticket_type = {"vpn": "vpn_request", "it_help": "laptop_broken", "security": "lost_device"}.get(intent, "general")
-            # Agentic: first retrieve procedure, then create ticket, then verify
-            # iterative retrieve for procedure (evidence)
-            # will be done in default flow too, but we create ticket now for trace
-            ticket = create_it_ticket(employee_id, ticket_type, question)
-            try:
-                from ..stream.metrics import registry as _r; _r.inc("maia_tool_calls_total")
-            except Exception: pass
-            verify = hris_conn.verify_ticket(ticket["ticket_id"])
-            action = {"type": "create_it_ticket", "result": ticket, "verify": verify}
-            # enrich answer later with retrieval
-
-        # 9. Default Agentic RAG flow: iterative retrieve → evidence → generate → grounding
-        iter_res = self._iterative_retrieve(question, session_id, top_k_final) if plan["retrieve"] else {"context": "", "used": [], "attempts": 0, "report": None, "rewritten_queries": [], "final_query": question}
-        context = iter_res["context"]; used = iter_res["used"]
+        iter_res = (self._iterative_retrieve(question, session_id, top_k_final, intent,
+                                             corrective=True)
+                    if plan["retrieve"] else {"context": "", "used": [], "attempts": 0,
+                                              "report": None, "rewritten_queries": [],
+                                              "final_query": question})
+        context = iter_res["context"]
+        used = iter_res["used"]
         report = iter_res["report"]
-        if not used:
-            answer = "Không tìm thấy bằng chứng liên quan trong knowledge base. Tôi không thể trả lời chắc chắn."
-            session_store.append(session_id, "user", question, intent)
-            session_store.append(session_id, "assistant", answer, intent)
-            return {"answer": answer, "intent": intent, "citations": [], "has_evidence": False, "grounding_score": 0.0, "cites_valid": True, "action": action, "slots": slots, "needs_clarification": False, "flags": flags, "plan": plan, "evidence": {"attempts": iter_res["attempts"], "top_dense": report.top_dense if report else 0, "reason": report.reason if report else "no_evidence"}, "rewritten_query": rewritten_preview, "llm_mode": self._llm.mode, "rerank_mode": self._reranker.mode, "tenant_id": self.tenant_id}
 
-        # Grounding gate: if evidence insufficient, return fallback with trace
-        if report and not report.enough:
-            # still generate but flag low confidence
-            pass
+        if not used or (report is not None and not report.enough):
+            return self._response_builder.insufficient(intent, slots, flags, plan, rewritten_preview,
+                                          iter_res, self.tenant_id, session_id, question)
 
-        history_text = session_store.history_text(session_id)
-        messages = build_agent_messages(question, context, history_text)
-        answer = self._llm.chat(messages)
-        cites_valid, grounded, score = self._grounding_and_citation(answer, context, used)
-        valid_out, issues = self._output_guard.check(answer)
+        if plan.get("tool") in ("create_it_ticket", "create_leave_request"):
+            return self._action_proposer.propose_action(
+                question, session_id, employee_id, intent, slots,
+                plan, flags, rewritten_preview, iter_res,
+                context, used, tenant_id=self.tenant_id)
+
+        answer, cites_valid, score = self._response_builder.generate_grounded(
+            question, context, used, session_id,
+            employee_id=employee_id, tenant_id=self.tenant_id)
+        if answer == INSUFFICIENT_TEXT:
+            return self._response_builder.insufficient(intent, slots, flags, plan, rewritten_preview,
+                                          iter_res, self.tenant_id, session_id, question)
+        valid_out, issues, answer = self._output_validator.check(answer)
         if not valid_out:
             answer += f"\n\n[Guardrail: {'/'.join(issues)}]"
-        citations = [{"tag": c.get("cite_tag", f"[S{i+1}]"), "chunk_id": c["chunk_id"], "filename": c["metadata"].get("filename",""), "page": c["metadata"].get("page",""), "section": c["metadata"].get("section",""), "dense_score": c.get("dense_score",0.0), "fused_score": c.get("fused_score",0.0), "rerank_score": c.get("rerank_score",0.0), "text": c["text"][:600]} for i,c in enumerate(used)]
-        if action is not None:
-            ticket = action["result"]
-            verify_str = f" (verified: {action['verify'].get('status')})" if action.get("verify") else ""
-            answer = answer + f"\n\nĐã tạo ticket {ticket['ticket_id']} ({ticket['type']}) — {ticket['assignee']}{verify_str}."
-            # also include employee info if security (Agentic multi-step example §17)
-            if intent == "security":
-                emp_info = hris_conn.get_employee_info(employee_id)
-                answer += f"\nNhân viên: {emp_info.get('name')} ({emp_info.get('department')})."
+        citations = ResponseBuilder.cards(used)
+        session_store.append(session_id, "user", question, intent, tenant_id=self.tenant_id)
+        session_store.append(session_id, "assistant", answer, intent, tenant_id=self.tenant_id)
+        model = AgentResponseModel(
+            status="answered", answer=answer, intent=intent,
+            citations=[Citation(**c) for c in citations],
+            evidence=EvidenceSummary(**ResponseBuilder.ev_summary(iter_res)),
+            grounding=GroundingInfo(supported=True, score=round(score, 4),
+                                    cites_valid=cites_valid),
+            slots=slots)
+        return self._response_builder.respond(model, has_evidence=True, flags=flags, plan=plan,
+                             rewritten_query=rewritten_preview, tenant_id=self.tenant_id,
+                             iter_res=iter_res)
 
-        session_store.append(session_id, "user", question, intent)
-        session_store.append(session_id, "assistant", answer, intent)
+    def _iterative_retrieve(self, question: str, session_id: str, top_k_final: int | None,
+                            intent: str = "general", corrective: bool = False) -> dict:
+        from .agentic import AgenticRetriever
+        ar = AgenticRetriever(self._retriever, self._reranker, session_store)
+        if corrective and settings.CRAG_ENABLED:
+            return ar.corrective_retrieve(
+                question, session_id=session_id, tenant_id=self.tenant_id,
+                top_k_final=top_k_final, llm=self._llm)
+        return ar.iterative_retrieve(
+            question, session_id=session_id, tenant_id=self.tenant_id,
+            top_k_final=top_k_final, expansions=_INTENT_HINTS.get(intent, []))
 
-        has_evidence = report.enough if report else bool(used)
-        # in mock mode keep evidence True if we have vectors
-        if self._llm.mode == "mock" and used:
-            has_evidence = True
+    _TOOL_RESULT_SHAPES = {
+        "check_leave_balance": {"required": ("employee_id", "balance", "unit")},
+        "create_leave_request": {"ok_true": ("request_id", "days"), "ok_false": ("error",)},
+        "create_it_ticket": {"ok_true": ("ticket_id", "type"), "ok_false": ("error",)},
+    }
 
-        return {"answer": answer, "intent": intent, "citations": citations, "has_evidence": has_evidence, "grounding_score": round(score,4), "cites_valid": cites_valid, "action": action, "slots": slots, "needs_clarification": False, "flags": flags, "plan": plan, "evidence": {"attempts": iter_res["attempts"], "top_dense": report.top_dense if report else 0, "reason": report.reason if report else "", "rewritten_queries": iter_res["rewritten_queries"], "final_query": iter_res["final_query"]}, "rewritten_query": rewritten_preview, "llm_mode": self._llm.mode, "rerank_mode": self._reranker.mode, "tenant_id": self.tenant_id}
+    @classmethod
+    def _validate_tool_result(cls, tool_name: str, result: dict | None, emp: str) -> dict:
+        if not isinstance(result, dict) or not result:
+            return {"ok": False, "error": f"malformed_tool_result:{tool_name}", "employee_id": emp}
+        shape = cls._TOOL_RESULT_SHAPES.get(tool_name)
+        if not shape:
+            return {"ok": False, "error": f"unknown_tool:{tool_name}", "employee_id": emp}
+        ok = bool(result.get("ok"))
+        required = shape["ok_true"] if ok else shape["ok_false"]
+        missing = [f for f in required if f not in result]
+        if missing:
+            return {"ok": False, "error": f"malformed_result:{','.join(missing)}",
+                    "employee_id": emp}
+        return result
 
-    def stream_answer(self, question: str, session_id: str = "default", employee_id: str | None = None, tenant_id: str | None = None):
-        result = self.chat(question, session_id, employee_id, tenant_id=tenant_id)
+    def confirm_action(self, session_id: str, employee_id: str | None = None,
+                       approved: bool = True, idempotency_key: str | None = None,
+                       is_admin: bool = False) -> dict:
+        self._ensure_stack()
+        
+        if idempotency_key:
+            result = self._workflow.check_idempotency(
+                idempotency_key=idempotency_key,
+                session_id=session_id,
+                tenant_id=self.tenant_id)
+            if result:
+                model = AgentResponseModel(
+                    status=result["status"],
+                    answer=result["answer"],
+                    intent=result["intent"],
+                    citations=[Citation(**c) for c in result["citations"]],
+                    evidence=EvidenceSummary(**result["evidence"]) if result["evidence"] else EvidenceSummary(),
+                    grounding=GroundingInfo(**result["grounding"]),
+                    action=result["action"],
+                    slots=result["slots"],
+                )
+                return self._response_builder.respond(model, has_evidence=True, flags=result["flags"],
+                                      plan=result["plan"],
+                                      rewritten_query=result["rewritten_query"],
+                                      tenant_id=self.tenant_id)
+        
+        pending = session_store.pop_pending(session_id, tenant_id=self.tenant_id)
+        if not pending:
+            model = AgentResponseModel(
+                status="error",
+                answer="Không có yêu cầu nào đang chờ duyệt trong phiên này.")
+            return self._response_builder.respond(model, has_evidence=False, flags=["no_pending_action"],
+                                  plan={"retrieve": False, "tool": None,
+                                        "reason": "confirm without pending"},
+                                  rewritten_query="", tenant_id=self.tenant_id)
+        tool = pending["tool"]
+        emp = employee_id or pending.get("employee_id") or settings.DEFAULT_EMPLOYEE_ID
+        citations = [Citation(**c) for c in pending.get("citations", [])]
+        used_keys = pending.get("used_keys", [])
+        intent = pending.get("intent", "general")
+
+        if not approved:
+            answer = f"Đã hủy: {pending.get('summary', tool)}. Không có gì được thực hiện."
+            session_store.append(session_id, "assistant", answer, intent, tenant_id=self.tenant_id)
+            try:
+                requester = pending.get("requester_email", "") or emp
+                self._workflow.cancel_proposal(
+                    tool=tool, session_id=session_id,
+                    summary=pending.get("summary", tool),
+                    requester=requester, employee_id=emp)
+            except Exception:
+                pass
+            model = AgentResponseModel(
+                status="action_cancelled", answer=answer, intent=intent,
+                citations=citations,
+                evidence=EvidenceSummary(**pending.get("evidence", {})),
+                grounding=GroundingInfo(supported=True, score=1.0, cites_valid=True),
+                action=ActionResult(type=tool, status="cancelled",
+                                    result={"ok": False, "cancelled": True}),
+                slots=pending.get("slots", {}))
+            return self._response_builder.respond(model, has_evidence=True, flags=[],
+                                  plan={"retrieve": False, "tool": tool,
+                                        "reason": "cancelled by user"},
+                                  rewritten_query="", tenant_id=self.tenant_id)
+
+        try:
+            from ..stream.metrics import registry as _r; _r.inc("maia_tool_calls_total")
+        except Exception:
+            pass
+        pending_tenant = pending.get("tenant_id")
+        if pending_tenant is not None and pending_tenant != self.tenant_id:
+            model = AgentResponseModel(
+                status="error",
+                answer="Phiên làm việc của bạn không khớp với yêu cầu đang chờ duyệt.")
+            return self._response_builder.respond(model, has_evidence=False,
+                                  flags=["tenant_mismatch_on_confirm"],
+                                  plan={"retrieve": False, "tool": tool,
+                                        "reason": "tenant boundary violation"},
+                                  rewritten_query="", tenant_id=self.tenant_id)
+        pending_emp = pending.get("employee_id")
+        if not is_admin and pending_emp and employee_id and pending_emp != employee_id:
+            model = AgentResponseModel(
+                status="error",
+                answer="Bạn không thể xác nhận hành động của nhân viên khác.")
+            return self._response_builder.respond(model, has_evidence=False,
+                                  flags=["cross_employee_confirm_blocked"],
+                                  plan={"retrieve": False, "tool": tool,
+                                        "reason": "employee ownership violation"},
+                                  rewritten_query="", tenant_id=self.tenant_id)
+        verify = None
+        if tool == "create_it_ticket":
+            result = hris_conn.create_it_ticket(
+                emp, pending["params"].get("ticket_type", "general"),
+                pending["params"].get("description", ""), tenant_id=self.tenant_id)
+            result = self._validate_tool_result(tool, result, emp)
+            if result.get("ok"):
+                try:
+                    verify = hris_conn.verify_ticket(result["ticket_id"])
+                except Exception:
+                    verify = None
+                answer = (f"Đã tạo ticket {result['ticket_id']} ({result['type']}) — "
+                          f"{result['assignee']}"
+                          + (f" (verified: {verify.get('status')})." if verify else "."))
+            else:
+                answer = f"Không thể tạo ticket: {result.get('error', 'lỗi không rõ')}."
+        elif tool == "create_leave_request":
+            result = hris_conn.create_leave_request(
+                emp, days=pending["params"].get("days", 1),
+                start_date=pending["params"].get("start_date"),
+                tenant_id=self.tenant_id)
+            result = self._validate_tool_result(tool, result, emp)
+            if result.get("ok"):
+                try:
+                    verify = (hris_conn.verify_ticket(result["request_id"])
+                              if hasattr(hris_conn, "verify_ticket") else None)
+                except Exception:
+                    verify = None
+                answer = (f"Đã tạo yêu cầu nghỉ phép {result['days']} ngày từ "
+                          f"{result['start_date']}. Mã: {result['request_id']}. "
+                          f"Trạng thái: {result['status']}. Còn lại: "
+                          f"{result.get('remaining_balance', '?')} ngày.")
+            else:
+                answer = result.get("error", "Không thể tạo yêu cầu.")
+        else:
+            result = {"ok": False, "error": f"Unknown tool: {tool}"}
+            answer = result["error"]
+
+        ok = bool(result.get("ok"))
+        if ok and citations:
+            answer += f" Căn cứ: {citations[0].tag} {citations[0].filename}."
+        valid_out, issues, answer = self._output_validator.check(
+            answer, is_action_response=True)
+        if not valid_out:
+            answer += f"\n\n[Guardrail: {'/'.join(issues)}]"
+        try:
+            requester = pending.get("requester_email", "") or emp
+            ref = (result.get("ticket_id") or result.get("request_id") or "")
+            self._workflow.confirm_proposal(
+                tool=tool, session_id=session_id, result=result,
+                requester=requester, employee_id=emp, ref=ref, approved=ok)
+        except Exception:
+            pass
+        cc = CitationChecker([{"chunk_id": k["chunk_id"]} for k in used_keys])
+        cites_valid, _ = cc.check(answer)
+        session_store.append(session_id, "assistant", answer, intent, tenant_id=self.tenant_id)
+        model = AgentResponseModel(
+            status="action_completed", answer=answer, intent=intent,
+            citations=citations,
+            evidence=EvidenceSummary(**pending.get("evidence", {})),
+            grounding=GroundingInfo(supported=ok, score=1.0 if ok else 0.0,
+                                    cites_valid=cites_valid),
+            action=ActionResult(type=tool, status="completed" if ok else "failed",
+                                result=result, verify=verify),
+            slots=pending.get("slots", {}))
+        return self._response_builder.respond(model, has_evidence=True, flags=[],
+                             plan={"retrieve": False, "tool": tool,
+                                   "reason": "approved and executed"},
+                             rewritten_query="", tenant_id=self.tenant_id)
+
+    def stream_answer(self, question: str, session_id: str = "default", employee_id: str | None = None, tenant_id: str | None = None, requester_email: str | None = None):
+        result = self.chat(question, session_id, employee_id, tenant_id=tenant_id, requester_email=requester_email)
         answer = result["answer"]
         import re
         parts = re.split(r"(?<=[.!?])\s+", answer)
         for p in parts:
             if p:
                 yield p + " "
-

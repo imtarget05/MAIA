@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "root_context_files": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "docs/spec.md",
+    "tasks/current.md",
+    "tasks/todos.md",
+    ".ai/context/capabilities.json",
+    ".ai/harness/policy.json"
+  ],
+  "discoverable_contexts": []
+}

@@ -26,6 +26,36 @@ def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+def _sanitize_and_redact(chunks):
+    """Mirror the canonical ingest tail (ingestion_pipeline._ingest_rawdocs).
+
+    Spec requires PII 2-layer: ingest-time scan + output guardrail. This loop
+    previously embedded raw chunks, diverging from the canonical pipeline.
+    Returns (chunks, sanitized_count, pii_redacted_count, pii_type_counts).
+    """
+    from ..pipeline_wiring import _doc_sanitizer, _pii_scanner
+
+    dirty = 0
+    for c in chunks:
+        cleaned, was_dirty = _doc_sanitizer.sanitize(c.text)
+        if was_dirty:
+            c.text = cleaned
+            c.metadata["injection_sanitized"] = True
+            dirty += 1
+    pii_dirty = 0
+    type_counts: dict[str, int] = {}
+    for c in chunks:
+        if _pii_scanner.is_dirty(c.text):
+            hits = _pii_scanner.detect(c.text)
+            for h in hits:
+                type_counts[h.pii_type] = type_counts.get(h.pii_type, 0) + 1
+            c.text = _pii_scanner.redact(c.text)
+            c.metadata["pii_redacted"] = True
+            c.metadata["pii_types"] = sorted({h.pii_type for h in hits})
+            pii_dirty += 1
+    return chunks, dirty, pii_dirty, type_counts
+
+
 class KnowledgeManager:
     def __init__(self, store, embedder, index_path: str = "./storage/knowledge_index.json",
                  chunk_size: int = 512, chunk_overlap: int = 50):
@@ -54,11 +84,14 @@ class KnowledgeManager:
 
     # ---- core lifecycle -----------------------------------------------------
     def ingest(self, doc_id: str, text: str, path: str = ""):
-        """Parse-free ingest: chunk already-clean text into vectors."""
+        """Chunk -> sanitize -> PII-scan -> embed -> store (same tail as canonical pipeline)."""
         raw = RawDoc(text=text, metadata={"doc_id": doc_id, "filename": str(path)})
         chunks = split_documents([raw], chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
+        chunks, dirty, pii_dirty, pii_type_counts = _sanitize_and_redact(chunks)
         self._embed_and_store(doc_id, chunks, path)
-        return {"doc_id": doc_id, "chunks": len(chunks), "points": self.store.count()}
+        return {"doc_id": doc_id, "chunks": len(chunks), "points": self.store.count(),
+                "sanitized_chunks": dirty, "pii_redacted_chunks": pii_dirty,
+                "pii_type_counts": pii_type_counts}
 
     def _embed_and_store(self, doc_id: str, chunks, path: str) -> int:
         count = 0

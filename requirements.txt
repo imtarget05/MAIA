@@ -6,9 +6,16 @@ numpy>=1.24
 requests>=2.31
 
 # LlamaIndex (RAG framework - Document, Readers, Splitter)
-llama-index-core>=0.10.0
+llama-index-core==0.14.24
 llama-index-readers-file>=0.1.0
 pypdf>=4.0
+
+# LangChain + LangGraph (abstraction layer + agent orchestration / control plane)
+# Pinned to the verified Python 3.14 matrix (2026-09-09): langchain-core 1.6.2,
+# langgraph 1.2.11, langgraph-checkpoint-sqlite 3.1.1.
+langchain-core==1.6.2
+langgraph==1.2.11
+langgraph-checkpoint-sqlite==3.1.1
 
 # Embeddings (HuggingFace via FastEmbed - ONNX, no torch required)
 fastembed>=0.3.0
@@ -18,7 +25,13 @@ qdrant-client>=1.9.0
 
 # Hybrid search + rerank
 rank-bm25>=0.2.2
-# cross-encoder is optional (needs torch); fallback works without it
+# URL sources (notebook-style "paste a link"): trafilatura extracts main
+# content; ingestion falls back to stdlib tag-stripping when absent.
+trafilatura>=1.0
+# cross-encoder is optional (needs torch) — WS3 decision (a): ship as an
+# opt-in extra so the "model efficiency" rerank path is testable, while the
+# score-fallback remains the default no-torch mode:
+#   pip install -r requirements-rerank.txt   (sentence-transformers + torch)
 # sentence-transformers>=2.2
 # torch -- install manually if you want CrossEncoder rerank
 
@@ -26,6 +39,13 @@ rank-bm25>=0.2.2
 fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9
+
+# Auth dependencies
+python-jose[cryptography]>=3.3
+passlib[bcrypt]>=1.7
+google-auth>=2.0
+google-auth-oauthlib>=0.5
+email-validator>=1.1
 
 # UI
 streamlit>=1.33

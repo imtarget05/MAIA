@@ -1,0 +1,6 @@
+{"question": "Em cảm ơn!", "gold_chunk_ids": [], "gold_keywords": [], "intent": "general", "expect_refusal": false, "note": "Lời cảm ơn — không phải câu hỏi tri thức; chấp nhận trả lời xã giao hoặc clarification."}
+{"question": "Về cái vụ đó thì sao?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "needs_clarification", "expect_refusal": true, "note": "Không rõ 'vụ đó' là gì — hệ thống nên hỏi lại hoặc từ chối."}
+{"question": "Chính sách đó cập nhật khi nào rồi?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "needs_clarification", "expect_refusal": true, "note": "Không nêu tên chính sách — phải hỏi lại."}
+{"question": "Số dư của tôi thế nào?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "leave_balance", "expect_refusal": false, "note": "Số dư cái gì không rõ (phép/tạm ứng?) — chấp nhận hỏi lại hoặc tool check_leave_balance."}
+{"question": "Có được nghỉ không?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "needs_clarification", "expect_refusal": true, "note": "Thiếu ngữ cảnh hoàn toàn — phải hỏi lại."}
+{"question": "Mua laptop riêng có được công ty trả không?", "gold_chunk_ids": [], "gold_keywords": [], "intent": "it_help", "expect_refusal": true, "note": "KB không có chính sách mua laptop riêng — nên refuse thay vì đoán."}

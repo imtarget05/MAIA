@@ -1,0 +1,8 @@
+{"question": "Mã tài liệu của Leave Policy là gì?", "gold_chunk_ids": ["1410374725e1_0"], "gold_keywords": ["POL-HR-002"], "intent": "hr_policy"}
+{"question": "Leave request ID có format như thế nào?", "gold_chunk_ids": ["1410374725e1_1"], "gold_keywords": ["LV-YYYYMMDD-XXX"], "intent": "leave_request"}
+{"question": "Email của HR Help Desk là gì?", "gold_chunk_ids": ["caecec91a90d_3"], "gold_keywords": ["hr@company.com", "101"], "intent": "hr_policy"}
+{"question": "Máy lẻ của IT Help Desk là số nào?", "gold_chunk_ids": ["1c55e579446a_0", "63a16140e921_2"], "gold_keywords": ["202"], "intent": "it_help"}
+{"question": "Ngân sách học tập L&D mỗi năm là bao nhiêu?", "gold_chunk_ids": ["80b443f4c0f7_1"], "gold_keywords": ["10.000.000", "10 triệu"], "intent": "benefits"}
+{"question": "Email báo cáo sự cố bảo mật gửi tới đâu?", "gold_chunk_ids": ["71001089b8a9_2"], "gold_keywords": ["security@company.com", "SEC-INCIDENT"], "intent": "security"}
+{"question": "Khách sạn công tác phí trong nước tối đa bao nhiêu mỗi đêm?", "gold_chunk_ids": ["b0e856ca8d21_1"], "gold_keywords": ["2.000.000"], "intent": "expense"}
+{"question": "VPN có bắt buộc khi truy cập GitLab từ xa không?", "gold_chunk_ids": ["71001089b8a9_2", "63a16140e921_0"], "gold_keywords": ["bắt buộc", "GitLab"], "intent": "vpn"}

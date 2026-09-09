@@ -1,0 +1,7 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["src"],
+  "typeCheckingMode": "basic",
+  "executionEnvironments": [{ "root": "src" }, { "root": "tests" }]
+}

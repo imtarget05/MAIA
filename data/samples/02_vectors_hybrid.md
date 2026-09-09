@@ -3,7 +3,7 @@
 ## Embeddings
 
 Embeddings represent semantic similarity as dense vectors. Similar meanings have high cosine similarity.
-Model used: BAAI/bge-small-en-v1.5 with 384 dimensions, served via FastEmbed from HuggingFace Hub.
+Model used: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 with 384 dimensions, served via FastEmbed from HuggingFace Hub.
 
 ## Qdrant
 

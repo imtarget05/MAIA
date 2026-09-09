@@ -1,9 +1,32 @@
 """LLM via Cloudflare Workers AI (§9). MOCK fallback when no creds.
 
-Endpoint: POST https://api.cloudflare.com/client/v4/accounts/{id}/ai/run/{model}
-Body: {"messages": [...]}
+G-06: the external Cloudflare call is wrapped with a circuit breaker + retry.
+On CircuitOpenError / timeout → graceful degraded (mock fallback answer),
+never a hang.
 """
 import requests
+
+from .config import settings
+
+# NOTE: loops.resilience is imported lazily inside _get_llm_breaker() to avoid
+# a circular import at module load (loops/__init__ → corrective_rag → llm).
+
+# G-06: per-dependency breaker + retry config for the LLM call.
+_llm_breaker = None
+_llm_retry = None
+
+
+def _get_llm_breaker():
+    global _llm_breaker, _llm_retry
+    if _llm_breaker is None:
+        from .loops.resilience import CircuitBreaker, RetryConfig
+        threshold = settings.RELIABILITY_LLM_THRESHOLD or settings.RELIABILITY_FAILURE_THRESHOLD
+        _llm_breaker = CircuitBreaker("llm", failure_threshold=threshold,
+                                      recovery_timeout=settings.RELIABILITY_RECOVERY_TIMEOUT_SEC)
+        _llm_retry = RetryConfig(max_retries=settings.RELIABILITY_MAX_RETRIES,
+                                 backoff_base=settings.RELIABILITY_RETRY_BACKOFF_SEC,
+                                 retryable=(TimeoutError, ConnectionError, OSError))
+    return _llm_breaker
 
 
 class CloudflareLLM:
@@ -16,24 +39,36 @@ class CloudflareLLM:
     def mode(self) -> str:
         return "cloudflare" if (self.account_id and self.api_token) else "mock"
 
-    def chat(self, messages: list[dict], max_tokens: int = 512, temperature: float = 0.1) -> str:
+    def chat(self, messages: list[dict], max_tokens: int = 512, temperature: float = 0.1,
+             top_p: float = 1.0, top_k: int = 50) -> str:
         if self.mode == "mock":
             return self._mock(messages)
+        # G-06: lazy import to avoid circular import at module load.
+        # Call _get_llm_breaker() FIRST so _llm_retry is initialized before use.
+        from .loops.resilience import CircuitOpenError, with_retry
+        breaker = _get_llm_breaker()
+        try:
+            # G-06: breaker + retry around the external call
+            return with_retry(_llm_retry, breaker.call,
+                              self._do_chat, messages, max_tokens, temperature, top_p, top_k)
+        except (CircuitOpenError, TimeoutError, ConnectionError, OSError) as e:
+            # G-06: graceful degraded → mock fallback instead of hanging/crashing
+            return f"[LLM degraded: {e}] " + self._mock(messages)
+
+    def _do_chat(self, messages, max_tokens, temperature, top_p, top_k) -> str:
         url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{self.model}"
         headers = {"Authorization": f"Bearer {self.api_token}", "Content-Type": "application/json"}
-        try:
-            r = requests.post(url, headers=headers,
-                              json={"messages": messages, "max_tokens": max_tokens, "temperature": temperature},
-                              timeout=60)
-            r.raise_for_status()
-            data = r.json()
-            # Workers AI returns {"result": {"response": "..."}} for instruct models
-            res = data.get("result", {})
-            if isinstance(res, dict):
-                return res.get("response") or res.get("text") or str(res)
-            return str(res)
-        except Exception as e:
-            return f"[LLM error: {e}] Fallback answer from context only (mock). " + self._mock(messages)
+        r = requests.post(url, headers=headers,
+                          json={"messages": messages, "max_tokens": max_tokens, "temperature": temperature,
+                                "top_p": top_p, "top_k": top_k},
+                          timeout=60)
+        r.raise_for_status()
+        data = r.json()
+        # Workers AI returns {"result": {"response": "..."}} for instruct models
+        res = data.get("result", {})
+        if isinstance(res, dict):
+            return res.get("response") or res.get("text") or str(res)
+        return str(res)
 
     def chat_stream(self, messages: list[dict]):
         """Yield answer chunks for SSE."""
@@ -56,8 +91,9 @@ class CloudflareLLM:
             if t not in uniq:
                 uniq.append(t)
         cite = " ".join(uniq[:5]) if uniq else "[S1]"
+        # NOTE: no 'Sources:' footer — the UI renders structured citations
+        # from the retrieval packet separately (clean ChatGPT-style display).
         return (
             f"(MOCK LLM - set CLOUDFLARE creds for real generation) Based on the retrieved context {cite}, "
-            f"the answer is summarized from the top-ranked chunks. Please inspect Sources below for evidence.\n\n"
-            f"Sources: {', '.join(uniq[:5]) if uniq else 'none'}"
+            f"the answer is summarized from the top-ranked chunks. Please inspect Sources below for evidence."
         )
