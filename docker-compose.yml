@@ -1,94 +1,14 @@
-services:
-  # ---- Vector DB (existing) ----
-  qdrant:
-    image: qdrant/qdrant:v1.12.4
-    container_name: maia-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    restart: unless-stopped
-
-  # ---- Kafka broker (KRaft single node, PROJECT 2) ----
-  kafka:
-    image: bitnami/kafka:3.7
-    container_name: maia-kafka
-    ports:
-      - "9092:9092"
-    environment:
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
-      - KAFKA_CREATE_TOPICS=topic.doc.chunks:4:1,topic.doc.chunks.dlq:1:1,topic.doc.embedding.failed:1:1
-      - ALLOW_PLAINTEXT_LISTENER=yes
-    volumes:
-      - kafka_data:/bitnami/kafka
-    restart: unless-stopped
-
-  # ---- Kafka UI (optional: inspect topics / consumer lag) ----
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: maia-kafka-ui
-    ports:
-      - "8080:8080"
-    environment:
-      - KAFKA_CLUSTERS_0_NAME=maia
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
-    depends_on:
-      - kafka
-    restart: unless-stopped
-
-  # ---- MAIA API (Project 1 + control plane, docker e2e) ----
-  api:
-    build: .
-    container_name: maia-api
-    ports:
-      - "8000:8000"
-    depends_on:
-      - qdrant
-    env_file:
-      - .env.docker
-    environment:
-      - QDRANT_URL=http://qdrant:6333
-      - MAIA_MODE=mock
-      - MAIA_EMBED_FORCE_HASH=1
-      - STORAGE_DIR=/app/storage
-    volumes:
-      - ./storage:/app/storage
-      - ./data:/app/data:ro
-    command: ["uvicorn", "maia.api:app", "--host", "0.0.0.0", "--port", "8000"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    restart: unless-stopped
-
-  # ---- Embedding worker (PROJECT 2) ----
-  worker:
-    build: .
-    container_name: maia-worker
-    depends_on:
-      - kafka
-      - qdrant
-    environment:
-      - STREAM_TRANSPORT=kafka
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - KAFKA_CONSUMER_GROUP=embedding-workers
-      - KAFKA_WORKERS=4
-      - QDRANT_URL=http://qdrant:6333
-      - QDRANT_COLLECTION=maia_knowledge
-      - EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-    command: ["python", "-m", "maia.cli", "stream", "worker", "4"]
-    restart: unless-stopped
-
-volumes:
-  qdrant_data:
-  kafka_data:
+# MAIA compose wrapper — không khai báo service trực tiếp ở đây.
+# Mỗi nhóm sống trong file riêng dưới deploy/docker/:
+#   compose.infra.yml  — qdrant (luôn cần)
+#   compose.app.yml    — api FastAPI (app chính)
+#   compose.stream.yml — kafka + worker (PROJECT 2, opt-in; kafka-ui ở profile `tools`)
+#
+# Lệnh tương đương cũ: docker compose up -d            # infra + app (không kafka)
+# Full streaming:       docker compose --profile tools up -d   # thêm kafka/worker/ui
+# KHÔNG đặt `name:` để giữ nguyên volumes/network của project mặc định
+# (volume hiện tại: maiaintelligentragknowledgeplatform_qdrant_data).
+include:
+  - deploy/docker/compose.infra.yml
+  - deploy/docker/compose.app.yml
+  - deploy/docker/compose.stream.yml

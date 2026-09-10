@@ -1,0 +1,33 @@
+# MAIA app — FastAPI control plane (Project 1). Chạy cùng infra cho docker e2e:
+#   docker compose up -d               # đủ bộ app+infra (stream mặc định KHÔNG chạy)
+# Chạy lẻ không cần root wrapper:
+#   docker compose -f deploy/docker/compose.infra.yml -f deploy/docker/compose.app.yml up -d
+# Paths (build/volume/env_file) viết tương đối từ deploy/docker/ để chạy lẻ vẫn đúng.
+
+services:
+  api:
+    build:
+      context: ../..
+    container_name: maia-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - qdrant
+    env_file:
+      - path: ../../.env.docker
+        required: false
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - MAIA_MODE=mock
+      - MAIA_EMBED_FORCE_HASH=1
+      - STORAGE_DIR=/app/storage
+    volumes:
+      - ../../storage:/app/storage
+      - ../../data:/app/data:ro
+    command: ["uvicorn", "maia.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped

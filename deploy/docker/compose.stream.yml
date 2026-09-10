@@ -1,0 +1,61 @@
+# MAIA streaming — Kafka KRaft single node + embedding worker (PROJECT 2, opt-in).
+# Mặc định KHÔNG chạy cùng app. Chạy thêm khi cần ingest streaming:
+#   docker compose -f deploy/docker/compose.infra.yml -f deploy/docker/compose.stream.yml up -d
+# kafka-ui là tool quan sát, chỉ chạy khi gọi explicit:
+#   docker compose -f deploy/docker/compose.stream.yml --profile tools up -d kafka-ui
+
+services:
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: maia-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CREATE_TOPICS=topic.doc.chunks:4:1,topic.doc.chunks.dlq:1:1,topic.doc.embedding.failed:1:1
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka_data:/bitnami/kafka
+    restart: unless-stopped
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: maia-kafka-ui
+    profiles: ["tools"]
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=maia
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+    depends_on:
+      - kafka
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../..
+    container_name: maia-worker
+    depends_on:
+      - kafka
+      - qdrant
+    environment:
+      - STREAM_TRANSPORT=kafka
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_CONSUMER_GROUP=embedding-workers
+      - KAFKA_WORKERS=4
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=maia_knowledge
+      - EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+    command: ["python", "-m", "maia.cli", "stream", "worker", "4"]
+    restart: unless-stopped
+
+volumes:
+  kafka_data:
