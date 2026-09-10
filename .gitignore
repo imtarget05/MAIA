@@ -114,3 +114,30 @@ tasks/.current.md.tmp.*
 .claude/.active-plan
 .claude/.plan-state/
 # END: repo-harness generated-runtime
+
+# Local workflow state — keep out of git (machine-local only)
+.env.example
+AGENTS.md
+CLAUDE.md
+PRODUCT.md
+DESIGN.md
+plans/
+tasks/
+.ai/
+.archcontext/
+.repo-harness/
+.opencode/
+opencode.json
+opencode.jsonc
+.kilocode/
+.kilo/
+.clinerules/
+.claude/
+.codex/
+.cursor/
+.vscode/
+.windsurf/
+.gemini/
+skill-observations/
+.impeccable/
+.codegraph/
