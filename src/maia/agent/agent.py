@@ -105,6 +105,11 @@ class EnterpriseAgent:
         self._retriever = self._retriever or retriever
         self._reranker = self._reranker or reranker
         self._llm = self._llm or llm
+        # Sync lazy stack into response_builder (holds constructor refs,
+        # None when bare-constructed) so grounded generation + error path
+        # never dereference stale None.
+        self._response_builder._llm = self._llm
+        self._response_builder._reranker = self._reranker
 
     def chat(self, question: str, session_id: str = "default", employee_id: str | None = None,
              top_k_final: int | None = None, tenant_id: str | None = None,
