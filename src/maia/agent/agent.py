@@ -163,7 +163,7 @@ class EnterpriseAgent:
         plan = self._intent_router.decide(intent, question, slots)
 
         try:
-            from ..stream.metrics import registry
+            from ..loops.metrics import registry
             registry.inc("maia_conversations_total")
             registry.inc(f"maia_intent_total_{intent}")
         except Exception:
@@ -189,7 +189,7 @@ class EnterpriseAgent:
         if intent == "leave_balance":
             bal = hris_conn.check_leave_balance(employee_id, tenant_id=self.tenant_id)
             try:
-                from ..stream.metrics import registry as _r
+                from ..loops.metrics import registry as _r
                 _r.inc("maia_tool_calls_total")
             except Exception:
                 pass
@@ -355,7 +355,7 @@ class EnterpriseAgent:
                                   rewritten_query="", tenant_id=self.tenant_id)
 
         try:
-            from ..stream.metrics import registry as _r
+            from ..loops.metrics import registry as _r
             _r.inc("maia_tool_calls_total")
         except Exception:
             pass
