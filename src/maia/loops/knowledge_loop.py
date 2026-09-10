@@ -125,7 +125,6 @@ class KnowledgeManager:
         corpus = self.store.scroll_all()
         for item in corpus:
             meta = item.get("metadata", {})
-            doc_id = meta.get("document_id", meta.get("doc_id", "?"))
             self.store.upsert_one(
                 item["chunk_id"], self.embedder.embed([item["text"]])[0],
                 {**meta, "text": item["text"], "chunk_id": item["chunk_id"],

@@ -19,7 +19,7 @@ def evaluate_agent(dataset_path: str) -> dict:
     from maia.agent.intents import detect_intent
     rows = [json.loads(l) for l in Path(dataset_path).read_text().splitlines() if l.strip()]
     from maia.agent.agent import EnterpriseAgent
-    agent = EnterpriseAgent()
+    _agent = EnterpriseAgent()  # instantiated for parity; intent scoring below is rule-based
     correct = 0
     details = []
     for r in rows:

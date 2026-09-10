@@ -2,7 +2,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, ConfigDict
@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from maia.auth import (
     authenticate_user,
-    record_failed_login,
     consume_password_reset_token,
     create_password_reset_token,
     create_user_session,
@@ -18,6 +17,7 @@ from maia.auth import (
     get_password_hash,
     get_user_by_email,
     get_user_by_id,
+    record_failed_login,
     update_last_login,
     verify_refresh_token,
 )

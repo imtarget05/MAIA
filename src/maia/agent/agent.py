@@ -189,7 +189,8 @@ class EnterpriseAgent:
         if intent == "leave_balance":
             bal = hris_conn.check_leave_balance(employee_id, tenant_id=self.tenant_id)
             try:
-                from ..stream.metrics import registry as _r; _r.inc("maia_tool_calls_total")
+                from ..stream.metrics import registry as _r
+                _r.inc("maia_tool_calls_total")
             except Exception:
                 pass
             iter_res = (self._iterative_retrieve(question, session_id, top_k_final, intent)
@@ -354,7 +355,8 @@ class EnterpriseAgent:
                                   rewritten_query="", tenant_id=self.tenant_id)
 
         try:
-            from ..stream.metrics import registry as _r; _r.inc("maia_tool_calls_total")
+            from ..stream.metrics import registry as _r
+            _r.inc("maia_tool_calls_total")
         except Exception:
             pass
         pending_tenant = pending.get("tenant_id")

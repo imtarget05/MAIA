@@ -6,7 +6,6 @@ from maia.ingestion_pipeline import ingest_data_dir
 from maia.pipeline_query import build_stack, query
 
 
-
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "help"
     if cmd == "ingest":
