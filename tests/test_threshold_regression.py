@@ -9,14 +9,16 @@ import pytest
 
 # Only run if Qdrant is available (CI environment)
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
 SKIP_REASON = "Qdrant not available - set QDRANT_URL to run threshold regression tests"
 
 
 def _check_qdrant():
-    """Check if Qdrant is reachable."""
+    """Check if Qdrant is reachable (api-key header for Qdrant Cloud)."""
     try:
         import httpx
-        resp = httpx.get(f"{QDRANT_URL}/healthz", timeout=5.0)
+        headers = {"api-key": QDRANT_API_KEY} if QDRANT_API_KEY else {}
+        resp = httpx.get(f"{QDRANT_URL}/healthz", headers=headers, timeout=5.0)
         return resp.status_code == 200
     except Exception:
         return False
