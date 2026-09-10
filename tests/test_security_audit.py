@@ -21,7 +21,7 @@ from maia.loops.guardrails import DocumentSanitizer
 from maia.models import User
 from maia.reranker import Reranker
 from maia.retriever import HybridRetriever
-from maia.stream.store import InMemoryVectorStore
+from maia.test_utils import InMemoryVectorStore
 
 
 # ---------------------------------------------------------------- MAIA-02

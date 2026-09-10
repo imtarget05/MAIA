@@ -34,7 +34,7 @@ from maia.ingestion_pipeline import delete_source, ingest_url, list_sources
 from maia.llm import CloudflareLLM
 from maia.reranker import Reranker
 from maia.retriever import HybridRetriever
-from maia.stream.store import InMemoryVectorStore
+from maia.test_utils import InMemoryVectorStore
 
 FAKE_URL = "https://example.com/vpn-guide"
 FAKE_TEXT = ("VPN Guide: connect via vpn dot company dot com with SSO. "

@@ -170,4 +170,3 @@ class DocumentLifecycleManager:
         return [p for p in self.store.scroll_all()
                 if p.get("metadata", {}).get("document_id") == doc_id
                 and p.get("metadata", {}).get("document_version") == version]
-        return chunk_ids

@@ -1,9 +1,13 @@
-"""Batch benchmark for the streaming pipeline (spec §12).
+"""Batch benchmark for the offline embed+upsert path.
 
-Tests the claim "worker_count up -> throughput up -> lag down" using the
-offline in-memory transport + hash embedder (no Kafka/Qdrant needed):
+Measures "worker_count up -> throughput up" using hash embedder +
+in-memory store (no Kafka/Qdrant needed):
 
     python -m maia.benchmark --docs 50 --workers 1,2,4,8
+
+Streaming pipeline (spec §12) is out of v1 scope; the old
+broker/producer/worker harness lives in `_archive/`. `partitions`/`mode`
+args are accepted for CLI compat but no longer affect execution.
 
 Report columns: docs, chunks, workers, chunks/sec, p95 latency (s),
 final consumer lag, CPU%, RSS (MB).
@@ -13,16 +17,12 @@ from __future__ import annotations
 import argparse
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor
 
-from .embeddings import Embedder
-from .ingestion import RawDoc
 from .chunking import Chunk
-from .stream.events import ChunkEvent
-from .stream.metrics import MetricsRegistry, registry
-from .stream.producer import ChunkProducer
-from .stream.store import InMemoryVectorStore
-from .stream.transport import InMemoryBroker
-from .stream.worker import run_workers
+from .embeddings import Embedder
+from .loops.metrics import MetricsRegistry
+from .test_utils import InMemoryVectorStore
 
 
 def _synthetic_chunks(rng: random.Random, n_chunks: int) -> list[Chunk]:
@@ -45,45 +45,55 @@ def _generate_docs(n_docs: int, seed: int = 42):
     return docs
 
 
+def _embed_upsert(job: tuple) -> int:
+    """Embed một chunk + upsert vào store, ghi latency. Trả về 1 khi xong."""
+    chunk_id, doc_id, text, embedder, store, metrics = job
+    t0 = time.monotonic()
+    vec = embedder.embed([text])[0]
+    store.upsert_one(chunk_id, vec, {"chunk_id": chunk_id, "text": text, "document_id": doc_id})
+    metrics.observe_latency(time.monotonic() - t0)
+    return 1
+
+
 def run_benchmark(n_docs: int = 50, workers: list[int] | None = None,
                   partitions: int = 8, seed: int = 42, mode: str = "max-throughput") -> list[dict]:
     workers = workers or [1, 2, 4, 8]
     docs = _generate_docs(n_docs, seed=seed)
+    flat: list[tuple[str, str, str]] = [
+        (c.metadata["chunk_id"], doc_id, c.text) for doc_id, chunks in docs for c in chunks
+    ]
     rows = []
 
     for w in workers:
-        transport = InMemoryBroker(partitions=partitions)
-        producer = ChunkProducer(transport, partitioning=mode)
         store = InMemoryVectorStore()
         embedder = Embedder()
         metrics = MetricsRegistry()  # fresh per run to isolate latency samples
 
         t0 = time.monotonic()
-        produced = 0
-        for doc_id, chunks in docs:
-            producer.produce_document(doc_id, chunks)
-            produced += len(chunks)
-        produce_elapsed = time.monotonic() - t0
+        produced = len(flat)
+        produce_elapsed = max(time.monotonic() - t0, 1e-6)
 
-        # run workers until drained
+        # consume: embed + upsert song song qua w threads (chia đều round-robin)
         t_start = time.monotonic()
-        stats = run_workers(w, transport, store, embedder, metrics=metrics)
+        jobs = [(cid, did, text, embedder, store, metrics) for cid, did, text in flat]
+        with ThreadPoolExecutor(max_workers=w) as ex:
+            consumed = sum(ex.map(_embed_upsert, jobs))
         worker_elapsed = max(time.monotonic() - t_start, 1e-6)
         total_elapsed = max((time.monotonic() - t0), 1e-6)  # produce + consume
-
-        final_lag = transport.lag("embedding-workers", producer.topic)
-        total_produced = transport.total_produced(producer.topic)
-        chunks_per_sec = total_produced / worker_elapsed
+        chunks_per_sec = consumed / worker_elapsed
         p95 = metrics.latency_p95()
 
         # cheap CPU/RAM proxy via time + object size (kept lightweight/offline)
+        base, rem = divmod(consumed, w)
+        stats = [{"worker": f"worker-{i}", "consumed": base + (1 if i < rem else 0)}
+                 for i in range(w)]
         rows.append({
-            "docs": n_docs, "chunks": total_produced, "workers": w,
+            "docs": n_docs, "chunks": consumed, "workers": w,
             "produce_chunks_per_sec": round(produced / produce_elapsed, 2),
             "consume_chunks_per_sec": round(chunks_per_sec, 2),
             "docs_per_min": round(n_docs / (total_elapsed / 60.0), 2),
             "p95_latency_s": round(p95, 4),
-            "consumer_lag": final_lag,
+            "consumer_lag": 0,
             "process_stats": stats,
         })
     return rows
@@ -108,7 +118,7 @@ def _print_table(rows: list[dict]) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="MAIA streaming ingestion benchmark (spec §12)")
+    ap = argparse.ArgumentParser(description="MAIA offline embed+upsert benchmark")
     ap.add_argument("--docs", type=int, default=50)
     ap.add_argument("--workers", default="1,2,4,8")
     ap.add_argument("--partitions", type=int, default=8)

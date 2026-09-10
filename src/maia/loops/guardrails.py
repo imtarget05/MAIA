@@ -247,12 +247,7 @@ class OutputGuardrail:
         return (len(reasons) == 0), reasons
 
 
-class OutputValidator(OutputGuardrail):
-    """Deprecated alias of :class:`OutputGuardrail` (WS5 merge).
-
-    Kept so existing imports (``agent.py``, tests, docs) keep working while
-    callers migrate.  New code should import ``OutputGuardrail`` directly.
-    """
+OutputValidator = OutputGuardrail  # Deprecated alias (WS5 merge)
 
 
 def detect_injection(text: str) -> list[str]:

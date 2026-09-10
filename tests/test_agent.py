@@ -77,7 +77,7 @@ def test_agent_chat_needs_clarification():
     from maia.llm import CloudflareLLM
     from maia.reranker import Reranker
     from maia.retriever import HybridRetriever
-    from maia.stream.store import InMemoryVectorStore
+    from maia.test_utils import InMemoryVectorStore
 
     # minimal in-memory stack
     embedder = Embedder()

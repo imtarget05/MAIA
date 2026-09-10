@@ -80,6 +80,7 @@ class WorkflowOrchestrator:
         employee_id: str,
         ref: str,
         approved: bool,
+        summary: str,
     ) -> None:
         """Confirm or reject a proposal after approval."""
         if approved:
@@ -88,7 +89,7 @@ class WorkflowOrchestrator:
         else:
             _wf.decide_by_session(session_id, tool, False, decided_by=employee_id,
                                   result_ref=ref, result=result)
-        _nt.notify_request_decided(tool, summary if hasattr(self, 'summary') else '',
+        _nt.notify_request_decided(tool, summary,
                                    requester, approved, employee_id, ref)
 
     def check_idempotency(

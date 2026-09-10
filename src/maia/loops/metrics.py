@@ -1,4 +1,4 @@
-"""Prometheus-style metrics for the streaming pipeline (spec §11).
+"""Prometheus-style metrics for MAIA loops.
 
 Dependency-free registry with text exposition (Prometheus scrape format) and
 an embedding-latency histogram that computes p95 on the fly.
@@ -13,11 +13,11 @@ Exposed metrics (https://prometheus.io/docs/instrumenting/writing_exporters/):
   maia_kafka_consumer_lag
   maia_ingestion_throughput             (chunks/sec)
   maia_worker_utilization               (active workers / assigned workers)
+  maia_crag_retrievals_total            (CRAG retrievals)
 """
 import math
 import threading
-import time
-from typing import Sequence
+from collections.abc import Sequence
 
 _BUCKETS = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
 
@@ -147,5 +147,5 @@ def _g(v: float) -> str:
     return f"{v:.6g}"
 
 
-# module-level default registry shared by workers/producers
+# module-level default registry shared by loops
 registry = MetricsRegistry()

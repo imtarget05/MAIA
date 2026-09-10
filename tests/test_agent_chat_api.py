@@ -44,7 +44,7 @@ def _setup():
     from maia.embeddings import Embedder
     from maia.reranker import Reranker
     from maia.retriever import HybridRetriever
-    from maia.stream.store import InMemoryVectorStore
+    from maia.test_utils import InMemoryVectorStore
 
     class MockLLM:
         mode = "mock"

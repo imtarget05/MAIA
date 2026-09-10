@@ -14,7 +14,7 @@ from maia.loops import (
     retrieval_loop,
 )
 from maia.prompt import assemble, build_messages
-from maia.stream.store import InMemoryVectorStore
+from maia.test_utils import InMemoryVectorStore
 
 
 def _embedder():
@@ -192,16 +192,23 @@ def test_should_scale_workers_policy():
 
 
 def test_health_report_includes_ops_metrics():
-    from maia.stream.metrics import MetricsRegistry
-    from maia.stream.producer import ChunkProducer
-    from maia.stream.transport import InMemoryBroker
+    from maia.loops.metrics import MetricsRegistry
 
-    broker = InMemoryBroker(partitions=4)
-    p = ChunkProducer(broker)
-    for i in range(6):
-        p.produce_chunk("d", Chunk(text="alpha beta gamma.", metadata={"chunk_id": f"c{i}"}), i)
+    # Inline mock transport for health_report (avoids archived stream module)
+    class MockTransport:
+        def __init__(self, lag_val: int = 6, produced_val: int = 6):
+            self._lag = lag_val
+            self._produced = produced_val
+
+        def lag(self, group: str, topic: str) -> int:
+            return self._lag
+
+        def total_produced(self, topic: str) -> int:
+            return self._produced
+
+    transport = MockTransport(lag_val=6, produced_val=6)
     metrics = MetricsRegistry()
-    report = reliability_loop.health_report(broker, "embedding-workers", p.topic, metrics=metrics)
+    report = reliability_loop.health_report(transport, "embedding-workers", "test-topic", metrics=metrics)
     assert report["consumer_lag"] == 6
     assert report["queue_backlog"] == 6
     assert report["recommended_workers"] == 2

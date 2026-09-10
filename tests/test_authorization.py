@@ -135,7 +135,7 @@ def _agent(chunks, llm=None, tenant_id=None):
     from maia.llm import CloudflareLLM
     from maia.reranker import Reranker
     from maia.retriever import HybridRetriever
-    from maia.stream.store import InMemoryVectorStore
+    from maia.test_utils import InMemoryVectorStore
     embedder = Embedder()
     store = InMemoryVectorStore()
     for ch in chunks:

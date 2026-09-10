@@ -158,7 +158,7 @@ def test_hybrid_retrieval_with_bm25_and_rrf():
     from maia.chunking import Chunk
     from maia.embeddings import Embedder
     from maia.retriever import HybridRetriever
-    from maia.stream.store import InMemoryVectorStore
+    from maia.test_utils import InMemoryVectorStore
 
     embedder = Embedder()
     store = InMemoryVectorStore()

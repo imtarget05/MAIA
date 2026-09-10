@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from math import log2
 from pathlib import Path
 
 from .retrieval_loop import compute_rank_metrics

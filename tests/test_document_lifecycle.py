@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from maia.embeddings import Embedder
 from maia.loops.document_lifecycle import DocumentLifecycleManager, DocumentManifest
-from maia.stream.store import InMemoryVectorStore
+from maia.test_utils import InMemoryVectorStore
 
 
 def _embedder():

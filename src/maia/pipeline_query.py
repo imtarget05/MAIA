@@ -4,7 +4,9 @@ import time
 
 from .config import settings
 from .embeddings import Embedder
-from .ingestion_pipeline import ingest_data_dir  # noqa: F401  (canonical ingest entry — re-exported; tests + CI import it from here)
+from .ingestion_pipeline import (
+    ingest_data_dir,  # noqa: F401  (canonical ingest entry — re-exported; tests + CI import it from here)
+)
 from .llm import CloudflareLLM
 from .pipeline_wiring import PipelineTracer
 from .prompt import assemble, build_messages
