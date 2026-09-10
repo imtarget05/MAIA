@@ -214,7 +214,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         # A refresh token must never be accepted in place of an access token.
         if payload.get("type") != "access":
             raise credentials_exception
-        user_id: str = payload.get("sub")
+        user_id: str | None = payload.get("sub")
         if user_id is None:
             raise credentials_exception
     except JWTError:
@@ -673,7 +673,7 @@ def admin_decide_request(request_id: int, req: DecideReq,
         )
     decided = _wf.decide(request_id, req.approved,
                          decided_by=current_user.email or "admin",
-                         result_ref=side_effect_result.get("request_id") or side_effect_result.get("ticket_id") or "",
+                         result_ref=(side_effect_result or {}).get("request_id") or (side_effect_result or {}).get("ticket_id") or "",
                          result=side_effect_result)
     try:
         _nt.notify_request_decided(row.get("type", ""), row.get("summary", ""),

@@ -11,7 +11,7 @@ class Reranker:
         self.model_name = model
         self._model = None
         try:
-            from sentence_transformers import CrossEncoder
+            from sentence_transformers import CrossEncoder  # type: ignore[import-not-found]
 
             self._model = CrossEncoder(model)
         except Exception as e:
