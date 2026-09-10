@@ -214,7 +214,7 @@ class CorrectiveRetriever:
 
     def _metric(self, action: str) -> None:
         try:
-            from ..stream.metrics import registry
+            from ..loops.metrics import registry
             registry.inc("maia_crag_retrievals_total")
             registry.inc(f"maia_crag_action_{action}")
         except Exception:

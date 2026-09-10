@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from maia.auth import (
     authenticate_user,
+    record_failed_login,
     consume_password_reset_token,
     create_password_reset_token,
     create_user_session,
@@ -280,7 +281,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     """Login with email and password."""
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
-        record_failed_attempts(db, form_data.username)
+        record_failed_login(db, form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -1060,51 +1061,3 @@ def count(current_user: User = Depends(get_current_active_user)):
     return {"collection": settings.QDRANT_COLLECTION, "points": store.count()}
 
 
-# ---- PROJECT 2: Kafka streaming ingestion -------------------------------
-@app.get("/metrics")
-def metrics(current_user: User = Depends(get_current_active_user)):
-    """Prometheus text exposition of maia_* metrics (spec §11)."""
-    from maia.stream.metrics import registry
-
-    return Response(content=registry.render(), media_type="text/plain; version=0.0.4")
-
-
-@app.post("/ingest/stream")
-def ingest_stream(current_user: User = Depends(get_current_active_user)):
-    """Parse DATA_DIR and produce chunk events to topic.doc.chunks (spec §3)."""
-    from maia.stream.producer import ChunkProducer
-    from maia.stream.transport import build_default_transport
-
-    transport = build_default_transport()
-    producer = ChunkProducer(transport, partitioning=settings.KAFKA_PARTITIONING)
-    produced = producer.ingest_dir()
-    return {"produced": produced, "mode": producer.mode,
-            "topic": settings.KAFKA_TOPIC_CHUNKS}
-
-
-@app.post("/stream/run-workers")
-def run_stream_workers(workers: int = settings.KAFKA_WORKERS, current_user: User = Depends(get_current_active_user)):
-    """Run embedding workers until drained (embed -> upsert -> commit, spec §5-7)."""
-    # Note: I noticed the comment was cut off in the original, let me restore it
-    from maia.embeddings import Embedder
-    from maia.stream.store import build_stream_store
-    from maia.stream.transport import build_default_transport
-    from maia.stream.worker import run_workers
-
-    transport = build_default_transport()
-    embedder = Embedder(model=settings.EMBED_MODEL, dim=settings.EMBED_DIM)
-    store = build_stream_store(embedder)
-    stats = run_workers(workers, transport, store, embedder)
-    return {"workers": stats, "consumer_group": settings.KAFKA_CONSUMER_GROUP,
-            "lag": transport.lag(settings.KAFKA_CONSUMER_GROUP, settings.KAFKA_TOPIC_CHUNKS)}
-
-
-@app.get("/stream/lag")
-def stream_lag(current_user: User = Depends(get_current_active_user)):
-    """Consumer lag for the embedding-workers group (spec §9)."""
-    from maia.stream.transport import build_default_transport
-
-    transport = build_default_transport()
-    return {"consumer_group": settings.KAFKA_CONSUMER_GROUP,
-            "topic": settings.KAFKA_TOPIC_CHUNKS,
-            "lag": transport.lag(settings.KAFKA_CONSUMER_GROUP, settings.KAFKA_TOPIC_CHUNKS)}

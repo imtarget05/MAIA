@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-# NOTE: `maia.stream.metrics` is imported lazily inside health_report() so that
+# NOTE: `maia.loops.metrics` is imported lazily inside health_report() so that
 # the reliability loop does not pull the Kafka/stream stack at import time
 # (WS6 untangle — stream/ is opt-in, not load-bearing).
 
@@ -52,11 +52,11 @@ def health_report(transport, group: str, topic: str,
                   alert_handler: Callable[[str], None] | None = None) -> dict:
     """Collect the Loop-5 ops snapshot from a transport + metric registry.
 
-    ``metrics`` defaults to the shared stream metrics registry (lazy import —
+    ``metrics`` defaults to the shared loops metrics registry (lazy import —
     the stream stack is opt-in and must not be an import-time dependency).
     """
     if metrics is None:
-        from maia.stream.metrics import registry as metrics
+        from maia.loops.metrics import registry as metrics
     lag = float(transport.lag(group, topic))
     produced = float(transport.total_produced(topic))
     committed = float(transport.committed(group, topic)) if hasattr(transport, "committed") else produced - lag

@@ -21,7 +21,6 @@ from ..loops.guardrails import (
     DocumentSanitizer,
     InputGuardrail,
     OutputGuardrail,
-    OutputValidator,
 )
 from . import hris as hris_conn
 from .action_proposer import ActionProposer
@@ -77,13 +76,12 @@ class EnterpriseAgent:
         self.tenant_id = tenant_id or settings.TENANT_ID
         self._input_guard = InputGuardrail(max_length=2000)
         self._output_guard = OutputGuardrail()
-        self._output_validator = OutputValidator()
         self._doc_sanitizer = DocumentSanitizer()
         self._grounding = GroundingChecker(threshold=settings.AGENT_GROUNDING_THRESHOLD)
         self._workflow = WorkflowOrchestrator(tenant_id=self.tenant_id)
         self._response_builder = ResponseBuilder(
             llm=self._llm, reranker=self._reranker,
-            grounding=self._grounding, output_validator=self._output_validator,
+            grounding=self._grounding, output_validator=self._output_guard,
             doc_sanitizer=self._doc_sanitizer, workflow=self._workflow,
             session_store=session_store)
         self._intent_router = IntentRouter()
@@ -240,7 +238,7 @@ class EnterpriseAgent:
         if answer == INSUFFICIENT_TEXT:
             return self._response_builder.insufficient(intent, slots, flags, plan, rewritten_preview,
                                           iter_res, self.tenant_id, session_id, question)
-        valid_out, issues, answer = self._output_validator.check(answer)
+        valid_out, issues, answer = self._output_guard.check(answer)
         if not valid_out:
             answer += f"\n\n[Guardrail: {'/'.join(issues)}]"
         citations = ResponseBuilder.cards(used)
@@ -420,7 +418,7 @@ class EnterpriseAgent:
         ok = bool(result.get("ok"))
         if ok and citations:
             answer += f" Căn cứ: {citations[0].tag} {citations[0].filename}."
-        valid_out, issues, answer = self._output_validator.check(
+        valid_out, issues, answer = self._output_guard.check(
             answer, is_action_response=True)
         if not valid_out:
             answer += f"\n\n[Guardrail: {'/'.join(issues)}]"
@@ -429,7 +427,8 @@ class EnterpriseAgent:
             ref = (result.get("ticket_id") or result.get("request_id") or "")
             self._workflow.confirm_proposal(
                 tool=tool, session_id=session_id, result=result,
-                requester=requester, employee_id=emp, ref=ref, approved=ok)
+                requester=requester, employee_id=emp, ref=ref, approved=ok,
+                summary=pending.get("summary", tool))
         except Exception:
             pass
         cc = CitationChecker([{"chunk_id": k["chunk_id"]} for k in used_keys])

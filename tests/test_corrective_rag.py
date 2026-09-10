@@ -115,7 +115,7 @@ def test_corrective_retriever_exhausted_without_web():
 
 
 def test_crag_metrics_recorded():
-    from maia.stream.metrics import registry
+    from maia.loops.metrics import registry
     before = registry.get("maia_crag_retrievals_total")
     crag = CorrectiveRetriever(MockRetriever(), MockReranker(), _assemble)
     crag.retrieve_corrective("nghi phép năm", top_k_final=3)
@@ -129,7 +129,7 @@ def test_agentic_corrective_falls_back_when_disabled():
     from maia.embeddings import Embedder
     from maia.reranker import Reranker
     from maia.retriever import HybridRetriever
-    from maia.stream.store import InMemoryVectorStore
+    from maia.test_utils import InMemoryVectorStore
 
     embedder = Embedder()
     store = InMemoryVectorStore()
@@ -155,7 +155,7 @@ def test_agentic_corrective_enabled_path():
     from maia.embeddings import Embedder
     from maia.reranker import Reranker
     from maia.retriever import HybridRetriever
-    from maia.stream.store import InMemoryVectorStore
+    from maia.test_utils import InMemoryVectorStore
 
     old = settings.CRAG_ENABLED
     settings.CRAG_ENABLED = True
