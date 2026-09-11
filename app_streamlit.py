@@ -234,16 +234,31 @@ def _auth_screen() -> None:
             return
         st.session_state.oauth_code_handled = oauth_code
         st.markdown("#### Đang hoàn tất đăng nhập Google…")
-        try:
-            # timeout 90s: the API cold-starts on Render free tier.
-            r = _api("POST", "/auth/google/callback", None, timeout=90,
-                     json={"code": oauth_code.strip(), "redirect_uri": _G_REDIRECT_URI})
-        except Exception as e:
+        # Retryable ONLY on transport errors (API cold start): the code is
+        # consumed solely by a completed server-side exchange, so resending
+        # after a connection failure is safe. A 4xx means the code is spent.
+        r = None
+        last_err = ""
+        for attempt in range(3):
+            try:
+                # timeout 90s: the API cold-starts on Render free tier.
+                r = _api("POST", "/auth/google/callback", None, timeout=90,
+                         json={"code": oauth_code.strip(), "redirect_uri": _G_REDIRECT_URI})
+                break
+            except Exception as e:
+                last_err = str(e)
+                st.markdown(f"_API đang khởi động, thử lại ({attempt + 1}/3)…_")
+                time.sleep(3)
+        if r is None:
             st.session_state.pop("oauth_code_handled", None)
-            st.error(f"Không kết nối được API ({MAIA_API_URL}): {e}")
+            st.error(f"Không kết nối được API ({MAIA_API_URL}): {last_err}")
             return
-        if r.status_code == 200:
+        if r.status_code == 200 and r.json().get("access_token"):
             _login_with_tokens(r.json())
+            if not st.session_state.get("auth_user"):
+                st.session_state.pop("oauth_code_handled", None)
+                st.error("Đăng nhập thành công nhưng chưa tải được hồ sơ — hãy bấm đăng nhập Google lại.")
+                return
             try:
                 st.query_params.clear()
             except Exception:
