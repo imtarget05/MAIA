@@ -712,7 +712,18 @@ app.include_router(admin_router)
 
 @app.get("/health")
 def health():
-    """Public health/readiness probe (no auth so Prometheus/K8s can poll it)."""
+    """Lightweight liveness probe (no auth, no ML stack).
+
+    MUST stay cheap: Render free tier (512Mi) OOM-crashed when /health
+    loaded the FastEmbed model per request. Full dependency state lives
+    on GET /ready.
+    """
+    return {"status": "ok", "version": app.version}
+
+
+@app.get("/ready")
+def ready():
+    """Readiness probe: builds the stack, reports qdrant/llm/rerank state."""
     try:
         _, store, _, reranker, llm = build_stack()
         return {"status": "ok", "qdrant_points": store.count(),

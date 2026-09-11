@@ -55,10 +55,17 @@ def now_iso() -> str:
 
 def check_health(base: str) -> str:
     """Return the access token if login succeeds, else ''."""
-    print("\n[1/5] Health check  GET /health")
+    print("\n[1/5] Health check  GET /health + GET /ready")
     try:
         r = requests.get(f"{base}/health", timeout=15)
-        check("HTTP status 200", r.status_code == 200, f"got {r.status_code}")
+        check("liveness HTTP 200", r.status_code == 200, f"got {r.status_code}")
+        if r.status_code != 200:
+            return ""
+        live = r.json()
+        check("liveness status == 'ok'", live.get("status") == "ok",
+              f"got '{live.get('status')}'")
+        r = requests.get(f"{base}/ready", timeout=60)
+        check("readiness HTTP 200", r.status_code == 200, f"got {r.status_code}")
         if r.status_code != 200:
             return ""
         data = r.json()
