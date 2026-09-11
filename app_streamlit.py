@@ -209,15 +209,6 @@ _G_REDIRECT_URI = f"{_APP_BASE}/"
 
 
 def _auth_screen() -> None:
-    _auth_css()
-    st.markdown(
-        "<div class='maia-brand'><span class='maia-mark'>M</span></div>"
-        "<h1 class='maia-h1'>Đăng nhập vào MAIA</h1>"
-        "<p class='maia-sub'>Mỗi nhân viên đăng nhập bằng tài khoản riêng — yêu cầu nghỉ phép / "
-        "IT ticket được định danh và gửi đúng bộ phận.</p>",
-        unsafe_allow_html=True,
-    )
-
     qp = st.query_params
     reset_token = qp.get("reset_token", "")
     reset_token = reset_token[0] if isinstance(reset_token, list) else reset_token
@@ -227,6 +218,7 @@ def _auth_screen() -> None:
     oauth_error = oauth_error[0] if isinstance(oauth_error, list) else oauth_error
 
     # Google OAuth callback (user returns from accounts.google.com with ?code=...)
+    # MUST run BEFORE brand header so JS runs and page isn't blank.
     if oauth_code and not reset_token:
         # Single-attempt guard: Google auth codes are one-time; a Streamlit
         # rerun must never POST the same code twice (second POST always 400s).
@@ -283,6 +275,15 @@ def _auth_screen() -> None:
         except Exception:
             pass
         return
+
+    _auth_css()
+    st.markdown(
+        "<div class='maia-brand'><span class='maia-mark'>M</span></div>"
+        "<h1 class='maia-h1'>Đăng nhập vào MAIA</h1>"
+        "<p class='maia-sub'>Mỗi nhân viên đăng nhập bằng tài khoản riêng — yêu cầu nghỉ phép / "
+        "IT ticket được định danh và gửi đúng bộ phận.</p>",
+        unsafe_allow_html=True,
+    )
 
     # Reset-password flow (only via email link)
     if reset_token:
