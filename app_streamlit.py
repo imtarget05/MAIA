@@ -42,11 +42,11 @@ MAIA_API_URL = os.environ.get("MAIA_API_URL", "http://localhost:8001").rstrip("/
 _AUTH_FILE = Path(__file__).resolve().parent / "storage" / ".maia_session.json"
 
 
-def _api(method: str, path: str, token: str | None = None, **kw):
+def _api(method: str, path: str, token: str | None = None, timeout: int = 30, **kw):
     headers = kw.pop("headers", {})
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    r = _rq.request(method, MAIA_API_URL + path, headers=headers, timeout=20, **kw)
+    r = _rq.request(method, MAIA_API_URL + path, headers=headers, timeout=timeout, **kw)
     return r
 
 
@@ -83,6 +83,27 @@ def _me(token: str) -> dict | None:
         return None
 
 
+def _me_retry(token: str, attempts: int = 3, delay: float = 2.0) -> dict | None:
+    """GET /auth/me with retry — the API cold-starts on Render free tier,
+    and a timeout here silently bounces a just-logged-in user back to login."""
+    for i in range(attempts):
+        u = _me(token)
+        if u:
+            return u
+        if i < attempts - 1:
+            time.sleep(delay)
+    return None
+
+
+def _login_with_tokens(toks: dict) -> dict:
+    """Persist tokens + fetch the user profile (retry on API cold start)."""
+    _save_auth(toks)
+    st.session_state.auth_token = toks["access_token"]
+    st.session_state.auth_refresh = toks.get("refresh_token", "")
+    st.session_state.auth_user = _me_retry(toks["access_token"]) or {}
+    return st.session_state.auth_user
+
+
 def _refresh(token_pair: dict) -> dict | None:
     try:
         r = _api("POST", "/auth/refresh", None, json={"refresh_token": token_pair.get("refresh_token", "")})
@@ -97,7 +118,7 @@ def _ensure_auth() -> dict:
         return st.session_state.auth_user
     saved = _load_auth_file()
     if saved.get("access_token"):
-        u = _me(saved["access_token"])
+        u = _me_retry(saved["access_token"])
         if u:
             st.session_state.auth_token = saved["access_token"]
             st.session_state.auth_refresh = saved.get("refresh_token", "")
@@ -106,7 +127,7 @@ def _ensure_auth() -> dict:
         new = _refresh(saved)
         if new and new.get("access_token"):
             _save_auth(new)
-            u = _me(new["access_token"])
+            u = _me_retry(new["access_token"])
             if u:
                 st.session_state.auth_token = new["access_token"]
                 st.session_state.auth_refresh = new.get("refresh_token", "")
@@ -116,17 +137,137 @@ def _ensure_auth() -> dict:
     st.stop()
 
 
+def _auth_css() -> None:
+    """Google-modern auth screen: light canvas, centered white card, pill buttons."""
+    st.markdown(
+        """
+        <style>
+        .stApp, [data-testid="stAppViewContainer"], section[data-testid="stMain"] {
+            background: #f0f4f9 !important;
+        }
+        header[data-testid="stHeader"], #MainMenu, footer {visibility: hidden;}
+        [data-testid="stSidebar"] {display: none;}
+        [data-testid="stVerticalBlockBorderWrapper"] {border: none !important;}
+        .block-container {
+            max-width: 448px; margin: 7vh auto 40px; background: #fff;
+            border-radius: 28px; padding: 44px 40px 40px;
+            box-shadow: 0 1px 3px rgba(60,64,67,.16), 0 6px 16px 4px rgba(60,64,67,.08);
+        }
+        .maia-brand {display:flex; align-items:center; gap:12px; margin-bottom:4px;}
+        .maia-mark {
+            display:inline-flex; align-items:center; justify-content:center;
+            width:40px; height:40px; border-radius:12px; color:#fff; font-weight:700;
+            font-size:22px; font-family:'Google Sans',Roboto,Arial,sans-serif;
+            background:linear-gradient(135deg,#4285F4 0%,#34A853 55%,#FBBC05 80%,#EA4335 100%);
+        }
+        .maia-h1 {font-family:'Google Sans',Roboto,Arial,sans-serif; font-size:26px;
+            font-weight:400; color:#1f1f1f; margin:18px 0 6px;}
+        .maia-sub {font-family:Roboto,Arial,sans-serif; font-size:14px; color:#444746;
+            line-height:1.5; margin:0 0 22px;}
+        a.maia-gg {
+            display:flex; align-items:center; justify-content:center; gap:12px;
+            height:44px; border-radius:100px; background:#fff; color:#1f1f1f;
+            border:1px solid #747775; text-decoration:none; font-weight:500;
+            font-size:15px; font-family:'Google Sans',Roboto,Arial,sans-serif;
+            transition: background .15s, box-shadow .15s;
+        }
+        a.maia-gg:hover {background:#f8f9fa; box-shadow:0 1px 2px rgba(60,64,67,.25);}
+        .stButton > button {
+            border-radius:100px; height:44px; font-weight:500; font-size:15px;
+            border:1px solid #747775; background:#fff; color:#0b57d0;
+            font-family:'Google Sans',Roboto,Arial,sans-serif;
+        }
+        .stButton > button[kind="primary"] {background:#0b57d0; color:#fff; border:none;}
+        .stButton > button[kind="primary"]:hover {background:#0842a0; box-shadow:0 1px 2px rgba(60,64,67,.3);}
+        [data-baseweb="tab-list"] {border-bottom:none; gap:2px;}
+        [data-baseweb="tab"] {padding:8px 14px; border-radius:100px;}
+        [data-baseweb="tab"] p {font-size:14px; font-weight:500;}
+        [data-baseweb="tab-highlight"] {background-color:#e8f0fe;}
+        [data-baseweb="base-input"] {border-radius:8px;}
+        .maia-divider {display:flex; align-items:center; gap:14px; margin:20px 0 6px;}
+        .maia-divider .ln {flex:1; height:1px; background:#c4c7c5;}
+        .maia-divider .tx {color:#444746; font-size:13px; font-family:Roboto,Arial,sans-serif;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+_GOOGLE_G_SVG = (
+    "<svg version='1.1' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' "
+    "width='20' height='20'>"
+    "<path fill='#EA4335' d='M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z'/>"
+    "<path fill='#4285F4' d='M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z'/>"
+    "<path fill='#FBBC05' d='M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z'/>"
+    "<path fill='#34A853' d='M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z'/>"
+    "</svg>"
+)
+
+_APP_BASE = os.environ.get("APP_BASE_URL", "http://localhost:8501").rstrip("/")
+_G_REDIRECT_URI = f"{_APP_BASE}/auth/google/callback"
+
+
+
 def _auth_screen() -> None:
-    st.markdown("<div class='maia-empty'><div class='maia-empty-brand'>"
-                "<span class='maia-mark'>M</span><h1>MAIA</h1></div>"
-                "<p class='maia-empty-tag'>Đăng nhập để tiếp tục</p>"
-                "<p class='maia-empty-sub'>Mỗi nhân viên đăng nhập bằng tài khoản riêng — "
-                "yêu cầu nghỉ phép / IT ticket được định danh và gửi đúng bộ phận.</p></div>",
-                unsafe_allow_html=True)
+    _auth_css()
+    st.markdown(
+        "<div class='maia-brand'><span class='maia-mark'>M</span></div>"
+        "<h1 class='maia-h1'>Đăng nhập vào MAIA</h1>"
+        "<p class='maia-sub'>Mỗi nhân viên đăng nhập bằng tài khoản riêng — yêu cầu nghỉ phép / "
+        "IT ticket được định danh và gửi đúng bộ phận.</p>",
+        unsafe_allow_html=True,
+    )
 
     qp = st.query_params
     reset_token = qp.get("reset_token", "")
     reset_token = reset_token[0] if isinstance(reset_token, list) else reset_token
+    oauth_code = qp.get("code", "")
+    oauth_code = oauth_code[0] if isinstance(oauth_code, list) else oauth_code
+    oauth_error = qp.get("error", "")
+    oauth_error = oauth_error[0] if isinstance(oauth_error, list) else oauth_error
+
+    # Google OAuth callback (user returns from accounts.google.com with ?code=...)
+    if oauth_code and not reset_token:
+        # Single-attempt guard: Google auth codes are one-time; a Streamlit
+        # rerun must never POST the same code twice (second POST always 400s).
+        if st.session_state.get("oauth_code_handled") == oauth_code:
+            return
+        st.session_state.oauth_code_handled = oauth_code
+        st.markdown("#### Đang hoàn tất đăng nhập Google…")
+        try:
+            # timeout 90s: the API cold-starts on Render free tier.
+            r = _api("POST", "/auth/google/callback", None, timeout=90,
+                     json={"code": oauth_code.strip(), "redirect_uri": _G_REDIRECT_URI})
+        except Exception as e:
+            st.session_state.pop("oauth_code_handled", None)
+            st.error(f"Không kết nối được API ({MAIA_API_URL}): {e}")
+            return
+        if r.status_code == 200:
+            _login_with_tokens(r.json())
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            st.rerun()
+        else:
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            try:
+                detail = r.json().get("detail", "Đăng nhập Google thất bại.")
+            except Exception:
+                detail = f"Đăng nhập Google thất bại ({r.status_code})."
+            st.session_state.pop("oauth_code_handled", None)
+            st.error(f"{detail} Mã Google chỉ dùng được một lần — hãy thử đăng nhập lại.")
+            return
+    if oauth_error and not reset_token:
+        st.error(f"Google từ chối đăng nhập ({oauth_error}). Hãy thử lại.")
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+        return
 
     # Reset-password flow (only via email link)
     if reset_token:
@@ -162,13 +303,21 @@ def _auth_screen() -> None:
     except Exception:
         google_url = ""
     if google_url:
-        btn_css = "<style>a.maia-gg{display:block;text-align:center;padding:10px 16px;border-radius:8px;background:#fff;color:#1f1f1f;border:1px solid #dadce0;text-decoration:none;font-weight:600;font-size:14px;transition:box-shadow .15s}a.maia-gg:hover{box-shadow:0 1px 3px rgba(0,0,0,.12)}</style>"
-        st.markdown(btn_css + f"<a class='maia-gg' href='{google_url}'>✨ Đăng nhập bằng Google</a>", unsafe_allow_html=True)
+        st.markdown(
+            f"<a class='maia-gg' href='{google_url}'>{_GOOGLE_G_SVG}"
+            f"<span>Đăng nhập bằng Google</span></a>",
+            unsafe_allow_html=True,
+        )
     else:
         st.caption("Google Sign-In chưa cấu hình")
 
     # Divider
-    st.markdown("<div style='display:flex;align-items:center;gap:12px;margin:18px 0'><div style='flex:1;height:1px;background:#e0e0e0'></div><span style='color:#888;font-size:12px'>hoặc</span><div style='flex:1;height:1px;background:#e0e0e0'></div></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='maia-divider'><div class='ln'></div>"
+        "<span class='tx'>hoặc</span>"
+        "<div class='ln'></div></div>",
+        unsafe_allow_html=True,
+    )
 
     # Email/password tabs
     tabs = st.tabs(["Đăng nhập", "Đăng ký", "Quên mật khẩu"])
