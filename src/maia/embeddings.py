@@ -84,8 +84,11 @@ class Embedder:
     def embed(self, texts: list[str]) -> np.ndarray:
         if self._backend is not None:
             try:
-                return self._backend.embed(texts)
-            except Exception as e:  # noqa: BLE001 - degraded fallback by design
+                # fastembed returns a lazy iterable; the cloudflare backend
+                # returns an ndarray — normalize so callers always get one.
+                res = self._backend.embed(texts)
+                return res if isinstance(res, np.ndarray) else np.asarray(list(res), dtype=np.float32)
+            except Exception as e:
                 print(f"[embeddings] backend embed error, fallback: {e}", file=sys.stderr)
         return self._hash_embed(texts)
 

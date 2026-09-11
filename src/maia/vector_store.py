@@ -8,6 +8,7 @@
 """
 import hashlib
 import uuid
+from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -54,24 +55,25 @@ class QdrantStore:
         if ":6333" in self.url:
             candidates.append(self.url.replace(":6333", ":443"))
         last_err: Exception | None = None
-        self.client = None
+        client: QdrantClient | None = None
         for candidate in candidates:
             kwargs = {"url": candidate, "prefer_grpc": False, "timeout": 30,
                       "check_compatibility": False}
             if api_key:
                 kwargs["api_key"] = api_key
             try:
-                client = QdrantClient(**kwargs)
-                client.get_collections()  # connectivity probe
-                self.client = client
+                probe = QdrantClient(**kwargs)
+                probe.get_collections()  # connectivity probe
+                client = probe
                 self.url = candidate
                 break
             except Exception as e:  # try next candidate
                 last_err = e
-        if self.client is None:
+        if client is None:
             raise ConnectionError(
                 f"Cannot reach Qdrant at {url} (tried {candidates}): {last_err}"
             )
+        self.client: QdrantClient = client
         self.ensure_collection()
 
     def ensure_collection(self):
@@ -84,6 +86,19 @@ class QdrantStore:
                 collection_name=self.collection,
                 vectors_config=VectorParams(size=self.dim, distance=Distance.COSINE),
             )
+        # Payload indexes for filter fields (tenant_id, chunk_id, session_id,
+        # filename, doc_id). Required so Qdrant search with query_filter works
+        # on the new collection; without them the first filtered search 400s
+        # with "Index required but not found for tenant_id".
+        for field in ("tenant_id", "chunk_id", "session_id", "filename", "doc_id"):
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.collection,
+                    field_name=field,
+                    field_schema="keyword",
+                )
+            except Exception:
+                pass  # index already exists or unsupported — non-fatal
 
     def upsert(self, vectors, chunks) -> int:
         from .config import settings as _s
@@ -127,7 +142,7 @@ class QdrantStore:
         pid = str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
         try:
             return bool(self.client.retrieve(collection_name=self.collection, ids=[pid]))
-        except Exception:  # noqa: BLE001 - treat lookup failure as not-found
+        except Exception:
             return False
 
     def search(self, query_vec, top_k: int = 10, score_threshold: float | None = None, tenant_id: str | None = None, extra_filter: Filter | None = None) -> list[dict]:
@@ -135,8 +150,11 @@ class QdrantStore:
         qfilter: Filter | None = extra_filter
         if tenant_id:
             tenant_cond = FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))
-            if qfilter and qfilter.must:
-                qfilter.must.append(tenant_cond)
+            if qfilter is not None and qfilter.must:
+                if isinstance(qfilter.must, list):
+                    qfilter.must.append(tenant_cond)
+                else:
+                    qfilter.must = [qfilter.must, tenant_cond]
             elif qfilter:
                 qfilter.must = [tenant_cond]
             else:
@@ -152,6 +170,10 @@ class QdrantStore:
 
     def _do_search(self, vec, top_k, score_threshold, qfilter, tenant_id) -> list[dict]:
         # qdrant-client >=1.10 uses query_points; older uses search
+        # (kept for the >=1.9 floor in requirements.txt).
+        # NOTE: hits is deliberately list[Any] — the three version branches
+        # yield different shapes (ScoredPoint list vs legacy response).
+        hits: list[Any] = []
         try:
             res = self.client.query_points(
                 collection_name=self.collection,
@@ -160,9 +182,10 @@ class QdrantStore:
                 score_threshold=score_threshold,
                 query_filter=qfilter,
             )
-            hits = res.points if hasattr(res, "points") else res
+            hits = list(res.points) if hasattr(res, "points") else list(res)
         except AttributeError:
-            hits = self.client.search(
+            # qdrant-client <1.10 legacy path (requirements floor is >=1.9).
+            hits = self.client.search(  # pyright: ignore[reportAttributeAccessIssue]
                 collection_name=self.collection,
                 query_vector=vec,
                 limit=top_k,
@@ -177,7 +200,7 @@ class QdrantStore:
                 limit=top_k,
                 score_threshold=score_threshold,
             )
-            hits = res.points if hasattr(res, "points") else res
+            hits = list(res.points) if hasattr(res, "points") else list(res)
             if tenant_id:
                 hits = [h for h in hits if (h.payload or {}).get("tenant_id") in (tenant_id, None, "")]
         out = []

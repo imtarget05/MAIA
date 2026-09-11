@@ -41,7 +41,7 @@ def query(question: str, top_k_final: int | None = None, tenant_id: str | None =
     tracer = PipelineTracer()
     tracer.log("query_input", query=question, tenant=tenant_id, session=session_id)
 
-    _, store, retriever, reranker, llm = build_stack(tenant_id=tenant_id)
+    _, _store, retriever, reranker, llm = build_stack(tenant_id=tenant_id)
     top_k_final = top_k_final or settings.TOP_K_FINAL
     candidates = retriever.retrieve(question, tenant_id=retriever.tenant_id,
                                     session_id=session_id)

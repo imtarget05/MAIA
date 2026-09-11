@@ -155,7 +155,8 @@ def check_chat(base: str, token: str) -> None:
     headers = {"Authorization": f"Bearer {token}"}
     payload = {"question": "What is the leave policy?", "top_k": 3}
     try:
-        r = requests.post(f"{base}/chat", json=payload, headers=headers, timeout=30)
+        # Cloudflare LLM can take >30s on cold start; allow up to 4min.
+        r = requests.post(f"{base}/chat", json=payload, headers=headers, timeout=240)
     except Exception as exc:
         check("Chat request", False, str(exc))
         return
@@ -184,7 +185,8 @@ def check_ingest(base: str, token: str) -> None:
     print("\n[5/5] Enterprise     POST /ingest/enterprise")
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        r = requests.post(f"{base}/ingest/enterprise", headers=headers, timeout=60)
+        # Ingest embeds via Cloudflare (HTTP) — allow up to 3min.
+        r = requests.post(f"{base}/ingest/enterprise", headers=headers, timeout=180)
     except Exception as exc:
         check("Ingest request", False, str(exc))
         return

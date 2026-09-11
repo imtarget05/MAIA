@@ -8,7 +8,6 @@ makes a small HTTP POST per batch, so peak memory stays ~150Mi and the
 free plan suffices. The Qdrant collection needs 1024d (BGE-m3).
 """
 import os
-from typing import Optional
 
 import numpy as np
 import requests
@@ -30,7 +29,7 @@ class CloudflareEmbedder:
 
     def __init__(self, account_id: str = "", api_token: str = "",
                  model: str = _CF_EMBED_MODEL,
-                 dim: Optional[int] = None):
+                 dim: int | None = None):
         self.account_id = (account_id or "").strip()
         self.api_token = (api_token or "").strip()
         self.model = (model or _CF_EMBED_MODEL).strip()
@@ -62,7 +61,7 @@ class CloudflareEmbedder:
                 self.dim = arr.shape[1] if arr.ndim == 2 else self.dim
                 return arr
             raise ValueError(f"unexpected Cloudflare embedding response: {r.text[:200]}")
-        except Exception as e:  # noqa: BLE001 - degraded mode by design
+        except Exception as e:
             print(f"[embeddings] cloudflare embed failed ({e}), hash fallback", file=__import__("sys").stderr)
             return self._hash_embed(texts)
 
