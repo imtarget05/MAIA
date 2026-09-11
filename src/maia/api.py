@@ -431,13 +431,14 @@ def google_callback(request: GoogleAuthRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail="Google Sign-In is not configured")
     import requests as http
     # 1) Exchange code -> tokens
+    # MUST use the SAME redirect_uri as the authorize request (root /)
     token_res = http.post(
         "https://oauth2.googleapis.com/token",
         data={
             "code": request.code,
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": f"{settings.APP_BASE_URL}/auth/google/callback",
+            "redirect_uri": f"{settings.APP_BASE_URL}/",
             "grant_type": "authorization_code",
         },
         timeout=30,

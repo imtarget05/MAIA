@@ -70,4 +70,4 @@ def test_google_callback_ignores_spoofed_client_redirect_uri():
     ):
         r = _client().post("/auth/google/callback", json=body)
     assert r.status_code == 400
-    assert calls["redirect_uri"] == "https://maia-ui.onrender.com/auth/google/callback"
+    assert calls["redirect_uri"] == "https://maia-ui.onrender.com/"
