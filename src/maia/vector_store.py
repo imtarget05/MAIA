@@ -16,6 +16,7 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
+    PayloadSchemaType,
     PointStruct,
     VectorParams,
 )
@@ -95,7 +96,7 @@ class QdrantStore:
                 self.client.create_payload_index(
                     collection_name=self.collection,
                     field_name=field,
-                    field_schema="keyword",
+                    field_schema=PayloadSchemaType.KEYWORD,
                 )
             except Exception:
                 pass  # index already exists or unsupported — non-fatal

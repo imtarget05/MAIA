@@ -437,7 +437,7 @@ def google_callback(request: GoogleAuthRequest, db: Session = Depends(get_db)):
             "code": request.code,
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": request.redirect_uri or f"{settings.APP_BASE_URL}/auth/google/callback",
+            "redirect_uri": f"{settings.APP_BASE_URL}/auth/google/callback",
             "grant_type": "authorization_code",
         },
         timeout=30,
@@ -446,8 +446,8 @@ def google_callback(request: GoogleAuthRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Google code exchange failed")
     id_token = token_res.json().get("id_token")
     # 2) Verify id_token -> user info
-    from google.oauth2 import id_token as google_id_token
     from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
     try:
         info = google_id_token.verify_oauth2_token(
             id_token, google_requests.Request(), settings.GOOGLE_CLIENT_ID)
