@@ -71,7 +71,7 @@ services:
       - key: CLOUDFLARE_MODEL
         value: "@cf/meta/llama-3.1-8b-instruct"
       - key: QDRANT_COLLECTION
-        value: maia_knowledge
+        value: maia_knowledge_v2
       - key: WORKFLOW_DB_PATH
         value: /tmp/storage/workflow.db
       - key: SESSION_DB_PATH
@@ -137,7 +137,7 @@ services:
       - key: CLOUDFLARE_MODEL
         value: "@cf/meta/llama-3.1-8b-instruct"
       - key: QDRANT_COLLECTION
-        value: maia_knowledge
+        value: maia_knowledge_v2
       - key: WORKFLOW_DB_PATH
         value: /tmp/storage/workflow.db
       - key: SESSION_DB_PATH

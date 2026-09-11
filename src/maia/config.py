@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = ""
 
     # Embeddings (§9)
-    EMBED_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    EMBED_MODEL: str = "@cf/baai/bge-m3"
     EMBED_DIM: int = 384
 
     # Chunking (§4)
