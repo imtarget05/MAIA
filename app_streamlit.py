@@ -123,11 +123,13 @@ def _auth_screen() -> None:
                 "<p class='maia-empty-sub'>Mỗi nhân viên đăng nhập bằng tài khoản riêng — "
                 "yêu cầu nghỉ phép / IT ticket được định danh và gửi đúng bộ phận.</p></div>",
                 unsafe_allow_html=True)
-    # Password-reset link handling (?reset_token=...)
     qp = st.query_params
-    preset = qp.get("reset_token", "")
-    tabs = st.tabs(["Đăng nhập", "Đăng ký", "Quên mật khẩu",
-                    "Đặt lại mật khẩu" if preset else "Đặt lại mật khẩu"])
+    reset_token = qp.get("reset_token", "")
+    reset_token = reset_token[0] if isinstance(reset_token, list) else reset_token
+    tab_labels = ["Đăng nhập", "Đăng ký", "Quên mật khẩu"]
+    if reset_token:
+        tab_labels.append("Đặt lại mật khẩu")
+    tabs = st.tabs(tab_labels)
     with tabs[0]:
         email = st.text_input("Email", key="li_email", placeholder="ban@company.com")
         pw = st.text_input("Mật khẩu", type="password", key="li_pw")
@@ -181,28 +183,29 @@ def _auth_screen() -> None:
             except Exception:
                 pass
             st.success("Nếu email tồn tại, link đặt lại đã được gửi. Kiểm tra hộp thư (hoặc Outbox nếu chưa cấu hình SMTP).")
-    with tabs[3]:
-        token = st.text_input("Token đặt lại", value=preset, key="rs_token")
-        pw1 = st.text_input("Mật khẩu mới (≥6 ký tự)", type="password", key="rs_pw1")
-        pw2 = st.text_input("Nhập lại mật khẩu mới", type="password", key="rs_pw2")
-        if st.button("Đổi mật khẩu", type="primary", use_container_width=True):
-            if pw1 != pw2:
-                st.error("Hai mật khẩu chưa khớp.")
-            else:
-                try:
-                    r = _api("POST", "/auth/reset-password", None,
-                             json={"token": token.strip(), "new_password": pw1})
-                except Exception as e:
-                    st.error(f"Không kết nối được API: {e}")
-                    return
-                if r.status_code == 200:
-                    st.success("Đã đổi mật khẩu. Hãy đăng nhập.")
-                    try:
-                        st.query_params.clear()
-                    except Exception:
-                        pass
+    if reset_token and len(tabs) > 3:
+        with tabs[3]:
+            token = st.text_input("Token đặt lại", value=reset_token, key="rs_token")
+            pw1 = st.text_input("Mật khẩu mới (≥6 ký tự)", type="password", key="rs_pw1")
+            pw2 = st.text_input("Nhập lại mật khẩu mới", type="password", key="rs_pw2")
+            if st.button("Đổi mật khẩu", type="primary", use_container_width=True):
+                if pw1 != pw2:
+                    st.error("Hai mật khẩu chưa khớp.")
                 else:
-                    st.error("Token không hợp lệ hoặc đã hết hạn.")
+                    try:
+                        r = _api("POST", "/auth/reset-password", None,
+                                 json={"token": token.strip(), "new_password": pw1})
+                    except Exception as e:
+                        st.error(f"Không kết nối được API: {e}")
+                        return
+                    if r.status_code == 200:
+                        st.success("Đã đổi mật khẩu. Hãy đăng nhập.")
+                        try:
+                            st.query_params.clear()
+                        except Exception:
+                            pass
+                    else:
+                        st.error("Token không hợp lệ hoặc đã hết hạn.")
 
 
 def _logout() -> None:
