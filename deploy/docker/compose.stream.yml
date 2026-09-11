@@ -29,7 +29,6 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: maia-kafka-ui
-    profiles: ["tools"]
     ports:
       - "8080:8080"
     environment:

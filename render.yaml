@@ -1,29 +1,144 @@
-# Render Blueprint — MAIA RAG API (free tier)
-# Deploy: Render Dashboard -> New -> Blueprint -> select this repo
+# MAIA — Intelligent RAG Knowledge Platform
+# Render Blueprint (production)
+# Docs: https://render.com/docs/blueprint-spec
+#
+# IMPORTANT: This is a production blueprint. All env vars marked sync: false
+# MUST be filled in the Render Dashboard (Settings → Environment) after the
+# first deploy. Do NOT store real secrets in this file.
+#
+# Deploy:
+#   render.yaml                    # auto-detected on push
+#   OR: render blueprint launch     # first-time manual
+#
+# After first deploy, sync the sync: false secrets in Render Dashboard:
+#   Settings → Environment → add each missing key.
+
 services:
   - type: web
-    name: maia-rag-api
+    name: maia-api
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: PYTHONPATH=src uvicorn maia.api:app --host 0.0.0.0 --port $PORT
+    region: frankfurt  # change to your nearest region
+    autoDeploy: true
+    buildCommand: |
+      pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: |
+      cd /opt/render/project/src && PYTHONPATH=/opt/render/project/src uvicorn maia.api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: "3.12.6"
+        value: "3.12"
+      - key: ENVIRONMENT
+        value: production
+      - key: STORAGE_DIR
+        value: /tmp/storage
+      - key: DATA_DIR
+        value: /opt/render/project/src/data/samples
+      - key: ENTERPRISE_DATA_DIR
+        value: /opt/render/project/src/data/enterprise
+      - key: LLAMA_INDEX_DATA_PLANE
+        value: "true"
+      - key: DEFAULT_EMPLOYEE_ID
+        value: emp_001
+      - key: BOOTSTRAP_FIRST_ADMIN
+        value: "true"
+      - key: JWT_SECRET_KEY
+        sync: false
+        # Generate a strong random key and paste it in Render Dashboard.
+        # Example: openssl rand -hex 32
+      - key: CORS_ORIGINS
+        sync: false
+        # Comma-separated allowed origins, e.g. https://maia-ui.onrender.com
+      - key: API_BASE_URL
+        sync: false
+        # Example: https://maia-api.onrender.com
+      - key: APP_BASE_URL
+        sync: false
+        # Example: https://maia-ui.onrender.com
       - key: QDRANT_URL
-        sync: false   # e.g. https://your-cluster.gcp.cloud.qdrant.io:6333
+        sync: false
+        # Qdrant Cloud REST URL — fill in Render Dashboard.
+        # Example: https://xxxxx.gcp.cloud.qdrant.io
       - key: QDRANT_API_KEY
-        sync: false   # from Qdrant Cloud dashboard
-      - key: QDRANT_COLLECTION
-        value: maia_knowledge
+        sync: false
+        # Qdrant Cloud API key — fill in Render Dashboard.
       - key: CLOUDFLARE_ACCOUNT_ID
         sync: false
+        # Cloudflare Account ID — fill in Render Dashboard.
       - key: CLOUDFLARE_API_TOKEN
         sync: false
+        # Cloudflare API Token — fill in Render Dashboard.
       - key: CLOUDFLARE_MODEL
         value: "@cf/meta/llama-3.1-8b-instruct"
-      - key: DATA_DIR
-        value: data/samples
+      - key: QDRANT_COLLECTION
+        value: maia_knowledge
+      - key: WORKFLOW_DB_PATH
+        value: /tmp/storage/workflow.db
+      - key: SESSION_DB_PATH
+        value: /tmp/storage/session.db
+
+  - type: web
+    name: maia-ui
+    runtime: python
+    plan: free
+    region: frankfurt  # must match maia-api region for lowest latency
+    autoDeploy: true
+    buildCommand: |
+      pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: |
+      cd /opt/render/project/src && PYTHONPATH=/opt/render/project/src streamlit run /opt/render/project/src/app_streamlit.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: ENVIRONMENT
+        value: production
       - key: STORAGE_DIR
-        value: /tmp/storage   # ephemeral on free tier; BM25 cache auto-rebuilds from Qdrant
+        value: /tmp/storage
+      - key: DATA_DIR
+        value: /opt/render/project/src/data/samples
+      - key: ENTERPRISE_DATA_DIR
+        value: /opt/render/project/src/data/enterprise
+      - key: LLAMA_INDEX_DATA_PLANE
+        value: "true"
+      - key: DEFAULT_EMPLOYEE_ID
+        value: emp_001
+      - key: BOOTSTRAP_FIRST_ADMIN
+        value: "true"
+      - key: MAIA_API_URL
+        sync: false
+        # Backend API URL — update in Render Dashboard after first deploy.
+        # Example: https://maia-api.onrender.com
+      - key: JWT_SECRET_KEY
+        sync: false
+        # Must match maia-api JWT_SECRET_KEY — fill in Render Dashboard.
+      - key: CORS_ORIGINS
+        sync: false
+        # Comma-separated allowed origins, e.g. https://maia-ui.onrender.com
+      - key: API_BASE_URL
+        sync: false
+        # Example: https://maia-api.onrender.com
+      - key: APP_BASE_URL
+        sync: false
+        # Example: https://maia-ui.onrender.com
+      - key: QDRANT_URL
+        sync: false
+        # Qdrant Cloud REST URL — fill in Render Dashboard.
+        # Example: https://xxxxx.gcp.cloud.qdrant.io
+      - key: QDRANT_API_KEY
+        sync: false
+        # Qdrant Cloud API key — fill in Render Dashboard.
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+        # Cloudflare Account ID — fill in Render Dashboard.
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+        # Cloudflare API Token — fill in Render Dashboard.
+      - key: CLOUDFLARE_MODEL
+        value: "@cf/meta/llama-3.1-8b-instruct"
+      - key: QDRANT_COLLECTION
+        value: maia_knowledge
+      - key: WORKFLOW_DB_PATH
+        value: /tmp/storage/workflow.db
+      - key: SESSION_DB_PATH
+        value: /tmp/storage/session.db

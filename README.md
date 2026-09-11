@@ -604,19 +604,31 @@ CI (`.github/workflows/ci.yml`, matrix Python 3.11/3.12): pytest offline + `maia
 
 ## Deployment (all free tier)
 
+> Hướng dẫn triển khai chi tiết xem tại [`docs/deployment.md`](docs/deployment.md).
+
 | Component | Platform | Notes |
 |---|---|---|
-| Vector DB | [Qdrant Cloud](https://cloud.qdrant.io) — free 1GB cluster | Copy cluster URL + API key into `QDRANT_URL` / `QDRANT_API_KEY` |
-| API (FastAPI) | [Render](https://render.com) — free web service | Blueprint included (`render.yaml`); sleeps after 15 min idle, wakes on request |
-| UI (Streamlit) | [Streamlit Community Cloud](https://share.streamlit.io) — always-on free | Configure via App → Settings → Secrets (see `.streamlit/secrets.toml.example`) |
-| LLM | Cloudflare Workers AI — free tier | Existing `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`; empty → MOCK mode |
+| Vector DB | [Qdrant Cloud](https://cloud.qdrant.io) — free 1GB cluster | Copy cluster URL + API key vào `QDRANT_URL` / `QDRANT_API_KEY` |
+| API (FastAPI) | [Render](https://render.com) — free web service | `render.yaml` triển khai service `maia-api` (và optionally `maia-ui`); ngủ sau 15 phút idle, tự thức khi có request |
+| UI (Streamlit) | [Streamlit Community Cloud](https://share.streamlit.io) — always-on free (khuyến nghị) | Cấu hình qua App → Settings → Secrets (xem `.streamlit/secrets.toml.example`) |
+| UI (Streamlit) | [Render](https://render.com) — free web service thứ 2 | `render.yaml` chứa thêm service `maia-ui`; chọn nếu muốn tập trung toàn bộ trên Render |
+| LLM | Cloudflare Workers AI — free tier | Điền `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`; để trống → MOCK mode |
+
+> **Lưu ý:** `render.yaml` hiện chứa **hai services** (`maia-api` và `maia-ui`). Nếu bạn dùng Streamlit Community Cloud cho UI, hãy xóa hoặc vô hiệu hóa service `maia-ui` trong `render.yaml` trước khi deploy để tránh tạo service thừa trên Render.
 
 ### Deploy steps
 
-1. **Qdrant Cloud:** create free cluster → get URL + API key.
-2. **Render:** New → Blueprint → select repo → fill `QDRANT_URL`, `QDRANT_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` when prompted → Deploy. Health check: `GET /health`.
-3. **Streamlit Cloud:** New app → select repo → main file `app_streamlit.py` → in Secrets paste the keys from `.streamlit/secrets.toml.example` with real values.
-4. **First ingestion:** `POST /ingest` on the Render API URL, or run `python -m maia.cli ingest` locally pointed at Qdrant Cloud (`.env` with the same `QDRANT_URL`/`QDRANT_API_KEY`) — data persists in Qdrant Cloud, so any later restart is stateless-safe.
+1. **Qdrant Cloud:** tạo free cluster → lấy URL + API key.
+2. **Render (backend):** New → Blueprint → chọn repo → Render lần lượt tạo service từ `render.yaml`. Sau khi deploy xong, mở Dashboard của từng service để điền các biến môi trường `sync: false` còn thiếu (`QDRANT_URL`, `QDRANT_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`). Health check: `GET /health` trên API service.
+3. **Frontend** (chọn 1):
+   - **Streamlit Community Cloud (khuyến nghị):** New app → chọn repo → main file `app_streamlit.py` → trong Secrets paste các key từ `.streamlit/secrets.toml.example` với giá trị thật.
+   - **Render:** Mở Render Dashboard → tạo Web Service thứ 2 từ cùng repo (hoặc để `render.yaml` tự tạo) → cấu hình start command phù hợp cho Streamlit.
+4. **First ingestion:** `POST /ingest` trên Render API URL, hoặc chạy `python -m maia.cli ingest` locally trỏ vào Qdrant Cloud (`.env` với cùng `QDRANT_URL`/`QDRANT_API_KEY`) — dữ liệu lưu trong Qdrant Cloud, restart sau vẫn không mất.
+5. **Production verification checklist:**
+   - `GET /health` trả 200
+   - `POST /ingest` chạy thành công
+   - UI kết nối API đúng (`MAIA_API_URL` trỏ về Render API)
+   - Truy vấn thử có trả lời có căn cứ + trích dẫn `[S1]`
 
 > **Free-tier note:** Render's filesystem is ephemeral — the BM25 cache (`storage/bm25_corpus.pkl`) is rebuilt automatically from Qdrant on boot (`retriever._load_or_rebuild()`), so no data loss. Ingested uploads land in Qdrant Cloud and survive restarts. Both UI and API are stateless; scale-to-zero only costs a cold-start.
 

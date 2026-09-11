@@ -2,7 +2,11 @@
 # Mỗi nhóm sống trong file riêng dưới deploy/docker/:
 #   compose.infra.yml  — qdrant (luôn cần)
 #   compose.app.yml    — api FastAPI (app chính)
-#   compose.stream.yml — kafka + worker (PROJECT 2, opt-in; kafka-ui ở profile `tools`)
+#   compose.stream.yml — kafka + kafka-ui + worker (PROJECT 2)
+#   compose.ui.yml     — streamlit frontend (http://localhost:8501)
+#
+# Lệnh duy nhất cho full stack: docker compose up -d
+# (qdrant + api + kafka/kafka-ui/worker + streamlit, chung 1 project/network)
 #
 # Lệnh tương đương cũ: docker compose up -d            # infra + app (không kafka)
 # Full streaming:       docker compose --profile tools up -d   # thêm kafka/worker/ui
@@ -12,3 +16,4 @@ include:
   - deploy/docker/compose.infra.yml
   - deploy/docker/compose.app.yml
   - deploy/docker/compose.stream.yml
+  - deploy/docker/compose.ui.yml

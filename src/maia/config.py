@@ -12,6 +12,13 @@ fields, default OFF.
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Process-wide cache for the ephemeral JWT fallback (see
+# Settings.jwt_secret_key). Without this, every property access minted a fresh
+# random key, so maia.auth.SECRET_KEY != maia.api.SECRET_KEY and login
+# succeeded while all authed endpoints 401'd. Module-level on purpose: keeps
+# Settings flat-only (no new field, no sub-config).
+_ephemeral_jwt_key: str | None = None
+
 
 class Settings(BaseSettings):
     """Top-level settings: flat fields, env-bound, no magic."""
@@ -179,7 +186,10 @@ class Settings(BaseSettings):
                 RuntimeWarning,
                 stacklevel=1,
             )
-            return secrets.token_urlsafe(48)
+            global _ephemeral_jwt_key
+            if _ephemeral_jwt_key is None:
+                _ephemeral_jwt_key = secrets.token_urlsafe(48)
+            return _ephemeral_jwt_key
         return self.JWT_SECRET_KEY
 
 
