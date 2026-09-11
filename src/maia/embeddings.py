@@ -7,6 +7,7 @@ Falls back to deterministic hash embedding if fastembed unavailable
 import hashlib
 import os
 import sys
+import threading
 
 import numpy as np
 
@@ -27,6 +28,31 @@ def _get_embed_breaker() -> CircuitBreaker:
         _embed_breaker = CircuitBreaker("embed", failure_threshold=threshold,
                                         recovery_timeout=settings.RELIABILITY_RECOVERY_TIMEOUT_SEC)
     return _embed_breaker
+
+
+# Process-wide Embedder singleton (deploy fix 2026-09-11).
+#
+# Root cause fixed: build_stack() created a NEW Embedder per request, and
+# each Embedder loads the FastEmbed ONNX model (~hundreds of MB). On Render
+# free tier (512Mi) the instance OOM-crashed and crash-looped (server_failed
+# events, HTTP 502) as soon as /ready (previously /health) built the stack.
+# The singleton loads the model ONCE per worker process; every request
+# reuses it. Thread-safe via a lock (uvicorn default workers=1, threads>1).
+_embed_singleton: "Embedder | None" = None
+_embed_singleton_lock = threading.Lock()
+
+
+def get_embedder(model: str | None = None, dim: int | None = None) -> "Embedder":
+    """Return the process-wide Embedder, creating it once (lazy, thread-safe)."""
+    global _embed_singleton
+    if _embed_singleton is None:
+        with _embed_singleton_lock:
+            if _embed_singleton is None:
+                _embed_singleton = Embedder(
+                    model=model or settings.EMBED_MODEL,
+                    dim=dim or settings.EMBED_DIM,
+                )
+    return _embed_singleton
 
 
 class Embedder:

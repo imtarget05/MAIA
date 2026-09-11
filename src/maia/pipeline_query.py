@@ -3,7 +3,7 @@
 import time
 
 from .config import settings
-from .embeddings import Embedder
+from .embeddings import get_embedder
 from .ingestion_pipeline import (
     ingest_data_dir,  # noqa: F401  (canonical ingest entry — re-exported; tests + CI import it from here)
 )
@@ -16,7 +16,10 @@ from .vector_store import QdrantStore
 
 
 def build_stack(tenant_id: str | None = None):
-    embedder = Embedder(model=settings.EMBED_MODEL, dim=settings.EMBED_DIM)
+    # Deploy fix 2026-09-11: reuse the process-wide Embedder singleton.
+    # Constructing Embedder() per request re-loads the FastEmbed ONNX model
+    # (~hundreds of MB) and OOM-crashes Render free tier (512Mi).
+    embedder = get_embedder(model=settings.EMBED_MODEL, dim=settings.EMBED_DIM)
     store = QdrantStore(url=settings.QDRANT_URL, collection=settings.QDRANT_COLLECTION,
                         dim=embedder.dim, api_key=settings.QDRANT_API_KEY)
     retriever = HybridRetriever(

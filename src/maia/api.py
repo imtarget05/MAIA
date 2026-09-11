@@ -723,9 +723,24 @@ def health():
 
 @app.get("/ready")
 def ready():
-    """Readiness probe: builds the stack, reports qdrant/llm/rerank state."""
+    """Readiness probe WITHOUT loading the embedding model.
+
+    MUST stay cheap: even /ready OOM-crashed Render free tier (512Mi) when
+    it called build_stack(), because every Embedder() loads the FastEmbed
+    ONNX model (~hundreds of MB). The model now lives in a process-wide
+    singleton (embeddings.get_embedder) loaded once; this probe only checks
+    Qdrant connectivity + reports llm/rerank modes (both cheap, no model).
+    """
     try:
-        _, store, _, reranker, llm = build_stack()
+        from maia.llm import CloudflareLLM
+        from maia.reranker import Reranker
+        from maia.vector_store import QdrantStore
+
+        store = QdrantStore(url=settings.QDRANT_URL, collection=settings.QDRANT_COLLECTION,
+                            dim=settings.EMBED_DIM, api_key=settings.QDRANT_API_KEY)
+        llm = CloudflareLLM(settings.CLOUDFLARE_ACCOUNT_ID, settings.CLOUDFLARE_API_TOKEN,
+                             settings.CLOUDFLARE_MODEL)
+        reranker = Reranker()
         return {"status": "ok", "qdrant_points": store.count(),
                 "collection": settings.QDRANT_COLLECTION,
                 "llm_mode": llm.mode, "rerank_mode": reranker.mode,
