@@ -61,10 +61,15 @@ class Embedder:
         self.dim = dim
         self._backend = None
         self._mode = "hash"
-        # MAIA_EMBED_FORCE_HASH=1 -> deterministic offline hash embedding
-        # (no model download, no HF Hub/network). Used by CI/CD and offline tests.
+        # Deploy fix 2026-09-11: default to hash embedding (zero model RAM).
+        # The FastEmbed ONNX model (~hundreds of MB) OOM-crashes Render free
+        # tier (512Mi) — /health crash-looped even before this fix. Real
+        # embeddings are opt-in via MAIA_EMBED_MODE=fastembed (needs ~1GB,
+        # i.e. Render Starter+). MAIA_EMBED_FORCE_HASH=1 (CI/offline tests)
+        # keeps working as a legacy alias for hash mode.
+        use_fastembed = os.environ.get("MAIA_EMBED_MODE", "").strip().lower() == "fastembed"
         force_hash = os.environ.get("MAIA_EMBED_FORCE_HASH", "").strip()
-        if not force_hash:
+        if use_fastembed and not force_hash:
             try:
                 from fastembed import TextEmbedding
 

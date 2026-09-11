@@ -124,7 +124,13 @@ def check_login(base: str, email: str) -> str:
     print("\n[3/5] Login          POST /auth/login")
     payload = {"email": email, "password": "DeployCheck!234"}
     try:
-        r = requests.post(f"{base}/auth/login", json=payload, timeout=15)
+        # NOTE: /auth/login uses OAuth2PasswordRequestForm -> form-encoded
+        # username/password (NOT JSON). JSON body 422s with missing fields.
+        r = requests.post(
+            f"{base}/auth/login",
+            data={"username": email, "password": "DeployCheck!234"},
+            timeout=15,
+        )
     except Exception as exc:
         check("Login request", False, str(exc))
         return ""
