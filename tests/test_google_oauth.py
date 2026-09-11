@@ -15,8 +15,12 @@ def _client() -> TestClient:
     return TestClient(api.app)
 
 
-def test_google_login_url_points_at_ui(monkeypatch):
-    """GET /auth/google/login redirect_uri must be the UI, not the API."""
+def test_google_login_url_points_at_ui_root(monkeypatch):
+    """GET /auth/google/login redirect_uri must be the UI ROOT (/), not /auth/google/callback.
+
+    Streamlit single-page app only serves root `/`. Sub-paths like
+    `/auth/google/callback` return empty shell (no JS runs) → blank page.
+    """
     monkeypatch.setattr(api.settings, "GOOGLE_CLIENT_ID", "test-client-id")
     monkeypatch.setattr(api.settings, "GOOGLE_CLIENT_SECRET", "test-secret")
     monkeypatch.setattr(api.settings, "APP_BASE_URL", "https://maia-ui.onrender.com")
@@ -25,7 +29,8 @@ def test_google_login_url_points_at_ui(monkeypatch):
     from urllib.parse import parse_qs, urlparse
 
     qs = parse_qs(urlparse(r.json()["url"]).query)
-    assert qs["redirect_uri"] == ["https://maia-ui.onrender.com/auth/google/callback"]
+    # Redirect URI phải là ROOT của UI — Streamlit chỉ serve root
+    assert qs["redirect_uri"] == ["https://maia-ui.onrender.com/"]
 
 
 def test_google_login_503_when_unconfigured(monkeypatch):
