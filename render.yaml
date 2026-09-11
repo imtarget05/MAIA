@@ -46,6 +46,14 @@ services:
         sync: false
         # Generate a strong random key and paste it in Render Dashboard.
         # Example: openssl rand -hex 32
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+        # Google OAuth client id — fill in Render Dashboard (BOTH services).
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+        # Google OAuth client secret — fill in Render Dashboard (BOTH services).
+        # WARNING: Render PUT /env-vars REPLACES the whole set — always send
+        # full-set updates or unrelated keys (JWT_SECRET_KEY, ...) get wiped.
       - key: CORS_ORIGINS
         sync: false
         # Comma-separated allowed origins, e.g. https://maia-ui.onrender.com
@@ -112,6 +120,14 @@ services:
       - key: JWT_SECRET_KEY
         sync: false
         # Must match maia-api JWT_SECRET_KEY — fill in Render Dashboard.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+        # Google OAuth client id — fill in Render Dashboard (BOTH services).
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+        # Google OAuth client secret — fill in Render Dashboard (BOTH services).
+        # WARNING: Render PUT /env-vars REPLACES the whole set — always send
+        # full-set updates or unrelated keys (JWT_SECRET_KEY, ...) get wiped.
       - key: CORS_ORIGINS
         sync: false
         # Comma-separated allowed origins, e.g. https://maia-ui.onrender.com
