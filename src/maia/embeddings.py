@@ -67,9 +67,15 @@ class Embedder:
         # embeddings are opt-in via MAIA_EMBED_MODE=fastembed (needs ~1GB,
         # i.e. Render Starter+). MAIA_EMBED_FORCE_HASH=1 (CI/offline tests)
         # keeps working as a legacy alias for hash mode.
-        use_fastembed = os.environ.get("MAIA_EMBED_MODE", "").strip().lower() == "fastembed"
+        # Embedding mode (deploy fix 2026-09-11):
+        # - fastembed is the PRODUCTION mode (real sentence vectors). It is the
+        #   default; the FastEmbed ONNX model is loaded once per process by the
+        #   get_embedder() singleton and reused by every request.
+        # - MAIA_EMBED_FORCE_HASH=1 forces the deterministic hash embedding
+        #   used by CI / offline test runners (conftest sets it) — NOT for
+        #   production: hash vectors are too sparse for useful cosine retrieval.
         force_hash = os.environ.get("MAIA_EMBED_FORCE_HASH", "").strip()
-        if use_fastembed and not force_hash:
+        if not force_hash:
             try:
                 from fastembed import TextEmbedding
 
@@ -78,6 +84,12 @@ class Embedder:
                 vec = list(self._backend.embed(["hello"]))[0]
                 self.dim = len(vec)
                 self._mode = "fastembed"
+                if settings.EMBED_DIM != self.dim:
+                    print(
+                        f"[embeddings] fastembed dim={self.dim} != settings.EMBED_DIM={settings.EMBED_DIM}; "
+                        f"using fastembed dim for Qdrant store",
+                        file=sys.stderr,
+                    )
             except Exception as e:
                 print(f"[embeddings] fastembed unavailable ({e}), using hash fallback dim={dim}")
 
