@@ -608,16 +608,6 @@ with top_r:
                         st.markdown(f"{dot} **{'Sẵn sàng' if llm.mode != 'error' else 'Cần kiểm tra'}** · `{store.count()} đoạn tri thức`")
                 else:
                     st.caption("🟢 MAIA đã sẵn sàng. Bật Chế độ kỹ thuật để xem chi tiết backend.")
-                st.markdown("#### Thêm kiến thức")
-                c1, c2 = st.columns(2)
-                if c1.button("Mẫu", use_container_width=True):
-                    with st.spinner("Đang nạp…"):
-                        st.json(ingest_data_dir())
-                    st.toast("Đã nạp tài liệu mẫu")
-                if c2.button("Nội bộ", use_container_width=True):
-                    with st.spinner("Đang nạp…"):
-                        st.json(ingest_data_dir(settings.ENTERPRISE_DATA_DIR))
-                    st.toast("Đã nạp tài liệu nội bộ")
                 uploaded = st.file_uploader("Kéo file vào đây (.md / .txt / .pdf)", accept_multiple_files=True)
                 if uploaded and st.button("Nạp file vừa chọn", use_container_width=True, type="primary"):
                     dest = Path(settings.DATA_DIR)
