@@ -23,7 +23,7 @@ services:
     buildCommand: |
       pip install --upgrade pip && pip install -r requirements.txt
     startCommand: |
-      cd /opt/render/project/src && PYTHONPATH=/opt/render/project/src uvicorn maia.api:app --host 0.0.0.0 --port $PORT
+      cd /opt/render/project/src && PYTHONPATH=/opt/render/project/src/src uvicorn maia.api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -86,7 +86,7 @@ services:
     buildCommand: |
       pip install --upgrade pip && pip install -r requirements.txt
     startCommand: |
-      cd /opt/render/project/src && PYTHONPATH=/opt/render/project/src streamlit run /opt/render/project/src/app_streamlit.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
+      cd /opt/render/project/src && PYTHONPATH=/opt/render/project/src/src streamlit run /opt/render/project/src/app_streamlit.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
     healthCheckPath: /
     envVars:
       - key: PYTHON_VERSION
