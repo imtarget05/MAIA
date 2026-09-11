@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -88,7 +89,7 @@ app.add_middleware(
 )
 
 # Startup validation: warn if CORS_ORIGINS not set in production
-if not cors_origins and not settings.ENVIRONMENT == "development":
+if not cors_origins and settings.ENVIRONMENT != "development":
     import warnings
     warnings.warn(
         "CORS_ORIGINS is not set — CORS defaults to same-origin only. "
@@ -171,6 +172,12 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class GoogleAuthRequest(BaseModel):
+    """Body for /auth/google/callback — client sends the authorization code."""
+    code: str
+    redirect_uri: str | None = None
 
 
 class QueryReq(BaseModel):
@@ -303,7 +310,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         )
     
     # Reset failed login attempts on successful login
-    update_last_login(db, user.id)
+    update_last_login(db, str(user.id))
     ensure_employee_identity(db, user)
     
     # Create tokens
@@ -397,6 +404,86 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
     user.locked_until = None
     db.commit()
     return {"message": "Password has been reset"}
+
+
+@auth_router.get("/google/login")
+def google_login():
+    """Return the Google OAuth consent-screen URL."""
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Google Sign-In is not configured")
+    from urllib.parse import urlencode
+    base = "https://accounts.google.com/o/oauth2/v2/auth"
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": f"{settings.APP_BASE_URL}/auth/google/callback",
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    return {"url": f"{base}?{urlencode(params)}"}
+
+
+@auth_router.post("/google/callback")
+def google_callback(request: GoogleAuthRequest, db: Session = Depends(get_db)):
+    """Exchange Google auth code for a JWT session."""
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Google Sign-In is not configured")
+    import requests as http
+    # 1) Exchange code -> tokens
+    token_res = http.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": request.code,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": request.redirect_uri or f"{settings.APP_BASE_URL}/auth/google/callback",
+            "grant_type": "authorization_code",
+        },
+        timeout=30,
+    )
+    if token_res.status_code != 200:
+        raise HTTPException(status_code=400, detail="Google code exchange failed")
+    id_token = token_res.json().get("id_token")
+    # 2) Verify id_token -> user info
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+    try:
+        info = google_id_token.verify_oauth2_token(
+            id_token, google_requests.Request(), settings.GOOGLE_CLIENT_ID)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Google token")
+    email = (info.get("email") or "").lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account has no email")
+    full_name = info.get("name") or email.split("@")[0]
+    # 3) Find or create user
+    from maia.models import UserRole
+    user = get_user_by_email(db, email)
+    if not user:
+        user = User(
+            email=email,
+            password_hash="",
+            role=UserRole.USER,
+            tenant_id=settings.TENANT_ID,
+            employee_id=generate_employee_id(db),
+            full_name=full_name,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        user.full_name = full_name or user.full_name
+        db.commit()
+    ensure_employee_identity(db, user)
+    update_last_login(db, str(user.id))
+    access_token, refresh_token = create_user_session(db, str(user.id))
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": _public_user(user),
+    }
 
 
 @auth_router.get("/me", response_model=UserResponse)
@@ -681,7 +768,7 @@ def admin_decide_request(request_id: int, req: DecideReq,
                                    current_user.email or "admin")
     except Exception:
         pass
-    return {"ok": True, "executed": True if side_effect_result else False,
+    return {"ok": True, "executed": bool(side_effect_result),
             "hint": "side-effect executed in admin process" if side_effect_result else "pending session not in this process; decision recorded + notified",
             "request": decided}
 
@@ -915,7 +1002,7 @@ def _state_to_response(state: dict) -> dict:
     }
 
 
-def _agent_chat_stream(g, req, current_user, config: dict):
+def _agent_chat_stream(g, req, current_user, config: RunnableConfig):
     """SSE stream of LangGraph node events for the agent run.
 
     Uses the stable ``graph.stream(stream_mode="updates")`` API — NOT the
@@ -991,7 +1078,7 @@ def agent_chat(req: AgentChatReq, current_user: User = Depends(get_current_activ
 
     g = get_durable_graph()
     thread_id = f"{current_user.tenant_id}:{req.session_id}"
-    config = {"configurable": {"thread_id": thread_id}}
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
     if req.resume:
         result = g.invoke(Command(resume=req.resume), config)
@@ -1025,14 +1112,16 @@ def agent_chat(req: AgentChatReq, current_user: User = Depends(get_current_activ
 def leave_request(days: int = 1, start_date: str | None = None, current_user: User = Depends(get_current_active_user)):
     from maia.agent.tools import create_leave_request
     # Use authenticated user's employee_id
-    return create_leave_request(current_user.employee_id, days, start_date, tenant_id=current_user.tenant_id)
+    return create_leave_request(current_user.employee_id or settings.DEFAULT_EMPLOYEE_ID,
+                                days, start_date, tenant_id=current_user.tenant_id)
 
 
 @app.post("/tools/it/ticket")
 def it_ticket(ticket_type: str = "general", description: str = "", current_user: User = Depends(get_current_active_user)):
     from maia.agent.tools import create_it_ticket
     # Use authenticated user's employee_id
-    return create_it_ticket(current_user.employee_id, ticket_type, description, tenant_id=current_user.tenant_id)
+    return create_it_ticket(current_user.employee_id or settings.DEFAULT_EMPLOYEE_ID,
+                            ticket_type, description, tenant_id=current_user.tenant_id)
 
 
 # ---- Phase 2-4: memory / teams / connectors / voice / finetune ---------
@@ -1051,7 +1140,8 @@ def memory_store(req: MemoryStoreReq, current_user: User = Depends(get_current_a
         return {"ok": False, "error": "ltm_disabled",
                 "hint": "Set LTM_ENABLED=true to persist cross-session memory."}
     # Use authenticated user's ID and tenant_id
-    mem_id = LongTermMemory().store(current_user.employee_id, current_user.tenant_id,
+    mem_id = LongTermMemory().store(current_user.employee_id or settings.DEFAULT_EMPLOYEE_ID,
+                                    current_user.tenant_id,
                                     req.type, req.content)
     return {"ok": mem_id is not None, "id": mem_id}
 
@@ -1063,7 +1153,8 @@ def memory_recall(current_user: User = Depends(get_current_active_user), q: str 
     if not settings.LTM_ENABLED:
         return {"ok": False, "error": "ltm_disabled"}
     # Use authenticated user's ID and tenant_id
-    hits = LongTermMemory().recall(current_user.employee_id, current_user.tenant_id, q, k=k)
+    hits = LongTermMemory().recall(current_user.employee_id or settings.DEFAULT_EMPLOYEE_ID,
+                                   current_user.tenant_id, q, k=k)
     return {"ok": True, "memories": hits}
 
 
@@ -1073,7 +1164,8 @@ def memory_forget(memory_id: int, current_user: User = Depends(get_current_activ
     if not settings.LTM_ENABLED:
         return {"ok": False, "error": "ltm_disabled"}
     # Use authenticated user's ID and tenant_id
-    ok = LongTermMemory().forget(current_user.employee_id, current_user.tenant_id, memory_id)
+    ok = LongTermMemory().forget(current_user.employee_id or settings.DEFAULT_EMPLOYEE_ID,
+                                 current_user.tenant_id, memory_id)
     return {"ok": ok, "id": memory_id}
 
 

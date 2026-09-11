@@ -123,13 +123,55 @@ def _auth_screen() -> None:
                 "<p class='maia-empty-sub'>Mỗi nhân viên đăng nhập bằng tài khoản riêng — "
                 "yêu cầu nghỉ phép / IT ticket được định danh và gửi đúng bộ phận.</p></div>",
                 unsafe_allow_html=True)
+
     qp = st.query_params
     reset_token = qp.get("reset_token", "")
     reset_token = reset_token[0] if isinstance(reset_token, list) else reset_token
-    tab_labels = ["Đăng nhập", "Đăng ký", "Quên mật khẩu"]
+
+    # Reset-password flow (only via email link)
     if reset_token:
-        tab_labels.append("Đặt lại mật khẩu")
-    tabs = st.tabs(tab_labels)
+        st.markdown("#### Đặt lại mật khẩu")
+        pw1 = st.text_input("Mật khẩu mới (≥6 ký tự)", type="password", key="rs_pw1")
+        pw2 = st.text_input("Nhập lại mật khẩu mới", type="password", key="rs_pw2")
+        if st.button("Đổi mật khẩu", type="primary", use_container_width=True):
+            if pw1 != pw2:
+                st.error("Hai mật khẩu chưa khớp.")
+            elif len(pw1) < 6:
+                st.error("Mật khẩu phải có ít nhất 6 ký tự.")
+            else:
+                try:
+                    r = _api("POST", "/auth/reset-password", None,
+                             json={"token": reset_token.strip(), "new_password": pw1})
+                except Exception as e:
+                    st.error(f"Không kết nối được API: {e}")
+                    return
+                if r.status_code == 200:
+                    st.success("Đã đổi mật khẩu. Hãy đăng nhập.")
+                    try:
+                        st.query_params.clear()
+                    except Exception:
+                        pass
+                else:
+                    st.error("Token không hợp lệ hoặc đã hết hạn.")
+        return
+
+    # Google Sign-In
+    try:
+        r = _api("GET", "/auth/google/login")
+        google_url = r.json().get("url", "") if r.status_code == 200 else ""
+    except Exception:
+        google_url = ""
+    if google_url:
+        btn_css = "<style>a.maia-gg{display:block;text-align:center;padding:10px 16px;border-radius:8px;background:#fff;color:#1f1f1f;border:1px solid #dadce0;text-decoration:none;font-weight:600;font-size:14px;transition:box-shadow .15s}a.maia-gg:hover{box-shadow:0 1px 3px rgba(0,0,0,.12)}</style>"
+        st.markdown(btn_css + f"<a class='maia-gg' href='{google_url}'>✨ Đăng nhập bằng Google</a>", unsafe_allow_html=True)
+    else:
+        st.caption("Google Sign-In chưa cấu hình")
+
+    # Divider
+    st.markdown("<div style='display:flex;align-items:center;gap:12px;margin:18px 0'><div style='flex:1;height:1px;background:#e0e0e0'></div><span style='color:#888;font-size:12px'>hoặc</span><div style='flex:1;height:1px;background:#e0e0e0'></div></div>", unsafe_allow_html=True)
+
+    # Email/password tabs
+    tabs = st.tabs(["Đăng nhập", "Đăng ký", "Quên mật khẩu"])
     with tabs[0]:
         email = st.text_input("Email", key="li_email", placeholder="ban@company.com")
         pw = st.text_input("Mật khẩu", type="password", key="li_pw")
@@ -182,30 +224,7 @@ def _auth_screen() -> None:
                 _api("POST", "/auth/forgot-password", None, json={"email": email.strip()})
             except Exception:
                 pass
-            st.success("Nếu email tồn tại, link đặt lại đã được gửi. Kiểm tra hộp thư (hoặc Outbox nếu chưa cấu hình SMTP).")
-    if reset_token and len(tabs) > 3:
-        with tabs[3]:
-            token = st.text_input("Token đặt lại", value=reset_token, key="rs_token")
-            pw1 = st.text_input("Mật khẩu mới (≥6 ký tự)", type="password", key="rs_pw1")
-            pw2 = st.text_input("Nhập lại mật khẩu mới", type="password", key="rs_pw2")
-            if st.button("Đổi mật khẩu", type="primary", use_container_width=True):
-                if pw1 != pw2:
-                    st.error("Hai mật khẩu chưa khớp.")
-                else:
-                    try:
-                        r = _api("POST", "/auth/reset-password", None,
-                                 json={"token": token.strip(), "new_password": pw1})
-                    except Exception as e:
-                        st.error(f"Không kết nối được API: {e}")
-                        return
-                    if r.status_code == 200:
-                        st.success("Đã đổi mật khẩu. Hãy đăng nhập.")
-                        try:
-                            st.query_params.clear()
-                        except Exception:
-                            pass
-                    else:
-                        st.error("Token không hợp lệ hoặc đã hết hạn.")
+            st.success("Nếu email tồn tại, link đặt lại đã được gửi. Kiểm tra hộp thư.")
 
 
 def _logout() -> None:
