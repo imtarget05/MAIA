@@ -64,7 +64,11 @@ def test_session_store():
     slots = s.get_slots("s1")
     assert slots.get("days") == 5
 
-def test_create_it_ticket():
+def test_create_it_ticket(tmp_path, monkeypatch):
+    from maia.config import settings
+    monkeypatch.setattr(settings, "STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "HR_MOCK_DB_PATH", str(tmp_path / "hr_mock.json"))
+    monkeypatch.setattr(settings, "TOOL_TENANT_CHECK", False)
     t = create_it_ticket("emp_001", "vpn_request", "need vpn")
     assert t["ok"] is True
     assert "ticket_id" in t

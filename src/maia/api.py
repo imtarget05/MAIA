@@ -74,7 +74,26 @@ def get_db():
 
 
 # FastAPI app — must be created before any @app.* route is defined
-app = FastAPI(title="MAIA — Enterprise Employee Assistant", version="0.4.0")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start/stop the outbox background worker with the web service.
+
+    start_scheduler() is a NO-OP unless OUTBOX_WORKER_ENABLED=true, so
+    unit tests (TestClient triggers lifespan too) stay deterministic.
+    """
+    from maia.outbox_scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+    try:
+        yield
+    finally:
+        stop_scheduler()
+
+
+app = FastAPI(title="MAIA — Enterprise Employee Assistant", version="0.4.0",
+              lifespan=lifespan)
 
 # CORS (middleware was imported but never configured before)
 # Default to [] (same-origin only) instead of ["*"] for security.
@@ -791,6 +810,33 @@ def admin_outbox(limit: int = 100,
     from maia import notifier as _nt
     return {"emails": _nt.read_outbox(limit=min(limit, 200)),
             "smtp_configured": bool(settings.SMTP_HOST)}
+
+
+@admin_router.post("/outbox/drain")
+def admin_outbox_drain(limit: int = 500,
+                       db: Session = Depends(get_db),
+                       current_user: User = Depends(get_current_admin_user)):
+    """Dispatch every undispatched entry in the outbox queue (admin only).
+
+    Manual trigger for the same pass the background worker runs
+    automatically — tests call this directly instead of waiting on the
+    polling loop.
+
+    Returns the number of messages successfully dispatched in this call.
+    """
+    from maia.outbox_worker import drain_outbox
+    result = drain_outbox(limit=min(limit, 2000))
+    return {"dispatched": result["dispatched"], "pending": result["pending"]}
+
+
+@admin_router.get("/outbox/worker")
+def admin_outbox_worker(db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_admin_user)):
+    """Background worker status (admin only)."""
+    from maia.outbox_scheduler import read_deadletter, scheduler_status
+    st = scheduler_status()
+    st["dead_lettered"] = len(read_deadletter(limit=2000))
+    return st
 
 
 # Routers are included at the end so every endpoint above is registered.

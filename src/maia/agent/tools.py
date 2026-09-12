@@ -3,18 +3,50 @@
 Base implementation used by hris.py (real HRIS + mock fallback).
 All functions accept an optional ``tenant_id`` and enforce employee→tenant
 ownership when ``settings.TOOL_TENANT_CHECK`` is True.
+
+IT tickets are persisted as JSON records under ``STORAGE_DIR/it_tickets.json``
+(see :func:`create_it_ticket` / :func:`get_it_tickets`).
 """
 from __future__ import annotations
 
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..config import settings
 
 # --- Mock HR DB ---
 _DEFAULT_BALANCE = 12
+_IT_TICKETS_FILENAME = "it_tickets.json"
+_IT_TICKET_STATUS_OPEN = "OPEN"
+_IT_TICKET_DEFAULT_ASSIGNEE = "IT Help Desk ext 202"
+
+
+def _it_tickets_path() -> Path:
+    p = Path(settings.STORAGE_DIR) / _IT_TICKETS_FILENAME
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _load_it_tickets() -> list[dict]:
+    p = _it_tickets_path()
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _save_it_tickets(tickets: list[dict]) -> None:
+    _it_tickets_path().write_text(
+        json.dumps(tickets, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _load_hr_db() -> dict:
@@ -69,7 +101,7 @@ def _authorize_employee(employee_id: str, tenant_id: str | None,
     return True, None
 
 
-def _unauthorized_result(employee_id: str, tenant_id: str | None, reason: str = "unauthorized") -> dict:
+def _unauthorized_result(employee_id: str, tenant_id: str | None, reason: str | None = "unauthorized") -> dict:
     return {"ok": False, "error": reason, "employee_id": employee_id,
             "tenant_id": tenant_id}
 
@@ -125,16 +157,39 @@ def create_it_ticket(employee_id: str = "emp_001", ticket_type: str = "general",
     ok, reason = _authorize_employee(employee_id, tenant_id, persist_unknown=True)
     if not ok:
         return _unauthorized_result(employee_id, tenant_id, reason)
+    resolved_tenant = tenant_id or _employee_tenant_lookup(employee_id) or settings.TENANT_ID
     prefix = {"vpn_request": "VPN", "lost_device": "SEC", "laptop_broken": "IT"}.get(ticket_type, "IT")
     tid = f"{prefix}-{datetime.now().strftime('%Y%m%d')}-{random.randint(100,999)}"
+    ticket = {"ticket_id": tid, "employee_id": employee_id, "type": ticket_type,
+              "description": description, "status": _IT_TICKET_STATUS_OPEN,
+              "created_at": _utc_now_iso(), "tenant_id": resolved_tenant,
+              "assignee": _IT_TICKET_DEFAULT_ASSIGNEE}
+    try:
+        tickets = _load_it_tickets()
+        tickets.append(ticket)
+        _save_it_tickets(tickets)
+    except Exception:
+        pass
     return {"ok": True, "ticket_id": tid, "type": ticket_type,
             "employee_id": employee_id, "description": description,
-            "status": "open", "assignee": "IT Help Desk ext 202",
-            "tenant_id": tenant_id or _employee_tenant_lookup(employee_id) or settings.TENANT_ID}
+            "status": _IT_TICKET_STATUS_OPEN, "assignee": _IT_TICKET_DEFAULT_ASSIGNEE,
+            "tenant_id": resolved_tenant}
+
+
+def get_it_tickets(employee_id: str = "emp_001", tenant_id: str | None = None) -> list[dict]:
+    ok, _reason = _authorize_employee(employee_id, tenant_id)
+    if not ok:
+        return []
+    tickets = _load_it_tickets()
+    out = [t for t in tickets
+           if isinstance(t, dict) and t.get("employee_id") == employee_id]
+    if tenant_id is not None:
+        out = [t for t in out if (t.get("tenant_id") or settings.TENANT_ID) == tenant_id]
+    return out
 
 
 def get_employee_requests(employee_id: str = "emp_001", tenant_id: str | None = None) -> list[dict]:
-    ok, reason = _authorize_employee(employee_id, tenant_id)
+    ok, _reason = _authorize_employee(employee_id, tenant_id)
     if not ok:
         return []
     db = _load_hr_db()
@@ -146,5 +201,6 @@ TOOL_REGISTRY = {
     "create_leave_request": create_leave_request,
     "create_it_ticket": create_it_ticket,
     "get_employee_requests": get_employee_requests,
+    "get_it_tickets": get_it_tickets,
 }
 

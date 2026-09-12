@@ -77,6 +77,24 @@ class Settings(BaseSettings):
     HRIS_API_KEY: str = ""
     HRIS_TIMEOUT_SEC: int = 5
 
+    # ITSM ticketing (Jira-first provider adapter, local fallback).
+    # When ITSM_ENABLED=true and ITSM_BASE_URL is set, create_it_ticket
+    # attempts a real provider call (default provider: jira); on any
+    # failure it falls back to the local JSON audit store in tools.py.
+    ITSM_ENABLED: bool = False
+    ITSM_PROVIDER: str = "jira"
+    ITSM_BASE_URL: str = ""
+    ITSM_API_TOKEN: str = ""
+    ITSM_PROJECT_KEY: str = ""
+    ITSM_TIMEOUT_SEC: int = 8
+
+    # Outbox background worker (lifespan loop, self-contained).
+    # Default OFF so unit tests stay deterministic; enable on the server.
+    OUTBOX_WORKER_ENABLED: bool = False
+    OUTBOX_WORKER_INTERVAL_SEC: float = 60.0
+    OUTBOX_WORKER_STARTUP_DRAIN: bool = True
+    OUTBOX_MAX_RETRIES: int = 5
+
     # Kafka streaming ingestion (PROJECT 2). Disabled by default.
     KAFKA_ENABLED: bool = False
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
@@ -148,6 +166,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_ALLOWED_REDIRECT_URIS: str = ""
     API_BASE_URL: str = "http://localhost:8000"
 
     # Email / notifications
