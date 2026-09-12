@@ -325,24 +325,23 @@ jobs:
       - name: Notify Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          CI_RUN_ID: ${{ github.run_id }}
-          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          CI_REF: ${{ github.ref_name }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then
             echo "No DISCORD_WEBHOOK_URL — skipping notification."
             exit 0
           fi
-          ALL_SUCCESS=true
-          for job in lint-and-typecheck unit-tests threshold-regression reranker eval-manifest contact-usability-gate sonarcloud-analysis deploy-production; do
-            if [ "${{ needs.$job.result }}" != "success" ]; then ALL_SUCCESS=false; fi
-          done
-          COLOR=0x00ff00
-          [ "$ALL_SUCCESS" != "true" ] && COLOR=0xff0000 || true
-          TITLE="MAIA CI/CD $([ "$ALL_SUCCESS" = "true" ] && echo '✅ SUCCESS' || echo '❌ FAILED')"
-          PAYLOAD=$(jq -n --arg title "$TITLE" --arg ref "Branch: ${CI_REF}" --arg url "Run: ${CI_RUN_URL}" --arg color "$COLOR" '{
-            "content": "## '"$title"'\\n**'"$ref"'**\\n**'"$url"'**\\n",
-            "embeds": [{"title": "Workflow Status", "color": ($color | tonumber), "fields": [{"name":"Branch","value":"'"${{ github.ref_name }}"'\",\"inline\":true},{\"name\":\"Event\",\"value\":\"'"${{ github.event_name }}"'\",\"inline\":true},{\"name\":\"Run ID\",\"value\":\"'"${{ github.run_id }}"'\",\"inline\":true}]}]
-          }')
+          # needs.<job>.result is exposed as JSON via NEEDS_JSON; any
+          # non-success job flips the overall status to FAILED.
+          FAILED_JOBS=$(echo "$NEEDS_JSON" | jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")')
+          if [ -z "$FAILED_JOBS" ]; then
+            NOTIFY_STATUS="SUCCESS"
+            COLOR=0x00ff00
+          else
+            NOTIFY_STATUS="FAILED ($FAILED_JOBS)"
+            COLOR=0xff0000
+          fi
+          TITLE="MAIA CI/CD $NOTIFY_STATUS"
+          PAYLOAD=$(jq -n --arg content "**$TITLE** Branch: ${{ github.ref_name }} Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" '{content: $content}')
           curl -sS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
