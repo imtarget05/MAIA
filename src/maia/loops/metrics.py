@@ -39,7 +39,7 @@ class MetricsRegistry:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._counters: dict[str, int] = {}
+        self._counters: dict[str, float] = {}
         self._gauges: dict[str, float] = {}
         # embedding latency in seconds: raw samples kept capped for p95.
         self._latency_samples: list[float] = []

@@ -16,6 +16,7 @@ from typing import Any
 import requests
 
 from ..config import settings
+from . import itsm as _itsm
 from .tools import (
     _authorize_employee,
     _employee_tenant_lookup,
@@ -23,9 +24,6 @@ from .tools import (
 )
 from .tools import (
     check_leave_balance as mock_balance,
-)
-from .tools import (
-    create_it_ticket as mock_it_ticket,
 )
 from .tools import (
     create_leave_request as mock_create,
@@ -98,8 +96,11 @@ def create_it_ticket(employee_id: str = "emp_001", ticket_type: str = "general",
                 "employee_id": employee_id, "description": description,
                 "status": data.get("status", "open"), "assignee": data.get("assignee", "IT Help Desk"),
                 "source": "hris"}
-    res = mock_it_ticket(employee_id, ticket_type, description, tenant_id=tenant_id)
-    res["source"] = res.get("source", "mock")
+    res = _itsm.create_it_ticket(employee_id, ticket_type, description, tenant_id=tenant_id)
+    if res.get("source") == "local":
+        res["source"] = "mock"
+    else:
+        res["source"] = res.get("source", "mock")
     return res
 
 def get_employee_info(employee_id: str = "emp_001", tenant_id: str | None = None) -> dict:
@@ -124,8 +125,8 @@ def verify_ticket(ticket_id: str) -> dict:
     return {"ticket_id": ticket_id, "status": "open", "verified": True, "source": "mock"}
 
 def get_employee_requests(employee_id: str = "emp_001", tenant_id: str | None = None) -> list[dict]:
-    ok, reason = _authorize_employee(employee_id, tenant_id)
-    if not ok:
+    authorized, _ = _authorize_employee(employee_id, tenant_id)
+    if not authorized:
         return []
     data = _try_hris(f"/employees/{employee_id}/leave/requests", "GET")
     if isinstance(data, list):

@@ -11,7 +11,9 @@ class Reranker:
         self.model_name = model
         self._model = None
         try:
-            from sentence_transformers import CrossEncoder  # type: ignore[import-not-found]
+            from sentence_transformers import (  # pyright: ignore[reportMissingImports] - optional dep (requirements-rerank.txt)
+                CrossEncoder,
+            )
 
             self._model = CrossEncoder(model)
         except Exception as e:
@@ -39,3 +41,18 @@ class Reranker:
             for c in candidates:
                 c["rerank_score"] = float(c.get("fused_score", 0.0))
             return sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)[:top_k]
+
+_reranker: Reranker | None = None
+
+
+def get_reranker() -> Reranker:
+    """Process-wide singleton — loads the CrossEncoder model at most once.
+
+    CI contract: after installing requirements-rerank.txt the returned
+    instance must expose ``mode == "cross-encoder"``. The fallback path
+    keeps tests offline-green without the heavy torch install.
+    """
+    global _reranker
+    if _reranker is None:
+        _reranker = Reranker()
+    return _reranker

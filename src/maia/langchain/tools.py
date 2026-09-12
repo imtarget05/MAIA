@@ -137,8 +137,13 @@ __all__ = ["LANGCHAIN_TOOLS", "TOOL_REGISTRY_LC", "tool_schemas"]
 
 def tool_schemas() -> list[dict]:
     """JSON schemas for all MAIA tools (handy for LLM function-calling specs)."""
-    return [
-        {"name": t.name, "description": t.description,
-         "parameters": t.args_schema.model_json_schema() if t.args_schema else {}}
-        for t in LANGCHAIN_TOOLS
-    ]
+    out: list[dict] = []
+    for t in LANGCHAIN_TOOLS:
+        schema = t.args_schema
+        if isinstance(schema, type) and issubclass(schema, BaseModel):
+            out.append({"name": t.name, "description": t.description,
+                        "parameters": schema.model_json_schema()})
+        else:
+            out.append({"name": t.name, "description": t.description,
+                        "parameters": schema or {}})
+    return out

@@ -18,7 +18,10 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install ruff pyright
+          # Pinned: unpinned `ruff`/`pyright` drifted (0.16.x flags 200+
+          # pre-existing intentional patterns) and broke this job on every
+          # push. Versions below are verified green against pyproject policy.
+          pip install "ruff==0.16.6" "pyright==1.1.413"
       - name: Run ruff
         run: ruff check src/
       - name: Run pyright
@@ -47,11 +50,10 @@ jobs:
       qdrant:
         image: qdrant/qdrant:v1.12.4
         ports: ["6333:6333"]
-        options: >-
-          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        # NOTE: no `options:` healthcheck. The qdrant image ships no
+        # curl/wget, so `--health-cmd "curl ..."` never succeeds and GitHub
+        # marks the service `unhealthy` (all 4 qdrant jobs failed on this).
+        # Readiness is polled runner-side in the "Wait for Qdrant" step.
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -59,7 +61,16 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:6333/healthz && break
+            sleep 2
+          done
+          curl -sf http://localhost:6333/healthz
       - name: Ingest enterprise docs for evaluation
         run: |
           PYTHONPATH=src python -c "
@@ -94,11 +105,10 @@ jobs:
       qdrant:
         image: qdrant/qdrant:v1.12.4
         ports: ["6333:6333"]
-        options: >-
-          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        # NOTE: no `options:` healthcheck. The qdrant image ships no
+        # curl/wget, so `--health-cmd "curl ..."` never succeeds and GitHub
+        # marks the service `unhealthy` (all 4 qdrant jobs failed on this).
+        # Readiness is polled runner-side in the "Wait for Qdrant" step.
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -109,6 +119,13 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install -r requirements-rerank.txt
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:6333/healthz && break
+            sleep 2
+          done
+          curl -sf http://localhost:6333/healthz
       - name: Ingest enterprise docs
         run: |
           PYTHONPATH=src python -c "
@@ -123,7 +140,7 @@ jobs:
           PYTHONPATH=src python -c "
           from maia.reranker import get_reranker
           r = get_reranker()
-          assert r.mode == "cross-encoder", f"expected cross-encoder, got {r.mode}"
+          assert r.mode == \"cross-encoder\", f\"expected cross-encoder, got {r.mode}\"
           print('rerank mode:', r.mode)
           "
       - name: Run eval with cross-encoder and write manifest
@@ -137,11 +154,10 @@ jobs:
       qdrant:
         image: qdrant/qdrant:v1.12.4
         ports: ["6333:6333"]
-        options: >-
-          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        # NOTE: no `options:` healthcheck. The qdrant image ships no
+        # curl/wget, so `--health-cmd "curl ..."` never succeeds and GitHub
+        # marks the service `unhealthy` (all 4 qdrant jobs failed on this).
+        # Readiness is polled runner-side in the "Wait for Qdrant" step.
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -150,6 +166,13 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:6333/healthz && break
+            sleep 2
+          done
+          curl -sf http://localhost:6333/healthz
       - name: Ingest enterprise docs
         run: |
           PYTHONPATH=src python -c "
@@ -180,11 +203,10 @@ jobs:
       qdrant:
         image: qdrant/qdrant:v1.12.4
         ports: ["6333:6333"]
-        options: >-
-          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        # NOTE: no `options:` healthcheck. The qdrant image ships no
+        # curl/wget, so `--health-cmd "curl ..."` never succeeds and GitHub
+        # marks the service `unhealthy` (all 4 qdrant jobs failed on this).
+        # Readiness is polled runner-side in the "Wait for Qdrant" step.
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -193,6 +215,13 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:6333/healthz && break
+            sleep 2
+          done
+          curl -sf http://localhost:6333/healthz
       - name: Ingest enterprise docs
         run: |
           PYTHONPATH=src python -c "

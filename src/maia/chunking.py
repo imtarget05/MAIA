@@ -28,7 +28,7 @@ def split_documents(docs, chunk_size: int = 512, chunk_overlap: int = 50) -> lis
             for i, n in enumerate(nodes):
                 m = dict(meta)
                 m["chunk_id"] = f"{m.get('doc_id', 'doc')}_{i}"
-                chunks.append(Chunk(text=n.text, metadata=m))
+                chunks.append(Chunk(text=getattr(n, "text", ""), metadata=m))
         return chunks
     except Exception:
         pass

@@ -138,7 +138,9 @@ def record_proposal(*, type: str, session_id: str = "", tool: str = "",
             (rid, requester_email, summary, tenant_id or "", "", now),
         )
         con.commit()
-        return get_request(rid) or {"id": rid, "status": "pending"}
+        if isinstance(rid, int):
+            return get_request(rid) or {"id": rid, "status": "pending"}
+        return {"id": rid, "status": "pending"}
     finally:
         con.close()
 

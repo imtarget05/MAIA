@@ -24,6 +24,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 15  # short-lived access token
 REFRESH_TOKEN_EXPIRE_DAYS = 7     # longer-lived refresh token
 
 
+class TokenExpiredError(Exception):
+    """Access/refresh token past its exp (mapped to 401 by callers)."""
+
+
+class InvalidTokenError(Exception):
+    """Token fails signature/shape validation (mapped to 401 by callers)."""
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against its hash."""
     return pwd_context.verify(plain_password, hashed_password)
@@ -74,9 +82,9 @@ def decode_token(token: str) -> dict:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except ExpiredSignatureError:
-        raise Exception("Token has expired")
+        raise TokenExpiredError("Token has expired")
     except JWTError:
-        raise Exception("Invalid token")
+        raise InvalidTokenError("Invalid token")
 
 
 def create_user_session(db: Session, user_id: str) -> tuple[str, str]:

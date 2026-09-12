@@ -77,7 +77,7 @@ def _load_role_allowlist() -> tuple[frozenset, tuple, str]:
         return _ROLE_EMAIL_EXACT_DEFAULTS, _ROLE_PREFIX_DEFAULTS, _ROLE_DOMAIN_DEFAULT
 
 
-def is_role_email(email: str, exact: frozenset | None = None) -> bool:
+def is_role_email(email: str, exact: frozenset | set | None = None) -> bool:
     """True if an email address is an internal role/department contact.
 
     `exact` overrides the configured exact set (used by tests); prefix/domain

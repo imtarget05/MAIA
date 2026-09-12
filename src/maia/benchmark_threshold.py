@@ -126,7 +126,7 @@ def lock_thresholds(report: dict) -> tuple[float, float]:
     """
     sim_vals = []
     agent_vals = []
-    for g, r in report.get("groups", {}).items():
+    for r in report.get("groups", {}).values():
         if "recommended_sim_threshold" in r:
             sim_vals.append(r["recommended_sim_threshold"])
             agent_vals.append(r["recommended_agent_threshold"])

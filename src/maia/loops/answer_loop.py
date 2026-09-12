@@ -15,9 +15,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from ..config import settings
 from ..prompt import assemble, build_messages
+
+if TYPE_CHECKING:  # typing-only (runtime import would be circular via loops/)
+    from ..llm import CloudflareLLM
 
 GROUNDING_THRESHOLD = settings.AGENT_GROUNDING_THRESHOLD
 
@@ -159,7 +163,7 @@ class LLMGroundingChecker:
     ``(supported, score)``. Use ``check_detailed`` for a reason code.
     """
 
-    def __init__(self, llm=None, threshold: float = settings.AGENT_GROUNDING_THRESHOLD,
+    def __init__(self, llm: CloudflareLLM | None = None, threshold: float = settings.AGENT_GROUNDING_THRESHOLD,
                  fallback_threshold: float = settings.AGENT_GROUNDING_THRESHOLD) -> None:
         self.llm = llm
         self.threshold = threshold
@@ -169,6 +173,8 @@ class LLMGroundingChecker:
     def _judge(self, answer: str, context: str) -> tuple[bool, float, str] | None:
         """Call the LLM to judge per-claim support. Returns (supported, score, reason)
         or None if the LLM call/output fails (→ caller falls back to token overlap)."""
+        if self.llm is None:
+            return None
         prompt = (
             "For each factual claim in the answer, decide whether the CONTEXT "
             "supports it. Output ONLY a JSON array, one object per claim:\n"

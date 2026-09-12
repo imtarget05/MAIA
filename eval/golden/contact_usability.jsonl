@@ -1,15 +1,15 @@
-{"gold_chunk_ids": ["63a16140e921_2", "1c55e579446a_0"], "gold_keywords": ["it-help@company.com", "202"], "question": "Cần hỗ trợ VPN thì liên hệ ai?", "intent": "vpn", "expect_contact": "it-help@company.com"}
-{"gold_chunk_ids": ["71001089b8a9_1"], "gold_keywords": ["it-help@company.com", "1 giờ"], "question": "Tôi làm mất laptop công ty, phải báo cho ai?", "intent": "security", "expect_contact": "it-help@company.com"}
-{"gold_chunk_ids": ["71001089b8a9_2"], "gold_keywords": ["security@company.com", "SEC-INCIDENT"], "question": "Where do I report a security incident?", "intent": "security", "expect_contact": "security@company.com"}
-{"gold_chunk_ids": ["caecec91a90d_3", "1410374725e1_2"], "gold_keywords": ["hr@company.com", "101"], "question": "Email của HR Help Desk là gì?", "intent": "hr_policy", "expect_contact": "hr@company.com"}
-{"gold_chunk_ids": ["80b443f4c0f7_2"], "gold_keywords": ["benefits@company.com"], "question": "Who do I contact about employee benefits?", "intent": "benefits", "expect_contact": "benefits@company.com"}
-{"gold_chunk_ids": ["5ab50401ad36_2"], "gold_keywords": ["onboarding@company.com"], "question": "Nhân viên mới cần hỗ trợ onboarding thì liên hệ đâu?", "intent": "onboarding", "expect_contact": "onboarding@company.com"}
-{"gold_chunk_ids": ["b0e856ca8d21_2"], "gold_keywords": ["finance@company.com"], "question": "Expense reimbursement questions go to which email?", "intent": "expense", "expect_contact": "finance@company.com"}
-{"gold_chunk_ids": ["80b443f4c0f7_1"], "gold_keywords": ["eap@company.com"], "question": "Đăng ký tư vấn tâm lý EAP qua đâu?", "intent": "benefits", "expect_contact": "eap@company.com"}
-{"gold_chunk_ids": ["63a16140e921_2"], "gold_keywords": ["it-help@company.com", "202"], "question": "Email IT support là gì vậy bạn?", "intent": "vpn", "expect_contact": "it-help@company.com"}
-{"gold_chunk_ids": ["71001089b8a9_1"], "gold_keywords": ["it-help@company.com"], "question": "Mất máy tính công ty thì gửi mail cho ai?", "intent": "security", "expect_contact": "it-help@company.com"}
-{"gold_chunk_ids": ["caecec91a90d_3"], "gold_keywords": ["hr@company.com"], "question": "Tôi muốn hỏi về chính sách nhân sự, địa chỉ mail HR?", "intent": "hr_policy", "expect_contact": "hr@company.com"}
-{"gold_chunk_ids": ["b0e856ca8d21_2"], "gold_keywords": ["finance@company.com"], "question": "Câu hỏi về hoàn tiền công tác phí gửi email nào?", "intent": "expense", "expect_contact": "finance@company.com"}
-{"gold_chunk_ids": ["80b443f4c0f7_2"], "gold_keywords": ["benefits@company.com"], "question": "Liên hệ phúc lợi nhân viên ở đâu?", "intent": "benefits", "expect_contact": "benefits@company.com"}
-{"gold_chunk_ids": ["5ab50401ad36_2"], "gold_keywords": ["onboarding@company.com"], "question": "Mail hỗ trợ onboarding cho nhân viên mới?", "intent": "onboarding", "expect_contact": "onboarding@company.com"}
-{"gold_chunk_ids": ["71001089b8a9_2"], "gold_keywords": ["security@company.com"], "question": "Gửi báo cáo sự cố bảo mật tới đâu?", "intent": "security", "expect_contact": "security@company.com"}
+{"gold_chunk_ids": ["7a779ab63ceb_1", "7a779ab63ceb_2"], "gold_keywords": ["it-help@company.com", "202"], "question": "Cần hỗ trợ VPN thì liên hệ ai?", "intent": "vpn", "expect_contact": "it-help@company.com"}
+{"gold_chunk_ids": ["7a779ab63ceb_1"], "gold_keywords": ["it-help@company.com", "1 giờ"], "question": "Tôi làm mất laptop công ty, phải báo cho ai?", "intent": "security", "expect_contact": "it-help@company.com"}
+{"gold_chunk_ids": ["7a779ab63ceb_2"], "gold_keywords": ["security@company.com", "SEC-INCIDENT"], "question": "Where do I report a security incident?", "intent": "security", "expect_contact": "security@company.com"}
+{"gold_chunk_ids": ["1829fe5aff80_2", "8400c3ed08f1_3"], "gold_keywords": ["hr@company.com", "101"], "question": "Email của HR Help Desk là gì?", "intent": "hr_policy", "expect_contact": "hr@company.com"}
+{"gold_chunk_ids": ["61d6bf407844_2"], "gold_keywords": ["benefits@company.com"], "question": "Who do I contact about employee benefits?", "intent": "benefits", "expect_contact": "benefits@company.com"}
+{"gold_chunk_ids": ["befdf79cfddb_2"], "gold_keywords": ["onboarding@company.com"], "question": "Nhân viên mới cần hỗ trợ onboarding thì liên hệ đâu?", "intent": "onboarding", "expect_contact": "onboarding@company.com"}
+{"gold_chunk_ids": ["1d09a8273861_2"], "gold_keywords": ["finance@company.com"], "question": "Expense reimbursement questions go to which email?", "intent": "expense", "expect_contact": "finance@company.com"}
+{"gold_chunk_ids": ["61d6bf407844_1"], "gold_keywords": ["eap@company.com"], "question": "Đăng ký tư vấn tâm lý EAP qua đâu?", "intent": "benefits", "expect_contact": "eap@company.com"}
+{"gold_chunk_ids": ["7a779ab63ceb_1"], "gold_keywords": ["it-help@company.com", "202"], "question": "Email IT support là gì vậy bạn?", "intent": "vpn", "expect_contact": "it-help@company.com"}
+{"gold_chunk_ids": ["7a779ab63ceb_1"], "gold_keywords": ["it-help@company.com"], "question": "Mất máy tính công ty thì gửi mail cho ai?", "intent": "security", "expect_contact": "it-help@company.com"}
+{"gold_chunk_ids": ["1829fe5aff80_2"], "gold_keywords": ["hr@company.com"], "question": "Tôi muốn hỏi về chính sách nhân sự, địa chỉ mail HR?", "intent": "hr_policy", "expect_contact": "hr@company.com"}
+{"gold_chunk_ids": ["1d09a8273861_2"], "gold_keywords": ["finance@company.com"], "question": "Câu hỏi về hoàn tiền công tác phí gửi email nào?", "intent": "expense", "expect_contact": "finance@company.com"}
+{"gold_chunk_ids": ["61d6bf407844_2"], "gold_keywords": ["benefits@company.com"], "question": "Liên hệ phúc lợi nhân viên ở đâu?", "intent": "benefits", "expect_contact": "benefits@company.com"}
+{"gold_chunk_ids": ["befdf79cfddb_2"], "gold_keywords": ["onboarding@company.com"], "question": "Mail hỗ trợ onboarding cho nhân viên mới?", "intent": "onboarding", "expect_contact": "onboarding@company.com"}
+{"gold_chunk_ids": ["7a779ab63ceb_2"], "gold_keywords": ["security@company.com"], "question": "Gửi báo cáo sự cố bảo mật tới đâu?", "intent": "security", "expect_contact": "security@company.com"}

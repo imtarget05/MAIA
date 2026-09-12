@@ -51,6 +51,12 @@ def _api(method: str, path: str, token: str | None = None, timeout: int = 30, **
 
 
 def _save_auth(tokens: dict) -> None:
+    # Hosted UI serves many browsers from one filesystem: a shared token
+    # file would leak user A's session to user B. Persist to disk only for
+    # single-user local dev; in production session_state is the store.
+    if os.environ.get("MAIA_PERSIST_LOCAL_SESSION",
+                       "0" if settings.ENVIRONMENT == "production" else "1") != "1":
+        return
     try:
         _AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
         _AUTH_FILE.write_text(__import__("json").dumps(tokens), encoding="utf-8")
@@ -59,6 +65,9 @@ def _save_auth(tokens: dict) -> None:
 
 
 def _load_auth_file() -> dict:
+    if os.environ.get("MAIA_PERSIST_LOCAL_SESSION",
+                       "0" if settings.ENVIRONMENT == "production" else "1") != "1":
+        return {}
     try:
         if _AUTH_FILE.exists():
             return __import__("json").loads(_AUTH_FILE.read_text(encoding="utf-8"))
@@ -203,7 +212,10 @@ _GOOGLE_G_SVG = (
     "</svg>"
 )
 
-_APP_BASE = os.environ.get("APP_BASE_URL", "http://localhost:8501").rstrip("/")
+_APP_BASE = (os.environ.get("APP_BASE_URL", "http://localhost:8501") or "").strip().rstrip("/") or "http://localhost:8501"
+# OAuth redirect_uri MUST be the UI ROOT with no trailing slash: it is the
+# exact value registered in Google Console, and the backend whitelist-checks
+# it before the code exchange (redirect_uri_mismatch otherwise).
 _G_REDIRECT_URI = _APP_BASE
 
 
@@ -313,8 +325,10 @@ def _auth_screen() -> None:
         return
 
     # Google Sign-In
+    # Google Sign-In — pass our redirect_uri explicitly so the authorize URL
+    # Google sees matches the value sent to /auth/google/callback below.
     try:
-        r = _api("GET", "/auth/google/login")
+        r = _api("GET", "/auth/google/login", params={"redirect_uri": _G_REDIRECT_URI})
         google_url = r.json().get("url", "") if r.status_code == 200 else ""
     except Exception:
         google_url = ""

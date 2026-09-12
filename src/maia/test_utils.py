@@ -54,10 +54,10 @@ class InMemoryVectorStore:
         out = []
         for p in self._points.values():
             payload = dict(p["payload"])
-            if tenant_id and payload.get("tenant_id") not in (tenant_id, None, ""):
+            if (tenant_id and payload.get("tenant_id") not in (tenant_id, None, "")
+                    and payload.get("tenant_id") != tenant_id):
                 # skip other tenants when filtered
-                if payload.get("tenant_id") != tenant_id:
-                    continue
+                continue
             out.append({"chunk_id": self._chunk_key(p),
                         "text": payload.get("text", ""),
                         "metadata": payload})
@@ -74,9 +74,9 @@ class InMemoryVectorStore:
         scored = []
         for p in self._points.values():
             payload = dict(p["payload"])
-            if tenant_id and payload.get("tenant_id") not in (tenant_id, None, ""):
-                if payload.get("tenant_id") != tenant_id:
-                    continue
+            if (tenant_id and payload.get("tenant_id") not in (tenant_id, None, "")
+                    and payload.get("tenant_id") != tenant_id):
+                continue
             v = np.asarray(p["vector"], dtype=np.float32)
             denom = (np.linalg.norm(q) * np.linalg.norm(v)) or 1e-9
             score = float(np.dot(q, v) / denom)

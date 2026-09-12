@@ -96,8 +96,11 @@ class RetrievalGrader:
     def _grade_llm(self, query: str, chunk: dict) -> GradeResult:
         """LLM-based grading with structured output (falls back to heuristic)."""
         text = (chunk.get("text", "") or "")[:1000]
+        llm = self.llm
+        if llm is None:
+            return self._grade_heuristic(query, chunk)
         try:
-            resp = self.llm.chat([
+            resp = llm.chat([
                 {"role": "system",
                  "content": "Output exactly one label: CORRECT, INCORRECT, or AMBIGUOUS"},
                 {"role": "user",
