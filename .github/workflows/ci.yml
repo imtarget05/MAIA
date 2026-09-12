@@ -140,7 +140,7 @@ jobs:
           PYTHONPATH=src python -c "
           from maia.reranker import get_reranker
           r = get_reranker()
-          assert r.mode == "cross-encoder", f"expected cross-encoder, got {r.mode}"
+          assert r.mode == \"cross-encoder\", f\"expected cross-encoder, got {r.mode}\"
           print('rerank mode:', r.mode)
           "
       - name: Run eval with cross-encoder and write manifest

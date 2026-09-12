@@ -1,4 +1,5 @@
 """MAIA-07: tests for 7-stage pipeline tracing + correlation_id."""
+import os
 import sys
 from pathlib import Path
 
@@ -7,6 +8,29 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from maia.observability import PipelineTracer
+
+_QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+_QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
+_SKIP_REASON = "Qdrant not available - set QDRANT_URL to run query() integration tests"
+
+
+def _check_qdrant() -> bool:
+    try:
+        import httpx
+
+        headers = {"api-key": _QDRANT_API_KEY} if _QDRANT_API_KEY else {}
+        resp = httpx.get(f"{_QDRANT_URL}/healthz", headers=headers, timeout=5.0)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+@pytest.fixture(scope="module")
+def qdrant_available() -> bool:
+    if not _check_qdrant():
+        pytest.skip(_SKIP_REASON)
+    return True
+
 
 # --- PipelineTracer unit tests ---
 
@@ -59,7 +83,7 @@ def test_finalize_redacted_drops_text_fields():
 
 # --- Integration: query() emits 7 stages ---
 
-def test_query_emits_all_7_stages(monkeypatch):
+def test_query_emits_all_7_stages(qdrant_available, monkeypatch):
     """A successful query should emit exactly 7 stage logs with the same correlation_id."""
     import maia.pipeline_query as pq
     from maia import observability
@@ -83,15 +107,14 @@ def test_query_emits_all_7_stages(monkeypatch):
                              "dense_score": 0.5, "bm25_score": 0.0, "fused_score": 0.5},
                         ])
 
-    res = pq.query("chính sách nghỉ phép?", top_k_final=3)
+    pq.query("chính sách nghỉ phép?", top_k_final=3)
     stages = [s for _, s in captured]
     assert set(stages) == set(PipelineTracer.STAGES)
-    # all same correlation_id
     ids = {cid for cid, _ in captured}
     assert len(ids) == 1
 
 
-def test_refusal_path_logs_refusal_reason(monkeypatch):
+def test_refusal_path_logs_refusal_reason(qdrant_available, monkeypatch):
     """A refused query should log a refusal_reason at the evidence_gate stage."""
     import maia.pipeline_query as pq
     from maia import observability
@@ -115,7 +138,7 @@ def test_refusal_path_logs_refusal_reason(monkeypatch):
     assert captured["evidence_gate"]["refusal_reason"] == "below_threshold"
 
 
-def test_trace_embedded_when_pipeline_trace_enabled(monkeypatch):
+def test_trace_embedded_when_pipeline_trace_enabled(qdrant_available, monkeypatch):
     import maia.pipeline_query as pq
     monkeypatch.setattr(pq.settings, "CLOUDFLARE_ACCOUNT_ID", "")
     monkeypatch.setattr(pq.settings, "CLOUDFLARE_API_TOKEN", "")
@@ -125,7 +148,7 @@ def test_trace_embedded_when_pipeline_trace_enabled(monkeypatch):
     assert res["_trace"]["n_stages"] == 7
 
 
-def test_trace_not_embedded_by_default(monkeypatch):
+def test_trace_not_embedded_by_default(qdrant_available, monkeypatch):
     import maia.pipeline_query as pq
     monkeypatch.setattr(pq.settings, "CLOUDFLARE_ACCOUNT_ID", "")
     monkeypatch.setattr(pq.settings, "CLOUDFLARE_API_TOKEN", "")
