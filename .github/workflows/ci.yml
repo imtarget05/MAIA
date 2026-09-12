@@ -234,3 +234,115 @@ jobs:
       - name: Contact usability gate (G-04-FU2, conditional survival = 1.0)
         run: |
           PYTHONPATH=src python -m maia.eval --group contact_usability --top-k 3 --fail-under-contact 1.0
+  sonarcloud-analysis:
+    # SonarCloud static analysis — runs on every push to main/develop.
+    # Skipped gracefully (success) if SONAR_TOKEN secret is not configured,
+    # so the CI pipeline still passes without blocking deployment.
+    name: SonarCloud Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' and (github.ref == 'refs/heads/main' or github.ref == 'refs/heads/develop')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          pip install -r requirements.txt
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v3.0.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=imtarget05_MAIA-Intelligent-RAG-Knowledge-Platform
+            -Dsonar.organization=imtarget05
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.python.version=3.11,3.12
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.exclusions=**/__pycache__/**,**/*.pyc,**/*.egg-info/**
+            -Dsonar.inclusions=src/**,tests/**
+        continue-on-error: true
+
+  deploy-production:
+    # CD half of CI/CD — redeploy Render services via deploy hook on push to
+    # main.  Skipped gracefully (no-op success) when RENDER_DEPLOY_HOOK_URL is
+    # not set, so first-time deployers are not blocked.
+    name: Deploy to Render (production)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' and github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Redeploy Render services via deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK_URL not set — skipping Render redeploy."
+            exit 0
+          fi
+          echo "Triggering Render redeploy..."
+          HTTP_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK_URL")
+          echo "Render deploy hook HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "202" ]; then
+            echo "::warning::Render responded with HTTP $HTTP_STATUS (expected 200/202)."
+          else
+            echo "Render redeploy triggered successfully."
+          fi
+      - name: Post-deploy health check (best-effort)
+        env:
+          RENDER_API_BASE_URL: ${{ secrets.RENDER_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RENDER_API_BASE_URL" ]; then
+            echo "No RENDER_API_BASE_URL — skipping health check."
+            exit 0
+          fi
+          echo "Polling health: $RENDER_API_BASE_URL/health"
+          for i in $(seq 1 12); do
+            STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$RENDER_API_BASE_URL/health" || echo "000")
+            echo "Health attempt $i: HTTP $STATUS"
+            [ "$STATUS" = "200" ] && { echo "✅ Service healthy."; exit 0; }
+            sleep 15
+          done
+          echo "::warning::Health check did not return 200 within 3 min."
+
+  notify:
+    # Discord notification on workflow completion.  Skipped (ok) if no
+    # webhook secret is configured.
+    name: Notify on completion
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, unit-tests, threshold-regression, reranker, eval-manifest, contact-usability-gate, sonarcloud-analysis, deploy-production]
+    if: always()
+    steps:
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CI_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "No DISCORD_WEBHOOK_URL — skipping notification."
+            exit 0
+          fi
+          ALL_SUCCESS=true
+          for job in lint-and-typecheck unit-tests threshold-regression reranker eval-manifest contact-usability-gate sonarcloud-analysis deploy-production; do
+            if [ "${{ needs.$job.result }}" != "success" ]; then ALL_SUCCESS=false; fi
+          done
+          COLOR=0x00ff00
+          [ "$ALL_SUCCESS" != "true" ] && COLOR=0xff0000 || true
+          TITLE="MAIA CI/CD $([ "$ALL_SUCCESS" = "true" ] && echo '✅ SUCCESS' || echo '❌ FAILED')"
+          PAYLOAD=$(jq -n --arg title "$TITLE" --arg ref "Branch: ${CI_REF}" --arg url "Run: ${CI_RUN_URL}" --arg color "$COLOR" '{
+            "content": "## '"$title"'\\n**'"$ref"'**\\n**'"$url"'**\\n",
+            "embeds": [{"title": "Workflow Status", "color": ($color | tonumber), "fields": [{"name":"Branch","value":"'"${{ github.ref_name }}"'\",\"inline\":true},{\"name\":\"Event\",\"value\":\"'"${{ github.event_name }}"'\",\"inline\":true},{\"name\":\"Run ID\",\"value\":\"'"${{ github.run_id }}"'\",\"inline\":true}]}]
+          }')
+          curl -sS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
