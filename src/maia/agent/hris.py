@@ -16,6 +16,7 @@ from typing import Any
 import requests
 
 from ..config import settings
+from . import itsm as _itsm
 from .tools import (
     _authorize_employee,
     _employee_tenant_lookup,
@@ -24,7 +25,6 @@ from .tools import (
 from .tools import (
     check_leave_balance as mock_balance,
 )
-from . import itsm as _itsm
 from .tools import (
     create_leave_request as mock_create,
 )
@@ -125,8 +125,8 @@ def verify_ticket(ticket_id: str) -> dict:
     return {"ticket_id": ticket_id, "status": "open", "verified": True, "source": "mock"}
 
 def get_employee_requests(employee_id: str = "emp_001", tenant_id: str | None = None) -> list[dict]:
-    ok, reason = _authorize_employee(employee_id, tenant_id)
-    if not ok:
+    authorized, _ = _authorize_employee(employee_id, tenant_id)
+    if not authorized:
         return []
     data = _try_hris(f"/employees/{employee_id}/leave/requests", "GET")
     if isinstance(data, list):

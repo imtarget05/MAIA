@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import smtplib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.message import EmailMessage
 from email.utils import formatdate
 from pathlib import Path
@@ -36,7 +36,7 @@ def _history_path() -> Path:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _load_json_list(path: Path) -> list[dict]:
