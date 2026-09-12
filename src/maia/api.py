@@ -415,7 +415,7 @@ def google_login():
     base = "https://accounts.google.com/o/oauth2/v2/auth"
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": f"{settings.APP_BASE_URL}/",
+        "redirect_uri": settings.APP_BASE_URL,
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
@@ -438,7 +438,7 @@ def google_callback(request: GoogleAuthRequest, db: Session = Depends(get_db)):
             "code": request.code,
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": f"{settings.APP_BASE_URL}/",
+            "redirect_uri": settings.APP_BASE_URL,
             "grant_type": "authorization_code",
         },
         timeout=30,
