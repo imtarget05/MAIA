@@ -29,8 +29,9 @@ def test_google_login_url_points_at_ui_root(monkeypatch):
     from urllib.parse import parse_qs, urlparse
 
     qs = parse_qs(urlparse(r.json()["url"]).query)
-    # Redirect URI phải là ROOT của UI (không trailing slash — Google cấm) — Streamlit chỉ serve root
-    assert qs["redirect_uri"] == ["https://maia-ui.onrender.com"]
+    # Redirect URI phải là sub-path đã đăng ký trong Google Console (proven working).
+    # Streamlit serve shell ở mọi path; callback code xử lý ở _auth_screen.
+    assert qs["redirect_uri"] == ["https://maia-ui.onrender.com/auth/google/callback"]
 
 
 def test_google_login_503_when_unconfigured(monkeypatch):
@@ -70,4 +71,4 @@ def test_google_callback_ignores_spoofed_client_redirect_uri():
     ):
         r = _client().post("/auth/google/callback", json=body)
     assert r.status_code == 400
-    assert calls["redirect_uri"] == "https://maia-ui.onrender.com"
+    assert calls["redirect_uri"] == "https://maia-ui.onrender.com/auth/google/callback"
