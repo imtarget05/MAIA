@@ -1,0 +1,83 @@
+name: CD
+
+"on":
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  deploy-production:
+    # CD half of CI/CD — redeploy Render services via deploy hook after CI
+    # succeeds on main. Skipped gracefully (no-op success) when
+    # RENDER_DEPLOY_HOOK_URL is not set, so first-time deployers are not blocked.
+    name: Deploy to Render (production)
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Redeploy Render services via deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL not set — skipping Render redeploy."
+            exit 0
+          fi
+          echo "Triggering Render redeploy..."
+          HTTP_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK_URL")
+          echo "Render deploy hook HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "202" ]; then
+            echo "::warning::Render responded with HTTP $HTTP_STATUS (expected 200/202)."
+          else
+            echo "Render redeploy triggered successfully."
+          fi
+      - name: Post-deploy health check (best-effort)
+        env:
+          RENDER_API_BASE_URL: ${{ secrets.RENDER_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RENDER_API_BASE_URL" ]; then
+            echo "No RENDER_API_BASE_URL — skipping health check."
+            exit 0
+          fi
+          echo "Polling health: $RENDER_API_BASE_URL/health"
+          for i in $(seq 1 12); do
+            STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$RENDER_API_BASE_URL/health" || echo "000")
+            echo "Health attempt $i: HTTP $STATUS"
+            [ "$STATUS" = "200" ] && { echo "Service healthy."; exit 0; }
+            sleep 15
+          done
+          echo "::warning::Health check did not return 200 within 3 min."
+
+  notify:
+    # Discord notification after CD completes. Skipped (ok) if no
+    # webhook secret is configured.
+    name: Notify on completion
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+    steps:
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          WF_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WF_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WF_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "No DISCORD_WEBHOOK_URL — skipping notification."
+            exit 0
+          fi
+          FAILED_JOBS=$(echo "$NEEDS_JSON" | jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")')
+          if [ "$WF_CONCLUSION" = "success" ] && [ -z "$FAILED_JOBS" ]; then
+            NOTIFY_STATUS="SUCCESS"
+          else
+            NOTIFY_STATUS="FAILED (CI=$WF_CONCLUSION CD=$FAILED_JOBS)"
+          fi
+          TITLE="MAIA CD $NOTIFY_STATUS"
+          PAYLOAD=$(jq -n --arg content "**$TITLE** Branch: $WF_BRANCH Run: $WF_URL" '{content: $content}')
+          curl -sS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
