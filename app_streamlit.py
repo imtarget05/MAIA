@@ -204,7 +204,7 @@ _GOOGLE_G_SVG = (
 )
 
 _APP_BASE = os.environ.get("APP_BASE_URL", "http://localhost:8501").rstrip("/")
-_G_REDIRECT_URI = f"{_APP_BASE}/auth/google/callback"
+_G_REDIRECT_URI = _APP_BASE
 
 
 
