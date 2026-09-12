@@ -1,6 +1,74 @@
 # MAIA — Intelligent RAG Knowledge Platform
 
-> A production-style RAG (Retrieval-Augmented Generation) knowledge platform: ingests documents, creates embeddings, retrieves relevant context from a vector database, and grounds LLM responses on retrieved project knowledge — with hybrid retrieval, reranking, and formal evaluation.
+> Enterprise internal knowledge assistant: answers HR/IT/security policy questions from the company corpus — every answer carries evidence citations, never guesses. Side-effecting actions (leave requests, IT tickets) always require human approval first (confirm-before-action). Offline-first: full mock mode with zero cloud credentials.
+
+**Live demo:** API `https://maia-api-irau.onrender.com` · UI `https://maia-ui.onrender.com` · Google OAuth sign-in enabled.
+
+## What it does (30 seconds)
+
+- **Grounded answers** — hybrid retrieval (dense + BM25 → RRF) + rerank + evidence gate; every factual claim cites `[S1]`-style sources, or the system honestly refuses.
+- **Approval-gated actions** — chat proposes `needs_approval` + `pending_action`; the side effect runs only on `POST /actions/confirm`. Cross-employee approval is blocked; leave balances are deducted exactly once (idempotency keys).
+- **ITSM ticketing that lands somewhere real** — tickets persist to an audit store and route to a real ITSM provider (Jira Service Management by default; ServiceNow/Zendesk adapters stubbed) with local fallback when unconfigured.
+- **Notifications that actually send** — department email routing with an outbox queue, a self-contained background worker (retry + dead-letter), and SMTP-or-simulated dispatch.
+- **Enterprise guardrails** — two-layer PII redaction (ingest + output) with a role-email allowlist so `it-help@company.com` survives redaction; prompt-injection defenses; multi-tenant isolation.
+
+## Architecture
+
+```
+                ┌─────────────┐   chat/confirm    ┌──────────────────┐
+                │  Streamlit  │ ─────────────────▶ │  FastAPI (api.py)│
+                │  app UI     │ ◀───────────────── │  + RBAC + OAuth  │
+                └─────────────┘    grounded answer └────────┬─────────┘
+                                                           │
+        ┌──────────────────────┬───────────────────────────┼───────────────────────┐
+        ▼                      ▼                           ▼                       ▼
+ ┌─────────────┐      ┌────────────────┐          ┌────────────────┐      ┌────────────────┐
+ │ Retrieval   │      │ Approval-gated │          │ ITSM ticketing │      │ Notifications  │
+ │ hybrid RAG  │      │ actions (C1)   │          │ itsm.py        │      │ outbox worker  │
+ │ dense+BM25  │      │ idempotent,    │          │ Jira-first,    │      │ lifespan loop, │
+ │ →RRF→rerank │      │ cross-emp block│          │ local fallback │      │ retry+dead-    │
+ │ →evidence   │      │ balance deduct │          │ audit store    │      │ letter, SMTP   │
+ └──────┬──────┘      └────────────────┘          └────────────────┘      └────────────────┘
+        ▼
+ ┌─────────────┐   ┌──────────────┐   ┌───────────────┐
+ │ Qdrant Cloud│   │ Cloudflare   │   │ SQLite audit  │
+ │ vectors     │   │ Workers AI   │   │ workflow.db / │
+ │ (1024-dim)  │   │ LLM+BGE-m3   │   │ session.db    │
+ └─────────────┘   └──────────────┘   └───────────────┘
+```
+
+## Quickstart (offline, zero credentials)
+
+```bash
+pip install -r requirements.txt
+export MAIA_EMBED_FORCE_HASH=1 MAIA_MODE=mock   # hash embeddings, mock LLM
+PYTHONPATH=src python -m maia.cli ingest --enterprise
+PYTHONPATH=src uvicorn maia.api:app --port 8000
+# UI (separate terminal): streamlit run app_streamlit.py
+```
+
+Run the fast offline suite:
+
+```bash
+MAIA_EMBED_FORCE_HASH=1 python3 -m pytest tests/test_agent.py tests/test_approval.py \
+  tests/test_auth_workflow.py tests/test_itsm_scheduler.py tests/test_e2e_it_outbox.py -q
+```
+
+## ITSM ticketing + outbox worker
+
+`src/maia/agent/itsm.py` implements a provider-adapter pattern: `ITSMProvider.create_ticket()` returns at least `{"ticket_id": ...}` or `None` to fall back. `JiraProvider` calls `POST {ITSM_BASE_URL}/rest/api/3/issue` when configured; `ServiceNow`/`Zendesk` adapters are registered placeholders (fail-soft to local). Whatever the provider outcome, a local audit row is always appended (`storage/it_tickets.json`, readable via `get_it_tickets`), so reads stay single-sourced.
+
+```bash
+# Real Jira (env only — never hardcode tokens)
+export ITSM_ENABLED=true ITSM_PROVIDER=jira
+export ITSM_BASE_URL=https://your-domain.atlassian.net ITSM_API_TOKEN=... ITSM_PROJECT_KEY=IT
+```
+
+`src/maia/outbox_scheduler.py` runs the queue automatically inside the web service (FastAPI `lifespan`, no external cron): `scheduler_tick()` reuses `drain_outbox()` (SMTP when configured, simulated otherwise), bumps `attempts` on failures, and dead-letters entries past `OUTBOX_MAX_RETRIES` to `outbox_deadletter.json`. The loop is **off by default** (`OUTBOX_WORKER_ENABLED=false`) so tests stay deterministic; `POST /admin/outbox/drain` is the manual/test trigger and `GET /admin/outbox/worker` reports status.
+
+```bash
+export OUTBOX_WORKER_ENABLED=true OUTBOX_WORKER_INTERVAL_SEC=60 OUTBOX_MAX_RETRIES=5
+```
 
 ## Contract
 
@@ -595,6 +663,8 @@ CI (`.github/workflows/ci.yml`, matrix Python 3.11/3.12): pytest offline + `maia
 | `CRAG_GRADE_THRESHOLD` / `CRAG_MAX_CORRECTIONS` | `0.35` / `2` | Ngưỡng grade + số lần rewrite/refine tối đa |
 | `CRAG_WEB_SEARCH_ENABLED` | `false` | Web fallback khi kiệt corrections (mặc định OFF — enterprise refuse thay vì lên mạng) |
 | `LTM_ENABLED` / `LTM_DB_PATH` / `LTM_RECALL_K` | `false` / `./storage/ltm.db` / `3` | Long-term memory cross-session (SQLite) |
+| `ITSM_ENABLED` / `ITSM_PROVIDER` / `ITSM_BASE_URL` / `ITSM_API_TOKEN` / `ITSM_PROJECT_KEY` | `false` / `jira` / `` / `` / `` | IT ticketing: real provider call (Jira default) with local audit fallback |
+| `OUTBOX_WORKER_ENABLED` / `OUTBOX_WORKER_INTERVAL_SEC` / `OUTBOX_WORKER_STARTUP_DRAIN` / `OUTBOX_MAX_RETRIES` | `false` / `60.0` / `true` / `5` | Outbox background worker (lifespan loop, retry + dead-letter) |
 | `TEAM_ENABLED` / `TEAM_MAX_REVISION_ROUNDS` | `false` / `1` | Multi-agent team (`POST /teams/run`, CLI `teams`) |
 | `TEAM_MAX_HOPS` / `TEAM_TIMEOUT_SEC` | `3` / `30.0` | Router-delegation team (`POST /team/chat`, CLI `team chat`): hop budget + soft timeout |
 | `MCP_GITHUB_ENABLED` / `MCP_GITHUB_TOKEN` | `false` / — | Connector GitHub read-only (fine-grained PAT) |

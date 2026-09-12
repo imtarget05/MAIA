@@ -4,16 +4,23 @@ G-06: the external Cloudflare call is wrapped with a circuit breaker + retry.
 On CircuitOpenError / timeout → graceful degraded (mock fallback answer),
 never a hang.
 """
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import requests
 
 from .config import settings
+
+if TYPE_CHECKING:  # typing-only (runtime import would be circular via loops/)
+    from .loops.resilience import CircuitBreaker, RetryConfig
 
 # NOTE: loops.resilience is imported lazily inside _get_llm_breaker() to avoid
 # a circular import at module load (loops/__init__ → corrective_rag → llm).
 
 # G-06: per-dependency breaker + retry config for the LLM call.
-_llm_breaker = None
-_llm_retry = None
+_llm_breaker: CircuitBreaker | None = None
+_llm_retry: RetryConfig | None = None
 
 
 def _get_llm_breaker():
@@ -45,11 +52,12 @@ class CloudflareLLM:
             return self._mock(messages)
         # G-06: lazy import to avoid circular import at module load.
         # Call _get_llm_breaker() FIRST so _llm_retry is initialized before use.
-        from .loops.resilience import CircuitOpenError, with_retry
+        from .loops.resilience import CircuitOpenError, RetryConfig, with_retry
         breaker = _get_llm_breaker()
+        retry_cfg = _llm_retry if _llm_retry is not None else RetryConfig()
         try:
             # G-06: breaker + retry around the external call
-            return with_retry(_llm_retry, breaker.call,
+            return with_retry(retry_cfg, breaker.call,
                               self._do_chat, messages, max_tokens, temperature, top_p, top_k)
         except (CircuitOpenError, TimeoutError, ConnectionError, OSError) as e:
             # G-06: graceful degraded → mock fallback instead of hanging/crashing

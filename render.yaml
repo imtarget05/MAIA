@@ -63,6 +63,12 @@ services:
       - key: APP_BASE_URL
         sync: false
         # Example: https://maia-ui.onrender.com
+      - key: GOOGLE_ALLOWED_REDIRECT_URIS
+        sync: false
+        # Extra whitelisted OAuth redirect_uris (comma-separated).
+        # Example: https://maia-ui.onrender.com
+        # WARNING: Render PUT /env-vars REPLACES the whole set — always send
+        # full-set updates or unrelated keys (JWT_SECRET_KEY, ...) get wiped.
       - key: QDRANT_URL
         sync: false
         # Qdrant Cloud REST URL — fill in Render Dashboard.
@@ -136,6 +142,10 @@ services:
         # Example: https://maia-api.onrender.com
       - key: APP_BASE_URL
         sync: false
+        # Example: https://maia-ui.onrender.com
+      - key: GOOGLE_ALLOWED_REDIRECT_URIS
+        sync: false
+        # Extra whitelisted OAuth redirect_uris (comma-separated).
         # Example: https://maia-ui.onrender.com
       - key: QDRANT_URL
         sync: false

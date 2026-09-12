@@ -115,6 +115,12 @@ python -c "from qdrant_client import QdrantClient; c=QdrantClient(url='<QDRANT_U
 3. Đặt tên token, ví dụ: `maia-workers-ai`.
 4. Tạo và copy token ngay (chỉ hiện 1 lần).
 
+> **KHÔNG nhầm với R2 token (`cfat_...`):** token R2 chỉ có quyền object
+> storage, KHÔNG gọi được Workers AI (`/ai/run/...` sẽ 403). Token Workers AI
+> phải có quyền **Account → Workers AI → Edit**. Token lộ trong chat/log
+> phải **rotate ngay** (Dashboard → API Tokens → Roll/Delete) — KHÔNG bao giờ
+> paste token thật vào code, `.env.example`, docs hay git.
+
 ```
 CLOUDFLARE_API_TOKEN = <your-token>
 CLOUDFLARE_MODEL = @cf/meta/llama-3.1-8b-instruct
@@ -189,14 +195,20 @@ Vào **Settings** → **Environment** → thêm các biến sau:
 | `APP_BASE_URL` | `https://maia-ui.onrender.com` | URL frontend (dùng trong email reset) |
 | `QDRANT_URL` | `https://<cluster>.gcp.cloud.qdrant.io` | Từ bước 2.2 |
 | `QDRANT_API_KEY` | `<qdrant-api-key>` | Từ bước 2.2 |
-| `QDRANT_COLLECTION` | `maia_knowledge` | |
-| `CLOUDFLARE_ACCOUNT_ID` | `<account-id>` | Từ bước 3.1 |
+| `QDRANT_COLLECTION` | `maia_knowledge_v2` | 1024-dim (BGE-m3), khớp `render.yaml` |
+| `CLOUDFLARE_ACCOUNT_ID` | `<account-id>` | Từ bước 3.1 (chuỗi hex 32 ký tự trên Dashboard) |
 | `CLOUDFLARE_API_TOKEN` | `<api-token>` | Từ bước 3.2 |
 | `CLOUDFLARE_MODEL` | `@cf/meta/llama-3.1-8b-instruct` | |
 | `WORKFLOW_DB_PATH` | `/tmp/storage/workflow.db` | |
 | `SESSION_DB_PATH` | `/tmp/storage/session.db` | |
 
 > **Lưu ý**: Render free tier có disk **ephemeral** — file trong `/tmp/storage` sẽ mất khi service restart. Điều này ảnh hưởng BM25 cache, session DB. Xem [Troubleshooting](#bm25-cache-rebuilding) để biết cách xử lý.
+
+> **CẢNH BÁO — Render `PUT /env-vars` REPLACE toàn bộ env set** (đã gây sập
+> production 2026-09-11: PUT thiếu key làm mất `JWT_SECRET_KEY`/
+> `QDRANT_API_KEY`/`CLOUDFLARE_API_TOKEN`, service crash-loop). Cập nhật env
+> qua **Dashboard → Settings → Environment** (UI merge từng key, an toàn), hoặc
+> nếu dùng API thì luôn gửi **full-set** cả 2 services (`maia-api` + `maia-ui`).
 
 ### 4.4 Deploy
 
@@ -208,20 +220,30 @@ Theo dõi log ở tab **Logs**. Build mất ~2-5 phút (install dependencies).
 
 ```bash
 # Thay <RENDER_API_URL> bằng URL thật, ví dụ: https://maia-api.onrender.com
-curl https://<RENDER_API_URL>/health
+curl https://<RENDER_API_URL>/health   # liveness: {"status":"ok","version":"..."}
+curl https://<RENDER_API_URL>/ready    # readiness: Qdrant + llm_mode + embed_model
 ```
 
-Expected response:
+Expected response của `GET /ready` khi Workers AI đã cấu hình đúng:
 
 ```json
 {
   "status": "ok",
   "qdrant_points": 25,
-  "collection": "maia_knowledge",
+  "collection": "maia_knowledge_v2",
   "llm_mode": "cloudflare",
   "rerank_mode": "score-fallback",
-  "embed_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  "embed_model": "@cf/baai/bge-m3"
 }
+```
+
+`llm_mode` phải là `"cloudflare"` — nếu là `"mock"` thì
+`CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_API_TOKEN` chưa tới được service (kiểm tra
+Render Dashboard env). Kiểm tra local trước khi deploy:
+
+```bash
+python3 scripts/check_workers_ai.py          # mock-safe, không gọi mạng
+python3 scripts/check_workers_ai.py --live   # probe thật (cần creds thật)
 ```
 
 Nếu `status` = `degraded`, kiểm tra `error` trong response và xem [Troubleshooting](#85-qdrant-connection-refused).

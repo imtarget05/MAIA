@@ -29,7 +29,7 @@ _LOST_WORDS = re.compile(r"(mất|thất lạc|đánh mất|\blost\b)", re.IGNOR
 _BROKEN_WORDS = re.compile(r"(hỏng|hư|không khởi động|broken|không lên nguồn|vỡ)", re.IGNORECASE)
 
 
-def ticket_type_for(question: str, intent: Intent) -> str:
+def ticket_type_for(question: str, intent: str) -> str:
     """Map (question, intent) → IT ticket type.
 
     Lost device always wins over broken: "mất laptop" is a security

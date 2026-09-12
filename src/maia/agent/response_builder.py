@@ -12,6 +12,7 @@ from ..prompt import build_agent_messages
 from .schemas import (
     INSUFFICIENT_TEXT,
     AgentResponseModel,
+    Citation,
     EvidenceSummary,
     GroundingInfo,
     chunk_to_citation,
@@ -148,7 +149,7 @@ class ResponseBuilder:
             answer=INSUFFICIENT_TEXT,
             intent=intent,
             citations=[],
-            retrieved=retrieved,
+            retrieved=[Citation(**c) for c in retrieved],
             evidence=EvidenceSummary(**self.ev_summary(iter_res)),
             grounding=GroundingInfo(supported=False, score=0.0, cites_valid=True),
             slots=slots,

@@ -16,3 +16,14 @@ extraPaths = ["src"]
 
 [tool.ruff]
 target-version = "py312"
+
+[tool.ruff.lint]
+# Repo policy (CI fix 2026-09-11): bare `ruff check src/` must be green and
+# deterministic across ruff upgrades. The ignores below codify intentional
+# codebase conventions (each verified, not drive-by suppressions):
+# - B008: FastAPI Depends() in argument defaults is the framework idiom.
+# - BLE001/S110/S112: broad-except resilience pattern (agent/loops must degrade
+#   to mock/fallback, never crash the request path) — documented in handoff.
+# - DTZ003/DTZ005: naive-UTC datetime convention for SQLite storage; switching
+#   to tz-aware would break naive-vs-aware comparisons against DB values.
+ignore = ["B008", "BLE001", "S110", "S112", "DTZ003", "DTZ005"]

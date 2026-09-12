@@ -425,8 +425,23 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
     return {"message": "Password has been reset"}
 
 
+def _resolve_google_redirect_uri(requested: str | None = None) -> str:
+    canonical = (settings.APP_BASE_URL or "").rstrip("/")
+    if requested:
+        allowed = {canonical}
+        if getattr(settings, "GOOGLE_ALLOWED_REDIRECT_URIS", ""):
+            for u in settings.GOOGLE_ALLOWED_REDIRECT_URIS.split(","):
+                u = u.strip().rstrip("/")
+                if u:
+                    allowed.add(u)
+        req_norm = requested.rstrip("/")
+        if req_norm in allowed:
+            return req_norm
+    return canonical
+
+
 @auth_router.get("/google/login")
-def google_login():
+def google_login(redirect_uri: str | None = None):
     """Return the Google OAuth consent-screen URL."""
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
         raise HTTPException(status_code=503, detail="Google Sign-In is not configured")
@@ -434,7 +449,7 @@ def google_login():
     base = "https://accounts.google.com/o/oauth2/v2/auth"
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": settings.APP_BASE_URL,
+        "redirect_uri": _resolve_google_redirect_uri(redirect_uri),
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
@@ -457,7 +472,7 @@ def google_callback(request: GoogleAuthRequest, db: Session = Depends(get_db)):
             "code": request.code,
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": settings.APP_BASE_URL,
+            "redirect_uri": _resolve_google_redirect_uri(request.redirect_uri),
             "grant_type": "authorization_code",
         },
         timeout=30,

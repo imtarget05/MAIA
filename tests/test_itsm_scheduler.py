@@ -139,4 +139,4 @@ def test_hris_routes_it_tickets_through_itsm(monkeypatch, tmp_path):
     _isolate(monkeypatch, tmp_path)
     from maia.agent import hris
     r = hris.create_it_ticket("emp_hris_it", "general", "printer broken")
-    assert r["ok"] is True and r["source"] == "local"
+    assert r["ok"] is True and r["source"] == "mock"

@@ -14,6 +14,7 @@ answer and its [S1]..[Sn] markers can never diverge.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from ..config import settings
 from ..loops.answer_loop import CitationChecker, GroundingChecker
@@ -137,7 +138,8 @@ class EnterpriseAgent:
         if tenant_id:
             self.tenant_id = tenant_id
             try:
-                self._retriever.tenant_id = tenant_id
+                if self._retriever is not None:
+                    self._retriever.tenant_id = tenant_id
             except Exception:
                 pass
         employee_id = employee_id or settings.DEFAULT_EMPLOYEE_ID
@@ -273,7 +275,7 @@ class EnterpriseAgent:
             question, session_id=session_id, tenant_id=self.tenant_id,
             top_k_final=top_k_final, expansions=_INTENT_HINTS.get(intent, []))
 
-    _TOOL_RESULT_SHAPES = {
+    _TOOL_RESULT_SHAPES: ClassVar[dict] = {
         "check_leave_balance": {"required": ("employee_id", "balance", "unit")},
         "create_leave_request": {"ok_true": ("request_id", "days"), "ok_false": ("error",)},
         "create_it_ticket": {"ok_true": ("ticket_id", "type"), "ok_false": ("error",)},

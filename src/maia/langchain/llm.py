@@ -18,6 +18,7 @@ from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from pydantic import PrivateAttr
 
 from ..llm import CloudflareLLM
 
@@ -44,19 +45,32 @@ class CloudflareLangChainAdapter(BaseChatModel):
 
     model_name: str = "maia-cloudflare-llm"
 
+    # Pydantic v2 private attributes (the previous object.__setattr__ hack
+    # is equivalent at runtime but opaque to type-checkers).
+    _underlying: CloudflareLLM = PrivateAttr()
+    _max_tokens: int = PrivateAttr(default=512)
+    _temperature: float = PrivateAttr(default=0.1)
+    _top_p: float = PrivateAttr(default=1.0)
+    _top_k: int = PrivateAttr(default=50)
+
     def __init__(self, underlying: CloudflareLLM, max_tokens: int = 512,
                  temperature: float = 0.1, top_p: float = 1.0, top_k: int = 50,
                  **kwargs: Any):
         super().__init__(**kwargs)
-        object.__setattr__(self, "underlying", underlying)
-        object.__setattr__(self, "_max_tokens", max_tokens)
-        object.__setattr__(self, "_temperature", temperature)
-        object.__setattr__(self, "_top_p", top_p)
-        object.__setattr__(self, "_top_k", top_k)
+        self._underlying = underlying
+        self._max_tokens = max_tokens
+        self._temperature = temperature
+        self._top_p = top_p
+        self._top_k = top_k
 
     @property
     def _llm_type(self) -> str:
         return "maia-cloudflare-llm"
+
+    @property
+    def underlying(self) -> CloudflareLLM:
+        """The wrapped adapter (read-only — set once in __init__)."""
+        return self._underlying
 
     @property
     def mode(self) -> str:
@@ -141,7 +155,7 @@ def bind_maia_tools(llm: BaseChatModel):
     source of truth.
     """
     try:
-        from ..agent.tools import TOOL_REGISTRY_LC
+        from .tools import TOOL_REGISTRY_LC
         return llm.bind_tools(list(TOOL_REGISTRY_LC.values()), tool_choice=None)
     except Exception:
         return llm

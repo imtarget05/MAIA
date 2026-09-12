@@ -112,9 +112,9 @@ class SessionStore:
                 "slots": json.loads(row["slots_json"] or "{}") if row["slots_json"] else {},
                 "employee_id": row["employee_id"],
                 "requester_email": row["requester_email"],
-                "citations": json.loads(row["citations_json"] or []) if row["citations_json"] else [],
-                "used_keys": json.loads(row["used_keys_json"] or []) if row["used_keys_json"] else [],
-                "evidence": json.loads(row["evidence_json"] or []) if row["evidence_json"] else [],
+                "citations": json.loads(row["citations_json"]) if row["citations_json"] else [],
+                "used_keys": json.loads(row["used_keys_json"]) if row["used_keys_json"] else [],
+                "evidence": json.loads(row["evidence_json"]) if row["evidence_json"] else [],
                 "created_at": row["created_at"],
             }
 

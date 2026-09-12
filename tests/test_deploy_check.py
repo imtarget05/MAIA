@@ -4,7 +4,14 @@ POST /auth/login uses OAuth2PasswordRequestForm (form-encoded
 ``username``/``password``), NOT JSON. The check script must send
 ``data={...}`` or login 422s and chat/ingest 401.
 """
+import sys
+from pathlib import Path
 from unittest.mock import patch
+
+# scripts/ is not a package on sys.path under `pytest` (console script does
+# not add CWD like `python -m pytest` does) — same bootstrap as
+# tests/test_golden_eval.py uses for src/.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import scripts.deploy_check as dc
 
