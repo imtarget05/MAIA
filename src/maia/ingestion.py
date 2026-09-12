@@ -67,7 +67,26 @@ def _clean(text: str) -> str:
 
 
 def _doc_id_for(path: Path) -> str:
-    h = hashlib.sha1(str(path.resolve()).encode()).hexdigest()[:12]
+    """Deterministic, machine-independent document id.
+
+    Old scheme hashed the ABSOLUTE path (``sha1(str(path.resolve()))``), so
+    the same repo produced different chunk ids on different machines — and
+    the CI golden gates (contact-usability, threshold regression) could never
+    match gold_chunk_ids on GitHub runners. New scheme is content-addressed:
+    repo-relative path + content digest. Any machine ingesting the same
+    files at the same repo-relative location yields identical doc ids, and a
+    content edit rotates the id (golden sets track real drift).
+    """
+    name = path.name
+    try:
+        digest = hashlib.sha1(path.read_bytes()).hexdigest()[:8]
+    except Exception:
+        digest = ""
+    try:
+        rel = path.resolve().relative_to(Path(__file__).resolve().parents[2])
+    except ValueError:  # file outside the repo — keep the bare name
+        rel = Path(name)
+    h = hashlib.sha1(f"{rel}|{digest}".encode()).hexdigest()[:12]
     return h
 
 

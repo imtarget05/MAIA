@@ -1,15 +1,15 @@
-{"question": "Chính sách nghỉ phép như thế nào?", "gold_chunk_ids": ["1410374725e1_0", "1410374725e1_1"], "gold_keywords": ["nghỉ phép", "12 ngày"], "intent": "hr_policy"}
-{"question": "Tôi muốn xin nghỉ phép 3 ngày thì nộp trước bao lâu?", "gold_chunk_ids": ["1410374725e1_1", "caecec91a90d_2"], "gold_keywords": ["7 ngày làm việc", "quản lý"], "intent": "leave_request"}
-{"question": "Cách request VPN?", "gold_chunk_ids": ["63a16140e921_0", "63a16140e921_1"], "gold_keywords": ["VPN", "ticket"], "intent": "vpn"}
-{"question": "Tôi làm mất laptop công ty, phải làm gì?", "gold_chunk_ids": ["71001089b8a9_1"], "gold_keywords": ["1 giờ", "it-help", "202"], "intent": "security"}
-{"question": "Hoàn tiền chi phí công tác phí trong bao lâu?", "gold_chunk_ids": ["b0e856ca8d21_1"], "gold_keywords": ["10 ngày làm việc"], "intent": "expense"}
-{"question": "Chế độ phúc lợi gym và bảo hiểm sức khỏe ra sao?", "gold_chunk_ids": ["80b443f4c0f7_0", "80b443f4c0f7_1"], "gold_keywords": ["bảo hiểm", "gym", "500"], "intent": "benefits"}
-{"question": "Giờ làm việc chuẩn của công ty là mấy giờ?", "gold_chunk_ids": ["caecec91a90d_0"], "gold_keywords": ["09:00", "18:00"], "intent": "hr_policy"}
-{"question": "Mật khẩu công ty phải đạt yêu cầu gì?", "gold_chunk_ids": ["71001089b8a9_0"], "gold_keywords": ["12 ký tự", "90 ngày", "2FA"], "intent": "security"}
-{"question": "Ngày đầu đi làm tôi cần làm những gì?", "gold_chunk_ids": ["5ab50401ad36_0", "5ab50401ad36_1"], "gold_keywords": ["laptop", "SSO", "buddy"], "intent": "onboarding"}
-{"question": "Nghỉ thai sản được bao lâu?", "gold_chunk_ids": ["1410374725e1_2"], "gold_keywords": ["6 tháng", "BHXH"], "intent": "hr_policy"}
-{"question": "Laptop hư thì IT hỗ trợ thế nào?", "gold_chunk_ids": ["1c55e579446a_1"], "gold_keywords": ["4 giờ", "ticket"], "intent": "it_help"}
-{"question": "Thưởng thâm niên 5 năm là bao nhiêu?", "gold_chunk_ids": ["80b443f4c0f7_1"], "gold_keywords": ["2 tháng lương"], "intent": "benefits"}
-{"question": "Kê khai chi phí qua đâu và trong vòng bao nhiêu ngày?", "gold_chunk_ids": ["b0e856ca8d21_1"], "gold_keywords": ["Finance portal", "30 ngày"], "intent": "expense"}
-{"question": "Làm thêm giờ được bồi hoàn thế nào?", "gold_chunk_ids": ["caecec91a90d_1"], "gold_keywords": ["OT", "1.5"], "intent": "hr_policy"}
-{"question": "Khám sức khỏe định kỳ khi nào?", "gold_chunk_ids": ["80b443f4c0f7_1", "caecec91a90d_3"], "gold_keywords": ["quý IV"], "intent": "benefits"}
+{"question": "Chính sách nghỉ phép như thế nào?", "gold_chunk_ids": ["1829fe5aff80_0", "61d6bf407844_0"], "gold_keywords": ["nghỉ phép", "12 ngày"], "intent": "hr_policy"}
+{"question": "Tôi muốn xin nghỉ phép 3 ngày thì nộp trước bao lâu?", "gold_chunk_ids": ["1829fe5aff80_1", "8400c3ed08f1_2"], "gold_keywords": ["7 ngày làm việc", "quản lý"], "intent": "leave_request"}
+{"question": "Cách request VPN?", "gold_chunk_ids": ["befdf79cfddb_1", "f32f78c4c8af_0"], "gold_keywords": ["VPN", "ticket"], "intent": "vpn"}
+{"question": "Tôi làm mất laptop công ty, phải làm gì?", "gold_chunk_ids": ["7a779ab63ceb_1"], "gold_keywords": ["1 giờ", "it-help", "202"], "intent": "security"}
+{"question": "Hoàn tiền chi phí công tác phí trong bao lâu?", "gold_chunk_ids": ["1d09a8273861_1"], "gold_keywords": ["10 ngày làm việc"], "intent": "expense"}
+{"question": "Chế độ phúc lợi gym và bảo hiểm sức khỏe ra sao?", "gold_chunk_ids": ["61d6bf407844_0", "61d6bf407844_1"], "gold_keywords": ["bảo hiểm", "gym", "500"], "intent": "benefits"}
+{"question": "Giờ làm việc chuẩn của công ty là mấy giờ?", "gold_chunk_ids": ["8400c3ed08f1_0"], "gold_keywords": ["09:00", "18:00"], "intent": "hr_policy"}
+{"question": "Mật khẩu công ty phải đạt yêu cầu gì?", "gold_chunk_ids": ["7a779ab63ceb_0"], "gold_keywords": ["12 ký tự", "90 ngày", "2FA"], "intent": "security"}
+{"question": "Ngày đầu đi làm tôi cần làm những gì?", "gold_chunk_ids": ["befdf79cfddb_0", "7a779ab63ceb_0"], "gold_keywords": ["laptop", "SSO", "buddy"], "intent": "onboarding"}
+{"question": "Nghỉ thai sản được bao lâu?", "gold_chunk_ids": ["1829fe5aff80_2"], "gold_keywords": ["6 tháng", "BHXH"], "intent": "hr_policy"}
+{"question": "Laptop hư thì IT hỗ trợ thế nào?", "gold_chunk_ids": ["a483862da46a_0"], "gold_keywords": ["4 giờ", "ticket"], "intent": "it_help"}
+{"question": "Thưởng thâm niên 5 năm là bao nhiêu?", "gold_chunk_ids": ["61d6bf407844_1"], "gold_keywords": ["2 tháng lương"], "intent": "benefits"}
+{"question": "Kê khai chi phí qua đâu và trong vòng bao nhiêu ngày?", "gold_chunk_ids": ["1d09a8273861_1"], "gold_keywords": ["Finance portal", "30 ngày"], "intent": "expense"}
+{"question": "Làm thêm giờ được bồi hoàn thế nào?", "gold_chunk_ids": ["8400c3ed08f1_1"], "gold_keywords": ["OT", "1.5"], "intent": "hr_policy"}
+{"question": "Khám sức khỏe định kỳ khi nào?", "gold_chunk_ids": ["61d6bf407844_1", "8400c3ed08f1_3"], "gold_keywords": ["quý IV"], "intent": "benefits"}

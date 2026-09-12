@@ -1,10 +1,36 @@
 """Tests for MAIA-08 golden-set evaluation and MAIA-01 threshold benchmark."""
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from maia import eval as eval_mod
+
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
+SKIP_REASON = "Qdrant not available - set QDRANT_URL to run golden eval tests"
+
+
+def _check_qdrant() -> bool:
+    try:
+        import httpx
+
+        headers = {"api-key": QDRANT_API_KEY} if QDRANT_API_KEY else {}
+        resp = httpx.get(f"{QDRANT_URL}/healthz", headers=headers, timeout=5.0)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+@pytest.fixture(scope="module")
+def qdrant_available() -> bool:
+    """Evaluate-based tests require a running Qdrant (gold sets reference real chunk ids)."""
+    if not _check_qdrant():
+        pytest.skip(SKIP_REASON)
+    return True
 
 
 def _fake_stack(tenant_id="default"):
@@ -40,7 +66,7 @@ def _seed_two_tenants():
     return stack
 
 
-def test_evaluate_group_metrics():
+def test_evaluate_group_metrics(qdrant_available):
     # exercise evaluate_group on a real golden file (metrics shape)
     path = eval_mod.GOLDEN_DIR / "vi_policy.jsonl"
     rep = eval_mod.evaluate_group(str(path))
@@ -51,20 +77,20 @@ def test_evaluate_group_metrics():
     assert 0 <= rep["recall@k"] <= 1
 
 
-def test_unauthorized_group_has_leakage_metric():
+def test_unauthorized_group_has_leakage_metric(qdrant_available):
     path = eval_mod.GOLDEN_DIR / "unauthorized.jsonl"
     rep = eval_mod.evaluate_group(str(path))
     # leakage_rate is computed for groups with expect_no_evidence rows
     assert rep.get("leakage_rate") is not None
 
 
-def test_no_answer_group_has_refusal_accuracy():
+def test_no_answer_group_has_refusal_accuracy(qdrant_available):
     path = eval_mod.GOLDEN_DIR / "no_answer.jsonl"
     rep = eval_mod.evaluate_group(str(path))
     assert rep.get("refusal_accuracy") is not None
 
 
-def test_benchmark_threshold_runs_and_picks():
+def test_benchmark_threshold_runs_and_picks(qdrant_available):
     # run a minimal benchmark on a tiny grid
     from maia import benchmark_threshold as bt
     rep = bt.benchmark_threshold(groups=["no_answer"], grid=[0.2, 0.5], top_k=3)

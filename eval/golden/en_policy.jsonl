@@ -1,10 +1,10 @@
-{"question": "How many annual leave days do I get per year?", "gold_chunk_ids": ["1410374725e1_0", "80b443f4c0f7_1"], "gold_keywords": ["12"], "intent": "hr_policy"}
-{"question": "How do I request VPN access?", "gold_chunk_ids": ["63a16140e921_0", "63a16140e921_1"], "gold_keywords": ["VPN", "ticket"], "intent": "vpn"}
-{"question": "What should I do if I lost my company laptop?", "gold_chunk_ids": ["71001089b8a9_1"], "gold_keywords": ["1 hour", "it-help"], "intent": "security"}
-{"question": "What is the password policy requirement?", "gold_chunk_ids": ["71001089b8a9_0"], "gold_keywords": ["12 characters", "90 days"], "intent": "security"}
-{"question": "How long does expense reimbursement take after approval?", "gold_chunk_ids": ["b0e856ca8d21_1"], "gold_keywords": ["10 business days"], "intent": "expense"}
-{"question": "What is the IT Help Desk response time for P1 issues?", "gold_chunk_ids": ["1c55e579446a_0"], "gold_keywords": ["1"], "intent": "it_help"}
-{"question": "Which accounts are provisioned automatically on the first day?", "gold_chunk_ids": ["5ab50401ad36_1"], "gold_keywords": ["Email", "Slack", "Jira"], "intent": "onboarding"}
-{"question": "What is the gym reimbursement limit per month?", "gold_chunk_ids": ["80b443f4c0f7_1"], "gold_keywords": ["500"], "intent": "benefits"}
-{"question": "Who approves expenses above 5 million VND?", "gold_chunk_ids": ["b0e856ca8d21_1"], "gold_keywords": ["manager", "5.000.000"], "intent": "expense"}
-{"question": "How long does the manager have to approve a leave request?", "gold_chunk_ids": ["1410374725e1_1"], "gold_keywords": ["48"], "intent": "leave_request"}
+{"question": "How many annual leave days do I get per year?", "gold_chunk_ids": ["1829fe5aff80_0", "22e159d7cf0e_0"], "gold_keywords": ["12"], "intent": "hr_policy"}
+{"question": "How do I request VPN access?", "gold_chunk_ids": ["befdf79cfddb_1", "f32f78c4c8af_0"], "gold_keywords": ["VPN", "ticket"], "intent": "vpn"}
+{"question": "What should I do if I lost my company laptop?", "gold_chunk_ids": ["7a779ab63ceb_1"], "gold_keywords": ["1 hour", "it-help"], "intent": "security"}
+{"question": "What is the password policy requirement?", "gold_chunk_ids": [], "gold_keywords": ["12 characters", "90 days"], "intent": "security"}
+{"question": "How long does expense reimbursement take after approval?", "gold_chunk_ids": [], "gold_keywords": ["10 business days"], "intent": "expense"}
+{"question": "What is the IT Help Desk response time for P1 issues?", "gold_chunk_ids": ["1829fe5aff80_0"], "gold_keywords": ["1"], "intent": "it_help"}
+{"question": "Which accounts are provisioned automatically on the first day?", "gold_chunk_ids": ["befdf79cfddb_0"], "gold_keywords": ["Email", "Slack", "Jira"], "intent": "onboarding"}
+{"question": "What is the gym reimbursement limit per month?", "gold_chunk_ids": ["1d09a8273861_1"], "gold_keywords": ["500"], "intent": "benefits"}
+{"question": "Who approves expenses above 5 million VND?", "gold_chunk_ids": ["1d09a8273861_1"], "gold_keywords": ["manager", "5.000.000"], "intent": "expense"}
+{"question": "How long does the manager have to approve a leave request?", "gold_chunk_ids": ["1829fe5aff80_1"], "gold_keywords": ["48"], "intent": "leave_request"}
