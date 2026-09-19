@@ -12,7 +12,7 @@ Rules (S4):
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -27,7 +27,7 @@ def _parse_remote_updated(raw: Any) -> datetime:
     text = str(raw).replace("+0000", "+00:00").replace("Z", "+00:00")
     parsed = datetime.fromisoformat(text)
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 

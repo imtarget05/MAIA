@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     read_retry_max_attempts: int = 5
 
     @model_validator(mode="after")
-    def _enforce_mode_gates(self) -> "Settings":
+    def _enforce_mode_gates(self) -> Settings:
         if self.mode == "integrated":
             if self.embedding_mode == "hash":
                 raise ValueError(

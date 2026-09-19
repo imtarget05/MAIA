@@ -858,6 +858,12 @@ def admin_outbox_worker(db: Session = Depends(get_db),
 app.include_router(auth_router)
 app.include_router(admin_router)
 
+# Video pipeline (plan-20260919-1925, T4): /video/* endpoints. The router
+# re-uses the JWT auth above via a lazy import — no circular dependency.
+from maia.video.api import video_router as _maia_video_router
+
+app.include_router(_maia_video_router)
+
 
 @app.get("/health")
 def health():
