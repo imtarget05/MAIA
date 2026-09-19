@@ -1,0 +1,6 @@
+# T2 JiraClient live read smoke (sandbox)
+get_metadata -> priorities=['Highest', 'High', 'Medium', 'Low', 'Lowest']
+                 statuses=[{'issue_type': 'Task', 'statuses': ['Done', 'In Progress', 'To Do']}, {'issue_type': 'Sub-task', 'statuses': ['Done', 'In Progress', 'To Do']}]
+list_issues -> 0 issue(s), next_page_token=None
+no issues yet in ITSD (expected: project freshly created)
+get_issue(ITSD-999999) -> not_found

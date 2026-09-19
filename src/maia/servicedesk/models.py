@@ -137,7 +137,10 @@ class SDTicket(Base):
     support_group: Mapped[str | None] = mapped_column(String(64))
     remote_status: Mapped[str | None] = mapped_column(String(64))
     remote_priority: Mapped[str | None] = mapped_column(String(64))
-    remote_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # timestamptz: compared against Jira's offset-aware timestamps for the
+    # stale-snapshot CAS rule (T2). Naive columns would raise TypeError on
+    # comparison (found by test_remote_old_snapshot_cannot_revert_ticket).
+    remote_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     quarantined: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -165,7 +168,8 @@ class SDTicketComment(Base):
     author_external_id: Mapped[str | None] = mapped_column(String(128))
     body: Mapped[str] = mapped_column(Text, nullable=False)
     visibility: Mapped[str] = mapped_column(String(32), nullable=False, default="public")
-    remote_created_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # timestamptz for the same offset-aware reason as SDTicket.remote_updated_at.
+    remote_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
