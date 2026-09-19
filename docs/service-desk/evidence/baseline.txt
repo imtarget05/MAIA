@@ -31,6 +31,15 @@ Notes:
   readiness reporting, SD_ env prefix, scoped defaults).
 - Provenance: python3 scripts/verify_sd_provenance.py → OK (manifest valid,
   no forbidden references under src/maia/servicedesk/).
+- Dependency drift note (2026-09-19, post-T1): re-running the legacy suite
+  with a fresh uv resolution today yields "302 passed, 10 skipped" BOTH at
+  the pristine locked SHA 6278fda and on this branch (verified via a
+  reference clone diff of collected test IDs: identical sets, 312 tests).
+  The original baseline "310 passed" reflected a different dependency
+  resolution (requirements.txt pins most but not all packages); this is the
+  unpinned-dependency drift risk called out in plan T0 — the Service Desk
+  lock files (requirements-servicedesk.lock) exist to prevent the same
+  drift in the new slice.
 - Repo convention note: .gitignore intentionally keeps plans/, .env.* and
   AGENTS.md machine-local ("keep out of git"). Accordingly,
   plans/plan-20260919-1820-maia-service-desk-v1.md and
