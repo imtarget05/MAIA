@@ -18,16 +18,16 @@ from maia.auth import (
     get_password_hash,
     verify_password,
 )
-from maia.servicedesk.models import SDRole, SDMembership, SDUser
+from maia.servicedesk.models import SDMembership, SDRole, SDUser
 from maia.servicedesk.schemas import Principal
 
 __all__ = [
-    "get_password_hash",
-    "verify_password",
     "AuthError",
     "TokenPair",
-    "resolve_principal",
+    "get_password_hash",
     "issue_tokens",
+    "resolve_principal",
+    "verify_password",
 ]
 
 

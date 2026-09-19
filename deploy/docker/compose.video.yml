@@ -1,0 +1,92 @@
+# MAIA video pipeline — opt-in stack (plan T5, cập nhật: Postgres mặc định).
+# KHÔNG được include từ docker-compose.yml gốc (chạy riêng khi cần):
+#   docker compose -f deploy/docker/compose.video.yml up -d          # stack video riêng
+#   docker compose -f deploy/docker/compose.video.yml run --rm video-worker  # one-off
+#
+# Mặc định chạy INTEGRATED mode: PostgreSQL (vid_jobs) + MinIO (S3) — đúng
+# ràng buộc S4 "PostgreSQL bắt buộc, không silent fallback". Lần đầu chạy cần
+# migration (từ host, cần alembic + psycopg):
+#   VID_DATABASE_URL=postgresql+psycopg://maia:maia@localhost:5434/maia \
+#     alembic -c alembic_video.ini upgrade head
+#
+# GPU note: image này dùng ffmpeg CPU (libx264/libx265) — chạy được mọi nơi.
+# Trên server có NVIDIA: build image với ffmpeg --enable-nvenc và đặt
+# VID_ENCODER_PROFILE=nvenc + deploy.resources.devices (nvidia runtime).
+# Trên host macOS (VideoToolbox): chạy worker ngoài container với
+# VID_STORAGE_BACKEND=local python -m maia.video.worker
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: maia-video-postgres
+    environment:
+      POSTGRES_USER: maia
+      POSTGRES_PASSWORD: maia
+      POSTGRES_DB: maia
+    ports:
+      # 5433 is taken by the Service Desk test postgres (sd-test-pg); the
+      # video stack uses 5434 on the host (container side stays 5432).
+      - "5434:5432"
+    volumes:
+      - video_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maia -d maia"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    # quay.io: Docker Hub namespace minio/minio bị rate-limit/chặn từ một số
+    # mạng; quay.io là mirror chính thức của MinIO.
+    image: quay.io/minio/minio:latest
+    container_name: maia-video-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${VID_MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${VID_MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - video_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  video-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.video
+    container_name: maia-video-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      # Integrated mode: Postgres + MinIO bắt buộc (S4) — không silent fallback.
+      VID_MODE: ${VID_MODE:-integrated}
+      VID_DATABASE_URL: ${VID_DATABASE_URL:-postgresql+psycopg://maia:maia@postgres:5432/maia}
+      VID_STORAGE_BACKEND: ${VID_STORAGE_BACKEND:-minio}
+      VID_STORAGE_DIR: /data/storage/video
+      VID_MINIO_ENDPOINT: minio:9000
+      VID_MINIO_ACCESS_KEY: ${VID_MINIO_ACCESS_KEY:-minioadmin}
+      VID_MINIO_SECRET_KEY: ${VID_MINIO_SECRET_KEY:-minioadmin}
+      VID_ENCODER_PROFILE: ${VID_ENCODER_PROFILE:-auto}
+      VID_WEBHOOK_URL: ${VID_WEBHOOK_URL:-}
+      VID_WEBHOOK_SECRET_REF: ${VID_WEBHOOK_SECRET_REF:-}
+      VID_RETENTION_DAYS: ${VID_RETENTION_DAYS:-7}
+    volumes:
+      - video_data:/data
+    # 2 tiến trình worker song song (mỗi cái 1 loop lease SKIP LOCKED).
+    command: ["python", "-m", "maia.video.worker", "2"]
+    restart: unless-stopped
+
+volumes:
+  video_data:
+  video_minio_data:
+  video_pg_data:

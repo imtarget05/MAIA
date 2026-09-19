@@ -12,7 +12,6 @@ from contextlib import contextmanager
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from maia.servicedesk.models import Base
 from maia.servicedesk.settings import Settings
 
 

@@ -1,0 +1,66 @@
+{
+  "uid": "maia-video",
+  "title": "MAIA - Video Pipeline (Encode/Transcode)",
+  "tags": ["maia", "video", "ffmpeg"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus", "current": {} }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Queue Depth by Status (vid_jobs)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "maia_video_jobs", "legendFormat": "{{status}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 15 } },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Job Completion / Failure Rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(maia_video_jobs_completed_total[5m]))", "legendFormat": "done/s" },
+        { "refId": "B", "expr": "sum(rate(maia_video_jobs_failed_total[5m]))", "legendFormat": "failed/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Encode Duration p50 / p95 (per job)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(maia_video_encode_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(maia_video_encode_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Processed Source Video (seconds/min)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(maia_video_processed_source_seconds_total[5m]))", "legendFormat": "src-sec/5m" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] }
+    }
+  ]
+}

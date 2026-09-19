@@ -1,0 +1,34 @@
+# =============================================================================
+# MAIA Video Worker — image riêng cho pipeline video (plan T5).
+# Tách khỏi image chính (RAG/ML stack nặng) để build nhanh và nhỏ.
+# ffmpeg CPU (libx264/libx265) — chạy được mọi nơi; NVENC cần image GPU riêng.
+# =============================================================================
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src
+
+# ffmpeg + ffprobe (Debian slim build: libx264/libx265/aac có sẵn)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Chỉ cài dependency tối thiểu của video module (không kéo RAG/ML stack).
+COPY requirements-video.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements-video.txt
+
+COPY src/ /app/src/
+
+RUN mkdir -p /data/storage/video && chmod -R 777 /data
+
+# Non-root (best practice, khớp Dockerfile chính)
+RUN useradd --create-home --shell /bin/bash viduser \
+    && chown -R viduser:viduser /app /data
+USER viduser
+
+CMD ["python", "-m", "maia.video.worker", "2"]

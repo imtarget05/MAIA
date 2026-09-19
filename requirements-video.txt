@@ -1,0 +1,19 @@
+# Minimal dependencies for the MAIA video pipeline module (plan T1/T5).
+# Deliberately separate from requirements.txt: the video worker image has no
+# need for the RAG/ML stack (llama-index, langgraph, fastembed, ...).
+# SQLAlchemy 2.0+ required by the lease query (with_for_update skip_locked).
+sqlalchemy>=2.0
+psycopg[binary]>=3.1
+pydantic>=2.0
+pydantic-settings>=2.0
+requests>=2.31
+
+# API mount (create_video_app / router) — only needed when serving /video/*.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+
+# MinIO S3-compatible storage backend (VID_STORAGE_BACKEND=minio).
+# Optional at import time (deferred import in storage.py) but required for
+# integrated deployments.
+minio>=7.2
