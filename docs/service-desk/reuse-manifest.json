@@ -1,0 +1,94 @@
+{
+  "$schema": "https://example.org/schemas/reuse-manifest-v1.json",
+  "generated_at": "2026-09-19",
+  "plan": "plans/plan-20260919-1820-maia-service-desk-v1.md",
+  "target_repo": "https://github.com/imtarget05/MAIA",
+  "branch": "codex/maia-service-desk-v1",
+  "donors": {
+    "maia": {
+      "repo": "https://github.com/imtarget05/MAIA",
+      "commit": "6278fda306c043d5363fa68940d4967ec14c4f52",
+      "role": "base repository (this checkout)"
+    },
+    "smart_document_chatbot": {
+      "repo": "https://github.com/imtarget05/Smart-Document-Chatbot",
+      "commit": "babe1c5badcf61f2a3059a5293cb059bdd2c49fd",
+      "role": "selective donor (read-only; MIT license, see THIRD_PARTY_NOTICES.md)"
+    }
+  },
+  "reuse_policy": [
+    "No runtime dependency on project 1: no API calls, no package imports from its checkout, no shared database/collection.",
+    "Every copied file records source repo, commit, source path, destination path, reuse kind, sha256 of the donor file at copy time, and required modifications.",
+    "Ported-concept entries record the spec origin but contain no copied code."
+  ],
+  "forbidden_references": [
+    "smart-document-chatbot",
+    "SmartDoc service URL",
+    "llm-router"
+  ],
+  "entries": [
+    {
+      "id": "maia-retriever",
+      "source_repo": "maia",
+      "source_path": "src/maia/retriever.py",
+      "destination_path": "src/maia/servicedesk/knowledge/retriever.py",
+      "kind": "adapt",
+      "status": "planned_T4",
+      "modifications": "Remove tenant-filter fallback paths; BM25 corpus restricted to authorized scope; keep separate dense/bm25/fused score components.",
+      "sha256": null
+    },
+    {
+      "id": "smartdoc-context-trim",
+      "source_repo": "smart_document_chatbot",
+      "source_path": "agent/memory/context_trim.py",
+      "destination_path": "src/maia/servicedesk/knowledge/context_budget.py",
+      "kind": "copy",
+      "status": "planned_T3",
+      "modifications": "Cap system message plus truncation suffix within budget; reserve output tokens in provider.",
+      "license": "MIT (THIRD_PARTY_NOTICES.md)",
+      "sha256": null
+    },
+    {
+      "id": "smartdoc-citation-ui",
+      "source_repo": "smart_document_chatbot",
+      "source_path": "frontend/src/components/SourceCitations.tsx",
+      "destination_path": "frontend/src/features/knowledge/SourceCitations.tsx",
+      "kind": "copy_adapt",
+      "status": "planned_T9",
+      "modifications": "Replace legal article/clause metadata with title/section/version/page; retarget type imports and theme classes.",
+      "license": "MIT (THIRD_PARTY_NOTICES.md)",
+      "sha256": null
+    },
+    {
+      "id": "smartdoc-evidence-ui",
+      "source_repo": "smart_document_chatbot",
+      "source_path": "frontend/src/components/EvidenceState.tsx",
+      "destination_path": "frontend/src/features/knowledge/EvidenceState.tsx",
+      "kind": "copy_adapt",
+      "status": "planned_T9",
+      "modifications": "Map evidence states to runbook KB wording; theme tokens as needed.",
+      "license": "MIT (THIRD_PARTY_NOTICES.md)",
+      "sha256": null
+    },
+    {
+      "id": "smartdoc-doc-access-spec",
+      "source_repo": "smart_document_chatbot",
+      "source_path": "DocumentAccessService.java",
+      "destination_path": "src/maia/servicedesk/policies.py",
+      "kind": "port_concept",
+      "status": "planned_T1",
+      "modifications": "Owner-only model replaced by tenant + requester + support-group model; no global-admin bypass.",
+      "sha256": null
+    },
+    {
+      "id": "smartdoc-db-jobs-spec",
+      "source_repo": "smart_document_chatbot",
+      "source_path": "llm-router/app/db_jobs.py",
+      "destination_path": "src/maia/servicedesk/jobs.py",
+      "kind": "port_concept",
+      "status": "planned_T5",
+      "modifications": "Add available_at retry schedule, lease token fencing, unknown-outcome handling per S7; do not copy the implementation.",
+      "sha256": null
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+# Service Desk baseline (T0) — MAIA @ 6278fda
+
+Date: 2026-09-19
+Machine: macOS (darwin), arm64, uv 0.12.0
+Python: 3.12 (uv-managed, --no-project ephemeral env)
+Checkout: fresh clone of https://github.com/imtarget05/MAIA at
+/Users/mainguyenbinhtan/Downloads/MAIA; HEAD == locked SHA
+6278fda306c043d5363fa68940d4967ec14c4f52 (no source drift). This clone
+serves as the isolated worktree for branch codex/maia-service-desk-v1
+(no other local work was reset or reverted).
+
+Command:
+  uv run --no-project --python 3.12 \
+    --with-requirements requirements.txt \
+    --with pytest --with httpx --with pydantic-settings -- \
+    python -m pytest tests -q
+
+Result:
+  310 passed, 10 skipped, 47 warnings in 45.43s
+  0 failed — full suite green; no pre-existing failures carried forward.
+
+Notes:
+- Warnings include fastembed mean-pooling notice and datetime.utcnow()
+  deprecations (consistent with the S1 subset run: 15 passed there).
+- Raw output: docs/service-desk/evidence/baseline-raw.txt
+- Runtime deps declared in requirements.txt lack SQLAlchemy/Alembic/HTTPX
+  for the Service Desk; resolved explicitly in
+  requirements-servicedesk.lock (compiled from requirements-servicedesk.in,
+  Python 3.12) per plan T0 — not inferred from green CI.
+- T0 tests: tests/servicedesk/test_settings.py — 8 passed (mode gates,
+  readiness reporting, SD_ env prefix, scoped defaults).
+- Provenance: python3 scripts/verify_sd_provenance.py → OK (manifest valid,
+  no forbidden references under src/maia/servicedesk/).
+- Repo convention note: .gitignore intentionally keeps plans/, .env.* and
+  AGENTS.md machine-local ("keep out of git"). Accordingly,
+  plans/plan-20260919-1820-maia-service-desk-v1.md and
+  .env.servicedesk.example exist on disk in this checkout but are
+  deliberately untracked; .env.servicedesk.example content is documented
+  and can be reconstructed by any operator (all SD_ vars listed in
+  settings.py defaults and docs).

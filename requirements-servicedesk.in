@@ -1,0 +1,31 @@
+# MAIA Service Desk — runtime dependency contract (T0).
+# Lock with: uv pip compile requirements-servicedesk.in -o requirements-servicedesk.lock
+# These are in addition to the base MAIA requirements.txt; kept explicit so the
+# Service Desk deployment resolves a known-good set without assuming legacy
+# MAIA runtime deps (per plan T0: resolve missing runtime declarations via the
+# new lock, do not infer from green CI).
+
+# Core framework
+pydantic>=2.0
+pydantic-settings>=2.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27
+
+# Persistence (S4: PostgreSQL durable queue; Qdrant vector index)
+sqlalchemy>=2.0
+alembic>=1.13
+psycopg[binary]>=3.1
+qdrant-client>=1.9.0
+
+# Retrieval (S6: dense + BM25 + RRF; BM25 corpus built from sd_chunks)
+rank-bm25>=0.2.2
+numpy>=1.24
+
+# Documents (T3 ingestion: PDF text + Markdown)
+pypdf>=4.0
+
+# Auth primitives (T1: reuse token/password crypto patterns)
+python-jose[cryptography]>=3.3
+passlib[bcrypt]>=1.7
+email-validator>=1.1

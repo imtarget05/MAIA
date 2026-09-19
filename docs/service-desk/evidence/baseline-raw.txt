@@ -1,0 +1,101 @@
+Downloading grpcio (11.8MiB)
+Downloading babel (9.7MiB)
+Downloading llama-index-core (11.4MiB)
+Downloading onnxruntime (20.5MiB)
+Downloading pyarrow (34.2MiB)
+Downloading lxml (8.2MiB)
+Downloading sqlalchemy (2.1MiB)
+Downloading pillow (4.6MiB)
+Downloading nltk (1.7MiB)
+Downloading pandas (10.2MiB)
+ Downloaded nltk
+ Downloaded sqlalchemy
+ Downloaded pillow
+ Downloaded lxml
+ Downloaded babel
+ Downloaded pandas
+ Downloaded llama-index-core
+ Downloaded grpcio
+ Downloaded onnxruntime
+ Downloaded pyarrow
+Installed 164 packages in 460ms
+........................................................................ [ 22%]
+..................................ssss.................................. [ 45%]
+........................................................................ [ 67%]
+........................................................................ [ 90%]
+..ss......ssss..................                                         [100%]
+=============================== warnings summary ===============================
+../../.cache/uv/archive-v0/ru3Sx2NeQtmOCZV0/lib/python3.12/site-packages/starlette/testclient.py:53
+  /Users/mainguyenbinhtan/.cache/uv/archive-v0/ru3Sx2NeQtmOCZV0/lib/python3.12/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+../../.cache/uv/archive-v0/ru3Sx2NeQtmOCZV0/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /Users/mainguyenbinhtan/.cache/uv/archive-v0/ru3Sx2NeQtmOCZV0/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+src/maia/config.py:201
+src/maia/config.py:201
+  /Users/mainguyenbinhtan/Downloads/MAIA/src/maia/config.py:201: RuntimeWarning: JWT_SECRET_KEY is not set — using an ephemeral random key. All tokens/sessions will be invalidated on restart. Set JWT_SECRET_KEY in .env for production.
+    warnings.warn(
+
+src/maia/api.py:161
+  /Users/mainguyenbinhtan/Downloads/MAIA/src/maia/api.py:161: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(BaseModel):
+
+../../.cache/uv/archive-v0/ru3Sx2NeQtmOCZV0/lib/python3.12/site-packages/pydantic/_internal/_config.py:386
+  /Users/mainguyenbinhtan/.cache/uv/archive-v0/ru3Sx2NeQtmOCZV0/lib/python3.12/site-packages/pydantic/_internal/_config.py:386: UserWarning: Valid config keys have changed in V2:
+  * 'orm_mode' has been renamed to 'from_attributes'
+    warnings.warn(message, UserWarning)
+
+tests/test_agent.py: 2 warnings
+tests/test_agentic.py: 2 warnings
+tests/test_approval.py: 3 warnings
+tests/test_auth_workflow.py: 2 warnings
+tests/test_authorization.py: 3 warnings
+tests/test_e2e_it_outbox.py: 3 warnings
+tests/test_itsm_scheduler.py: 2 warnings
+  /Users/mainguyenbinhtan/Downloads/MAIA/src/maia/notifier.py:80: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "ts": datetime.utcnow().isoformat() + "Z"}
+
+tests/test_auth_workflow.py: 11 warnings
+  /Users/mainguyenbinhtan/.cache/uv/archive-v0/ru3Sx2NeQtmOCZV0/lib/python3.12/site-packages/sqlalchemy/sql/schema.py:3627: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+tests/test_auth_workflow.py::test_access_token_roundtrip
+  /Users/mainguyenbinhtan/Downloads/MAIA/src/maia/auth.py:61: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+  /Users/mainguyenbinhtan/Downloads/MAIA/src/maia/auth.py:219: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expires_at=datetime.utcnow() + timedelta(minutes=settings.PASSWORD_RESET_EXPIRE_MIN),
+
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+  /Users/mainguyenbinhtan/Downloads/MAIA/src/maia/auth.py:233: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if not rec or rec.used_at is not None or rec.expires_at <= datetime.utcnow():
+
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+  /Users/mainguyenbinhtan/Downloads/MAIA/src/maia/auth.py:238: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    rec.used_at = datetime.utcnow()
+
+tests/test_authorization.py::test_request_models_ignore_extra_tenant_id[UrlIngestReq]
+tests/test_authorization.py::test_request_models_ignore_extra_tenant_id[MemoryStoreReq]
+  /Users/mainguyenbinhtan/Downloads/MAIA/tests/test_authorization.py:37: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.
+    assert "tenant_id" not in m.model_fields
+
+tests/test_document_lifecycle.py::test_upload_creates_v1_manifest
+  /Users/mainguyenbinhtan/.cache/uv/archive-v0/ru3Sx2NeQtmOCZV0/lib/python3.12/site-packages/_pytest/python.py:171: PytestReturnNotNoneWarning: Test functions should return None, but tests/test_document_lifecycle.py::test_upload_creates_v1_manifest returned <class 'str'>.
+  Did you mean to use `assert` instead of `return`?
+  See https://docs.pytest.org/en/stable/how-to/assert.html#return-not-none for more information.
+    warnings.warn(
+
+tests/test_embeddings_cloudflare.py::test_no_creds_falls_back_to_fastembed_or_hash
+  /Users/mainguyenbinhtan/Downloads/MAIA/src/maia/embeddings.py:69: UserWarning: The model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 now uses mean pooling instead of CLS embedding. In order to preserve the previous behaviour, consider either pinning fastembed version to 0.5.1 or using `add_custom_model` functionality.
+    self._backend = TextEmbedding(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+310 passed, 10 skipped, 47 warnings in 45.43s
