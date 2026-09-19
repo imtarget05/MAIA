@@ -23,6 +23,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     Text,
@@ -377,6 +378,79 @@ class SDAuditEvent(Base):
     before_hash: Mapped[str | None] = mapped_column(String(64))
     after_hash: Mapped[str | None] = mapped_column(String(64))
     trace_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+
+
+# --- part 5: knowledge base (S4: authoritative ACL/version metadata) ---
+
+
+class SDDocument(Base):
+    """Authoritative KB document metadata (T3).
+
+    ACL and version live HERE, never in Qdrant payload alone: retrieval
+    re-checks this table before text reaches a prompt and before a source is
+    served (S6). ``version`` is immutable per row — a new ingest of changed
+    content creates a new row and only then becomes ``active``, so a partial
+    index failure can never publish a half-ingested version.
+    """
+
+    __tablename__ = "sd_documents"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "doc_id", "version", name="uq_document_version"),
+        UniqueConstraint("id", "version", name="uq_document_id_version"),
+        CheckConstraint("visibility IN ('agent','requester')", name="ck_document_visibility"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    doc_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="synthetic")
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    allowed_groups: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="agent")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("sd_users.id")
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+
+
+class SDChunk(Base):
+    """Chunk text for one document version; BM25 corpus reads from here (S6).
+
+    Composite FK (document_id, document_version) -> sd_documents(id, version)
+    keeps chunks from ever pointing at a version of another document.
+    Point IDs in Qdrant are UUID5(tenant/doc/version/chunk) — see ingest.py.
+    """
+
+    __tablename__ = "sd_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id", "document_version", "chunk_id",
+            name="uq_chunk_document_version_chunk",
+        ),
+        ForeignKeyConstraint(
+            ["document_id", "document_version"],
+            ["sd_documents.id", "sd_documents.version"],
+            name="fk_chunk_document_version",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    document_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )

@@ -30,6 +30,9 @@ EXPECTED_TABLES = {
     "sd_inbox_events",
     "sd_outbox",
     "sd_audit_events",
+    # T3 knowledge base
+    "sd_documents",
+    "sd_chunks",
 }
 
 

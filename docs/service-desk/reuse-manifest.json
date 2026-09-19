@@ -43,9 +43,30 @@
       "source_path": "agent/memory/context_trim.py",
       "destination_path": "src/maia/servicedesk/knowledge/context_budget.py",
       "kind": "copy",
-      "status": "planned_T3",
-      "modifications": "Cap system message plus truncation suffix within budget; reserve output tokens in provider.",
+      "status": "shipped_T3",
+      "modifications": "truncate() counts TRUNCATE_SUFFIX inside the budget (donor returned max_chars + suffix); trim_messages() caps the leading system message (donor left it uncapped and blew the budget); inputs are never mutated; build_evidence_context() added for the evidence packet. Function names (trim_messages/cap_chunks/truncate) kept for traceability.",
       "license": "MIT (THIRD_PARTY_NOTICES.md)",
+      "donor_sha256": "b1baf5466d7244ab6b0d58df27937acbe929c9b795c7e61f999e3a82845c78c4",
+      "sha256": "a5f69b646b45bc4b85565610b856d064b9548b555e37fe51564dc0eb197b3eac"
+    },
+    {
+      "id": "maia-chunking-import",
+      "source_repo": "maia",
+      "source_path": "src/maia/chunking.py",
+      "destination_path": "src/maia/servicedesk/knowledge/ingest.py",
+      "kind": "import_reuse",
+      "status": "shipped_T3",
+      "modifications": "split_documents() is imported and called with version-scoped chunk IDs (doc_id_v{version}_{i}); no file copy, no fork. The missing llama-index dependency degrades to MAIA's own deterministic fallback splitter, so the Service Desk lock stays lean.",
+      "sha256": null
+    },
+    {
+      "id": "maia-textnorm-golden",
+      "source_repo": "maia",
+      "source_path": "src/maia/textnorm.py",
+      "destination_path": null,
+      "kind": "import_reuse",
+      "status": "planned_T4",
+      "modifications": "norm_tokens reuse for Vietnamese diacritic-insensitive BM25 matching; will add golden tests for accented/unaccented queries and error codes.",
       "sha256": null
     },
     {

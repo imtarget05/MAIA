@@ -58,3 +58,37 @@ def authorize_proposal(principal: Principal, ticket: SDTicket, kind: str) -> Non
             )
     elif principal.role not in ("supervisor", "admin"):
         raise NotAuthorized(f"role {principal.role!r} cannot approve actions")
+
+
+def can_read_document(principal: Principal, document) -> bool:
+    """KB document visibility (S6).
+
+    - Same tenant, not deleted, and the version must still be active.
+    - Requesters only ever see documents explicitly marked requester-visible
+      (a restricted runbook must never leak into a comment sent to a
+      requester).
+    - Agents/supervisors need group membership in ``allowed_groups``.
+    - Admin does NOT bypass (consistent with ticket reads): admins configure
+      ACLs, they do not gain read access through the admin role alone.
+    """
+    if document is None:
+        return False
+    if document.tenant_id != principal.tenant_id:
+        return False
+    if getattr(document, "deleted_at", None) is not None:
+        return False
+    if not getattr(document, "active", False):
+        return False
+
+    visibility = getattr(document, "visibility", "agent")
+    if principal.role == "requester":
+        return visibility == "requester"
+    # agent/supervisor/admin (admin has no bypass): group membership decides.
+    allowed = set(document.allowed_groups or ())
+    return bool(allowed & principal.group_ids)
+
+
+def authorize_kb_management(principal: Principal) -> None:
+    """Only tenant admins may ingest/revoke KB documents (T3)."""
+    if principal.role != "admin":
+        raise NotAuthorized("only an admin may manage knowledge documents")
