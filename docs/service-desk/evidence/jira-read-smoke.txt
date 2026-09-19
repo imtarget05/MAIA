@@ -1,0 +1,17 @@
+# Jira read-only smoke — 2026-09-19T12:59:20.539911+00:00
+site: https://maia-sandbox.atlassian.net  project: ITSD
+
+## GET /project/ITSD -> 200
+{"id": "10001", "key": "ITSD", "name": "MAIA Service Desk", "projectTypeKey": "software", "simplified": false, "style": "classic"}
+
+## GET /priority -> 200
+[{"id": "1", "name": "Highest"}, {"id": "2", "name": "High"}, {"id": "3", "name": "Medium"}, {"id": "4", "name": "Low"}, {"id": "5", "name": "Lowest"}]
+
+## GET /project/ITSD/statuses -> 200
+[{"issue_type": "Task", "statuses": ["Done", "In Progress", "To Do"]}, {"issue_type": "Sub-task", "statuses": ["Done", "In Progress", "To Do"]}]
+
+## GET /user/assignable/search (ITSD) -> 200
+[{"accountId": "712020:9d2c37a2-791f-442b-9e5b-be61ff0d1b2b", "displayName": "Tan Mai Nguyen Binh"}]
+
+## POST /search/jql (project = ITSD) -> 200
+{"issues": []}
