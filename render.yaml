@@ -31,7 +31,7 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: STORAGE_DIR
-        value: /tmp/storage
+        value: ./storage
       - key: DATA_DIR
         value: /opt/render/project/src/data/samples
       - key: ENTERPRISE_DATA_DIR
@@ -87,9 +87,9 @@ services:
       - key: QDRANT_COLLECTION
         value: maia_knowledge_v2
       - key: WORKFLOW_DB_PATH
-        value: /tmp/storage/workflow.db
+        value: ./storage/workflow.db
       - key: SESSION_DB_PATH
-        value: /tmp/storage/session.db
+        value: ./storage/session.db
 
   - type: web
     name: maia-ui
@@ -108,7 +108,7 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: STORAGE_DIR
-        value: /tmp/storage
+        value: ./storage
       - key: DATA_DIR
         value: /opt/render/project/src/data/samples
       - key: ENTERPRISE_DATA_DIR
@@ -165,6 +165,6 @@ services:
       - key: QDRANT_COLLECTION
         value: maia_knowledge_v2
       - key: WORKFLOW_DB_PATH
-        value: /tmp/storage/workflow.db
+        value: ./storage/workflow.db
       - key: SESSION_DB_PATH
-        value: /tmp/storage/session.db
+        value: ./storage/session.db
