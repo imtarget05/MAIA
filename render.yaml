@@ -90,6 +90,17 @@ services:
         value: ./storage/workflow.db
       - key: SESSION_DB_PATH
         value: ./storage/session.db
+      - key: AUTH_DB_URL
+        sync: false
+        # Auth database DSN. MUST be durable: the default
+        # "sqlite:///./maia_auth.db" is a file in the process working directory
+        # and is discarded on every redeploy, taking all users, sessions,
+        # refresh tokens and approvals with it. The service refuses to start
+        # outside development while this is unset.
+        # SQLite on a mounted disk:
+        #   sqlite:////mnt/data/maia_auth.db
+        # or a PostgreSQL DSN:
+        #   postgresql://user:pass@host:5432/maia_auth
 
   - type: web
     name: maia-ui
@@ -168,3 +179,14 @@ services:
         value: ./storage/workflow.db
       - key: SESSION_DB_PATH
         value: ./storage/session.db
+      - key: AUTH_DB_URL
+        sync: false
+        # Auth database DSN. MUST be durable: the default
+        # "sqlite:///./maia_auth.db" is a file in the process working directory
+        # and is discarded on every redeploy, taking all users, sessions,
+        # refresh tokens and approvals with it. The service refuses to start
+        # outside development while this is unset.
+        # SQLite on a mounted disk:
+        #   sqlite:////mnt/data/maia_auth.db
+        # or a PostgreSQL DSN:
+        #   postgresql://user:pass@host:5432/maia_auth

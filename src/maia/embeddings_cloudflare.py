@@ -17,14 +17,28 @@ from .config import settings
 _CF_EMBED_MODEL = os.environ.get("MAIA_EMBED_MODEL", "@cf/baai/bge-m3")
 
 
+class EmbeddingDimMismatch(RuntimeError):
+    """The backend returned vectors of a different width than configured.
+
+    This is a configuration error, not a transient fault, so it is deliberately
+    NOT absorbed by the degraded-mode fallback. Hash vectors of the configured
+    width would upsert cleanly and then be retrieved as if they carried
+    meaning, turning a loud misconfiguration into silently wrong answers.
+    """
+
+
 class CloudflareEmbedder:
     """Batched text embeddings via Cloudflare Workers AI.
 
     - POST /client/v4/accounts/{account}/ai/run/{model}  (instruct embedding
       models want the prefix "Represent this sentence ..."). We handle both
       response shapes: {"result":{"data":[{...}]}} and {"result":{"text":"..."}}.
-    - Graceful degraded mode: when creds are missing or the call fails, falls
-      back to deterministic hash embedding dim=EMBED_DIM so nothing crashes.
+    - Graceful degraded mode: when creds are missing or the call fails, falls back
+      to a deterministic hash embedding so nothing crashes. The fallback uses the
+      *same* dimension as the live path (``CLOUDFLARE_EMBED_DIM``), because the
+      Qdrant collection has already been created at that width by the time the
+      first embed happens — a fallback vector of a different width would fail to
+      upsert.
     """
 
     def __init__(self, account_id: str = "", api_token: str = "",
@@ -33,7 +47,10 @@ class CloudflareEmbedder:
         self.account_id = (account_id or "").strip()
         self.api_token = (api_token or "").strip()
         self.model = (model or _CF_EMBED_MODEL).strip()
-        self.dim = int(dim or settings.EMBED_DIM)
+        # Default to the configured EMBED_MODEL's width, not settings.EMBED_DIM
+        # (which describes the offline fastembed/hash fallbacks). Callers that
+        # know better (Embedder) pass dim explicitly.
+        self.dim = int(dim or settings.CLOUDFLARE_EMBED_DIM)
         self._mode = "cloudflare" if (self.account_id and self.api_token) else "hash"
         self._session = requests.Session()
 
@@ -57,10 +74,28 @@ class CloudflareEmbedder:
                 vecs = [d["embedding"] if isinstance(d, dict) else d
                         for d in result["data"]]
                 arr = np.array(vecs, dtype=np.float32)
-                # TODO(embedding-dim): infer dim from first vector; store per-chunk.
-                self.dim = arr.shape[1] if arr.ndim == 2 else self.dim
+                if arr.ndim != 2:
+                    raise ValueError(
+                        f"expected a 2-D embedding matrix, got shape {arr.shape}"
+                    )
+                # Resolved the TODO(embedding-dim): the dimension is now pinned
+                # by configuration and validated, rather than inferred and
+                # silently reassigned. Reassigning self.dim here used to change
+                # the vector width *after* the Qdrant collection had already
+                # been created at the configured width, which surfaced much later
+                # as an opaque upsert failure.
+                if arr.shape[1] != self.dim:
+                    raise EmbeddingDimMismatch(
+                        f"{self.model} returned {arr.shape[1]}-dim vectors but "
+                        f"CLOUDFLARE_EMBED_DIM is {self.dim}; the Qdrant "
+                        "collection is created at the configured width, so these "
+                        "vectors would not upsert. Set CLOUDFLARE_EMBED_DIM to "
+                        "the model's real output width."
+                    )
                 return arr
             raise ValueError(f"unexpected Cloudflare embedding response: {r.text[:200]}")
+        except EmbeddingDimMismatch:
+            raise
         except Exception as e:
             print(f"[embeddings] cloudflare embed failed ({e}), hash fallback", file=__import__("sys").stderr)
             return self._hash_embed(texts)

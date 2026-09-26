@@ -78,10 +78,24 @@ def _employee_tenant_lookup(employee_id: str, db: dict | None = None) -> str | N
 
 def _authorize_employee(employee_id: str, tenant_id: str | None,
                          *, persist_unknown: bool = False) -> tuple[bool, str | None]:
-    """Fail-closed tenant ownership check.
+    """Tenant-ownership check against the mock HR DB.
 
-    Returns (authorized, reason). Skipped (→ allowed) when ``tenant_id`` is None
-    or ``TOOL_TENANT_CHECK`` is disabled.
+    Returns ``(authorized, reason)``. This is a **tenant-mismatch** check, not an
+    identity check, and it is *not* fail-closed — it denies exactly one case:
+
+    * ``tenant_id is None`` or ``TOOL_TENANT_CHECK`` disabled → allowed, because
+      no tenant was asserted and there is nothing to compare against.
+    * employee unknown to the mock DB → allowed, and with ``persist_unknown`` the
+      asserted tenant is adopted for that employee. The mock auto-provisions
+      unknown employees (they get a default leave balance and a record); denying
+      them would break that provisioning path, which every tool wrapper relies on.
+    * employee known but carrying no ``tenant_id`` → allowed, and likewise
+      adopts the asserted tenant when ``persist_unknown``.
+    * employee known and owned by a *different* tenant → **denied**.
+
+    So the guarantee this provides is: once an employee is bound to a tenant, no
+    caller can act for them under a different one. It does not authenticate the
+    caller, and with the mock HR DB the tenant binding is claimed on first use.
     """
     if tenant_id is None or not settings.TOOL_TENANT_CHECK:
         return True, None

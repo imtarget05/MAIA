@@ -27,7 +27,7 @@ Core workflow: `Find → Understand → Cite → Act`
 - **Human-in-the-Loop (HITL) Action Execution (C1)**: Built with LangGraph StateGraphs and SQLite checkpointing. Any action causing a side-effect triggers an interrupt, pending explicit human approval via the `/actions/confirm` endpoint before resuming.
 - **Enterprise Security & PII Protection**: 2-layer Personal Identifiable Information (PII) scanning (ingestion-time + output guardrail) prevents data leakage. Role-specific emails (e.g., `hr@`, `security@`) are allowlisted.
 - **Multi-Tenant Isolation**: Complete isolation of queries, retrieval, and session memory by `tenant_id` at the Qdrant payload and database level.
-- **Offline-First Development**: Features a full mock mode (`MAIA_MODE=mock`, `MAIA_EMBED_FORCE_HASH=1`) allowing zero-cloud dependency testing and deployment.
+- **Offline-First Development**: Runs with zero cloud dependencies when no Cloudflare credentials are set (every connector degrades to a local mock), and `MAIA_EMBED_FORCE_HASH=1` forces the deterministic hash embedder for tests.
 - **Long-Term Memory**: Maintains cross-session memory for user preferences and facts, stored securely in SQLite.
 
 ## 🏗️ Architecture
@@ -83,8 +83,7 @@ Run the entire platform locally without requiring external API keys.
 
 ```bash
 # Set offline mode environment variables
-export MAIA_EMBED_FORCE_HASH=1 
-export MAIA_MODE=mock 
+export MAIA_EMBED_FORCE_HASH=1
 export PYTHONPATH=src
 
 # Install dependencies

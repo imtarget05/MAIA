@@ -47,6 +47,18 @@ def embed_mode() -> str:
         return "unknown"
 
 
+def _runtime_embed_dim() -> int:
+    """Vector width the running pipeline actually uses."""
+    try:
+        from maia.embeddings import get_embedder
+
+        return int(get_embedder().dim)
+    except Exception:
+        from maia.config import settings
+
+        return int(settings.CLOUDFLARE_EMBED_DIM)
+
+
 def build_manifest(*, metrics: dict, dataset: str, top_k: int = 3,
                    extra: dict | None = None) -> dict:
     """Assemble the run manifest from settings + environment."""
@@ -57,7 +69,12 @@ def build_manifest(*, metrics: dict, dataset: str, top_k: int = 3,
         "git_sha": _git_sha(),
         "mode": embed_mode(),
         "embed_model": settings.EMBED_MODEL,
-        "embed_dim": settings.EMBED_DIM,
+        # settings.EMBED_DIM describes the offline fallbacks; the dim actually
+        # used in this run is the embedder's, which is 1024 on the Cloudflare
+        # BGE-M3 path. Recording the wrong one made the manifest useless for
+        # reproducing a run.
+        "embed_dim": _runtime_embed_dim(),
+        "fallback_embed_dim": settings.EMBED_DIM,
         "top_k": top_k,
         "thresholds": {
             "similarity": getattr(settings, "SIMILARITY_THRESHOLD", None),

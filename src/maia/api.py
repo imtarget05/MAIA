@@ -42,8 +42,11 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7     # longer-lived refresh token
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Use SQLite for simplicity; in production, use PostgreSQL or another database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./maia_auth.db"
+# Local default stays SQLite; deployments override AUTH_DB_URL (a mounted disk
+# or PostgreSQL DSN) so accounts, sessions, refresh tokens and approvals are not
+# lost when the ephemeral filesystem is recycled. config.Settings raises at import
+# if this is left at the default outside development.
+SQLALCHEMY_DATABASE_URL = settings.AUTH_DB_URL
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}

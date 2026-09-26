@@ -29,7 +29,19 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = ""
 
     # Embeddings (§9)
+    #
+    # Two different dimensions are in play and conflating them is a bug:
+    #   EMBED_MODEL         — the production model, Cloudflare Workers AI
+    #                         ``@cf/baai/bge-m3``, which emits 1024-dim vectors.
+    #   CLOUDFLARE_EMBED_DIM — that model's vector width. The Qdrant collection
+    #                         is created from the *runtime* embedder dim, so
+    #                         this is the value that must match in production.
+    #   EMBED_DIM           — width of the OFFLINE fallbacks only: the
+    #                         deterministic hash embedder and the fastembed
+    #                         model (``paraphrase-multilingual-MiniLM-L12-v2``,
+    #                         which really is 384-dim).
     EMBED_MODEL: str = "@cf/baai/bge-m3"
+    CLOUDFLARE_EMBED_DIM: int = 1024
     EMBED_DIM: int = 384
 
     # Chunking (§4)
@@ -161,6 +173,12 @@ class Settings(BaseSettings):
     SESSION_DB_PATH: str = "./storage/session.db"
 
     # Auth
+    # Auth database DSN. The local default is a SQLite file in the process
+    # working directory, which is convenient for dev and unusable in a
+    # deployment: most PaaS filesystems are ephemeral, so every user, session,
+    # refresh token and approval is lost on redeploy. Outside development this
+    # MUST be set explicitly — see the startup assertion below.
+    AUTH_DB_URL: str = "sqlite:///./maia_auth.db"
     JWT_SECRET_KEY: str = ""
     CORS_ORIGINS: str = ""
     ENVIRONMENT: str = "development"
@@ -213,3 +231,25 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+_DEVELOPMENT_ENVIRONMENTS = {"", "dev", "development", "local", "test"}
+_DEFAULT_AUTH_DB_URL = "sqlite:///./maia_auth.db"
+
+# The auth DSN was previously a hardcoded literal in api.py with no settings
+# field and no env override, so it always resolved to a SQLite file beside the
+# working directory. On a platform with an ephemeral filesystem that silently
+# discards every account, session, refresh token and approval on each deploy or
+# restart. Fail loudly at import instead of losing the data quietly.
+if settings.ENVIRONMENT.lower() not in _DEVELOPMENT_ENVIRONMENTS and (
+    settings.AUTH_DB_URL == _DEFAULT_AUTH_DB_URL
+):
+    raise RuntimeError(
+        "AUTH_DB_URL must be configured when ENVIRONMENT="
+        f"{settings.ENVIRONMENT!r}. The default {_DEFAULT_AUTH_DB_URL!r} is a "
+        "SQLite file in the process working directory, which is ephemeral on "
+        "most PaaS filesystems: every user, session, refresh token and approval "
+        "is lost on redeploy. Set AUTH_DB_URL to a durable location, e.g. "
+        "sqlite:////mnt/data/maia_auth.db on a mounted disk, or to a "
+        "PostgreSQL DSN."
+    )

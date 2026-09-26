@@ -5,9 +5,12 @@ On any failure (no network, no creds, not enabled) falls back to local mock DB
 (tools.py). This keeps offline tests green while allowing prod swap.
 
 P1-1 / P1-5: every tool wrapper accepts an optional ``tenant_id`` and enforces
-employee→tenant ownership (fail-closed). When ``tenant_id`` is None the check
-is skipped (backward-compat allow); when ``settings.TOOL_TENANT_CHECK`` is
-False the check is also skipped (tests can opt out).
+employee→tenant ownership. This is a tenant-mismatch check, not an identity
+check: it denies an employee that is already bound to a different tenant, and
+allows the check to be skipped when ``tenant_id`` is None (nothing to compare) or
+``settings.TOOL_TENANT_CHECK`` is False (tests can opt out). Unknown employees
+are auto-provisioned into the asserted tenant by the mock HR DB rather than
+denied — see :func:`maia.agent.tools._authorize_employee`.
 """
 from __future__ import annotations
 

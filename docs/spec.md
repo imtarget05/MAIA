@@ -22,7 +22,7 @@ MAIA là trợ lý nội bộ doanh nghiệp, trả lời câu hỏi chính sác
 
 ## Ràng buộc
 
-- **Offline-first:** Chạy đầy đủ ở chế độ mock khi không có Cloudflare creds (`MAIA_MODE=mock`). Embedding dùng hash fallback khi FastEmbed thiếu (`MAIA_EMBED_FORCE_HASH=1`).
+- **Offline-first:** Chạy đầy đủ ở chế độ mock khi không có Cloudflare creds. Embedding dùng hash fallback khi FastEmbed thiếu (`MAIA_EMBED_FORCE_HASH=1`).
 - **Multi-tenant:** Mọi query/chat/stream đều nhận `tenant_id`; Qdrant filter theo payload `tenant_id`. Mặc định `default`.
 - **C1 — Confirm-before-action:** Side-effect chỉ chạy ở `POST /actions/confirm`. Chat trả về `needs_approval` + `pending_action`, KHÔNG thực hiện ngay.
 - **PII 2 lớp:** Ingest-time (`pipeline_query._ingest_rawdocs`) + output guardrail (`loops/guardrails.py`), quét email/SĐT/CCCD/CC trước khi embed và trước khi trả lời.

@@ -7,6 +7,10 @@ worker -> the API server stays ~150Mi and fits the free plan.
 
 Fallbacks (degraded, never crash): fastembed (if installed) -> deterministic
 hash embedding (CI/offline tests only — too sparse for production retrieval).
+
+The one exception is a vector-width mismatch, which raises
+``EmbeddingDimMismatch`` rather than degrading: hash vectors of the configured
+width would upsert cleanly and then be retrieved as though they were semantic.
 """
 import hashlib
 import os
@@ -16,7 +20,7 @@ import threading
 import numpy as np
 
 from .config import settings
-from .embeddings_cloudflare import CloudflareEmbedder
+from .embeddings_cloudflare import CloudflareEmbedder, EmbeddingDimMismatch
 
 # Process-wide Embedder singleton (deploy fix 2026-09-11).
 # Root cause fixed: build_stack() created a NEW Embedder per request, loading
@@ -60,7 +64,13 @@ class Embedder:
         if cf.mode == "cloudflare":
             self._backend = cf
             self._mode = "cloudflare"
-            self.dim = 1024
+            # The configured EMBED_MODEL (BGE-M3) is 1024-dim. Previously this
+            # was a bare literal that disagreed with the 384 passed into
+            # CloudflareEmbedder, so the collection was created at 1024 while
+            # the backend's own degraded hash fallback still produced 384-dim
+            # vectors. One source of truth now.
+            self.dim = settings.CLOUDFLARE_EMBED_DIM
+            cf.dim = self.dim
             return
         # Fallback 1: fastembed (if installed and reachable)
         try:
@@ -69,6 +79,8 @@ class Embedder:
             self._backend = TextEmbedding(
                 model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
             )
+            # paraphrase-multilingual-MiniLM-L12-v2 is genuinely 384-dim, which
+            # is what settings.EMBED_DIM describes (see config.py).
             self.dim = settings.EMBED_DIM
             self._mode = "fastembed"
         except Exception as e:
@@ -88,6 +100,12 @@ class Embedder:
                 # returns an ndarray — normalize so callers always get one.
                 res = self._backend.embed(texts)
                 return res if isinstance(res, np.ndarray) else np.asarray(list(res), dtype=np.float32)
+            except EmbeddingDimMismatch:
+                # A width mismatch means the model and CLOUDFLARE_EMBED_DIM
+                # disagree. Falling back to hash vectors here would write
+                # meaningless vectors into a correctly-sized collection and
+                # serve them as real matches, so propagate instead.
+                raise
             except Exception as e:
                 print(f"[embeddings] backend embed error, fallback: {e}", file=sys.stderr)
         return self._hash_embed(texts)

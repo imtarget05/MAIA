@@ -26,7 +26,6 @@ def _run_script(monkeypatch, *argv):
     monkeypatch.setattr(_s, "CLOUDFLARE_API_TOKEN", "")
     monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "")
-    monkeypatch.setenv("MAIA_MODE", "mock")
     monkeypatch.setenv("MAIA_EMBED_FORCE_HASH", "1")
     return runpy.run_path(os.path.realpath(SCRIPT), run_name="__main__")
 

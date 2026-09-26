@@ -18,7 +18,6 @@ services:
         required: false
     environment:
       - QDRANT_URL=http://qdrant:6333
-      - MAIA_MODE=mock
       - MAIA_EMBED_FORCE_HASH=1
       - STORAGE_DIR=/app/storage
     volumes:
