@@ -1,5 +1,5 @@
 """MAIA - Tri thuc noi bo."""
-import datetime, os, sys, time, uuid
+import os, sys, time, uuid
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 try:
@@ -470,9 +470,7 @@ def _save_sessions() -> None:
     except Exception:
         pass
 
-def _title_for(text: str) -> str:
-    t = (text or "").strip().replace("\n", " ")
-    return (t[:42] + "…") if len(t) > 42 else (t or "Đoạn chat mới")
+from maia.ui.formatting import _title_for  # moved to maia.ui.formatting (pure helper)
 
 def _ensure_sessions() -> str:
     if "chat_sessions" not in st.session_state:
@@ -548,12 +546,7 @@ st.session_state.auth_email = _auth_user.get("email", "")
 if "tech_mode" not in st.session_state:
     st.session_state.tech_mode = False
 
-def _greeting() -> str:
-    h = datetime.datetime.now().hour
-    if 5 <= h < 11: return "Chào buổi sáng"
-    if 11 <= h < 14: return "Chào buổi trưa"
-    if 14 <= h < 18: return "Chào buổi chiều"
-    return "Chào buổi tối"
+from maia.ui.formatting import _greeting  # moved to maia.ui.formatting (pure helper)
 
 def _tech_on() -> bool:
     return bool(st.session_state.get("tech_mode", False))
@@ -695,16 +688,10 @@ def _render_assistant(msg: dict, idx: int, session_id: str, employee_id: str) ->
                 _render_evidence_badge(msg, "ok", msg_idx=idx)
                 st.markdown(f"<div class='maia-cap' style='margin-top:6px'>{sources_line_compact(msg.get('citations') or [])}</div>", unsafe_allow_html=True)
 
-def _to_msg(res: dict) -> dict:
-    return {"role": "assistant", "content": res.get("answer", ""), "status": res.get("status", "answered"), "intent": res.get("intent", "general"), "citations": res.get("citations", []), "retrieved": res.get("retrieved", []), "evidence": res.get("evidence", {}), "grounding": res.get("grounding", {}), "action": res.get("action"), "pending_action": res.get("pending_action"), "slots": res.get("slots", {})}
+from maia.ui.formatting import _to_msg  # moved to maia.ui.formatting (pure helper)
 
 # ---------------------------------------------------------------- sidebar + menu
-def _day_group(ts: float) -> str:
-    d = datetime.date.fromtimestamp(ts)
-    today = datetime.date.today()
-    if d == today: return "Hôm nay"
-    if d == today - datetime.timedelta(days=1): return "Hôm qua"
-    return d.strftime("%d/%m")
+from maia.ui.formatting import _day_group  # moved to maia.ui.formatting (pure helper)
 
 with st.sidebar:
     st.markdown(sidebar_header(len(st.session_state.chat_sessions)), unsafe_allow_html=True)
@@ -878,11 +865,7 @@ def _dash_post(path: str, payload: dict | None = None, method: str = "POST"):
     return None
 
 
-def _fmt_ts(ts) -> str:
-    try:
-        return datetime.datetime.fromtimestamp(float(ts or 0)).strftime("%d/%m %H:%M")
-    except Exception:
-        return "—"
+from maia.ui.formatting import _fmt_ts  # moved to maia.ui.formatting (pure helper)
 
 
 def _render_dashboard() -> None:

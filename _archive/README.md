@@ -8,8 +8,8 @@ NOT imported by `src/`, NOT collected by `pytest tests/`, NOT linted by CI
 |------|------|--------------|
 | `src/maia/voice/` | STT/TTS providers + VoiceChatHandler | Not in spec; thin tests |
 | `src/maia/finetune/` | Golden→triplet export + train runner | Not in spec; prototype |
-| `src/maia/mcp/` | GitHub/Notion read-only connectors | Not in spec; experimental |
-| `src/maia/agent/teams.py` | Researcher→analyst→writer→reviewer team | Not in spec; experimental |
+| `src/maia/mcp/` | GitHub/Notion read-only REST connectors named "MCP-style" | Not in spec; experimental. **Superseded for the MCP *name*** by the protocol implementation in `src/maia/mcp/` (ADR-0004) — these connectors are unrelated to that protocol and stay here. |
+| `src/maia/agent/teams.py` | Researcher→analyst→writer→reviewer team | Not in spec; experimental (unrelated to MS Teams; the MS Teams/Zalo *channel* lives in `src/maia/mcp/servers/notification_server.py`) |
 | `src/maia/agent/team/` | Router-delegation team | Not in spec; experimental |
 | `tests/test_{voice,finetune,mcp,teams,team}.py` | Their test suites | Moved with the code |
 

@@ -201,6 +201,38 @@ Vào **Settings** → **Environment** → thêm các biến sau:
 | `CLOUDFLARE_MODEL` | `@cf/meta/llama-3.1-8b-instruct` | |
 | `WORKFLOW_DB_PATH` | `/tmp/storage/workflow.db` | |
 | `SESSION_DB_PATH` | `/tmp/storage/session.db` | |
+| `AUTH_DB_URL` | *(xem §4.3.1 — bắt buộc ngoài dev)* | DSN auth DB (users/sessions/refresh tokens/approvals) |
+
+#### 4.3.1 Auth database — `AUTH_DB_URL` (durable, bắt buộc ngoài dev)
+
+Mặc định code là SQLite file local (`sqlite:///./maia_auth.db`, field
+`AUTH_DB_URL` trong `src/maia/config.py`, đọc từ env — đã env-first, không cần
+sửa code). File này **mất trắng mỗi lần redeploy/restart** trên disk ephemeral
+(Render free tier, Streamlit Cloud): toàn bộ users, sessions, refresh tokens
+và approvals bị xóa. `config.py` từ chối boot ngoài `development` khi
+`AUTH_DB_URL` còn là default (fail-fast thay vì mất dữ liệu lặng lẽ).
+
+Chọn 1 trong 2 durable backend (chỉ set env, không đổi code):
+
+**Option A — Neon Postgres (khuyến nghị cho Render):**
+
+1. Tạo project tại [neon.tech](https://neon.tech) → copy **Connection string**
+   (dạng `postgresql://user:pass@ep-xxx.neon.tech:5432/maia?sslmode=require`).
+2. Set env cho **cả 2 services** (`maia-api` + `maia-ui`):
+   `AUTH_DB_URL=<neon-connection-string>`, `ENVIRONMENT=production`.
+
+**Option B — Supabase Postgres:**
+
+1. Tạo project tại [supabase.com](https://supabase.com) → **Settings →
+   Database** → copy **Connection string (URI)**.
+2. Set env cho **cả 2 services**: `AUTH_DB_URL=<supabase-uri>`,
+   `ENVIRONMENT=production`. Nếu service báo thiếu driver
+   (`ModuleNotFoundError: No module named 'psycopg2'`), thêm
+   `psycopg2-binary` vào `requirements.txt`.
+
+**Option C — SQLite trên mounted disk** (khi không dùng Postgres):
+`AUTH_DB_URL=sqlite:////mnt/data/maia_auth.db` (+ mount disk `/mnt/data`
+cho service). Không dùng path tương đối/`./storage` ngoài local dev.
 
 > **Lưu ý**: Render free tier có disk **ephemeral** — file trong `/tmp/storage` sẽ mất khi service restart. Điều này ảnh hưởng BM25 cache, session DB. Xem [Troubleshooting](#bm25-cache-rebuilding) để biết cách xử lý.
 

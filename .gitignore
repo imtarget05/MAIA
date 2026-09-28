@@ -116,7 +116,7 @@ tasks/.current.md.tmp.*
 # END: repo-harness generated-runtime
 
 # Local workflow state — keep out of git (machine-local only)
-.env.example
+# NOTE: .env.example is intentionally TRACKED (template, no secrets).
 AGENTS.md
 CLAUDE.md
 PRODUCT.md
@@ -141,3 +141,8 @@ opencode.jsonc
 skill-observations/
 .impeccable/
 .codegraph/
+ner/.venv/
+ner/data/
+ner/checkpoints/
+eval/ner-report-*.json
+eval/reports/retrieval-cost-*.json

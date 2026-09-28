@@ -1,0 +1,27 @@
+# Never ship secrets or local state into the image.
+.env
+.env.*
+.streamlit/secrets.toml
+*.db
+*.db-*
+storage/
+qdrant_data/
+maia_auth.db
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.git/
+.github/
+tests/
+eval/reports/
+eval/ner-report-*.json
+ner/data/
+ner/checkpoints/
+node_modules/
+.DS_Store
+.idea/
+.vscode/

@@ -38,7 +38,7 @@ INJECTION_PATTERNS = [
     r"new\s+instructions?\s*:",
     r"overwrite\s+(?:safety|restrictions?|instructions?)",
     r"system\s*:\s*",
-    r"system\s+prompt",
+    r"system\s+(?:prompt|override\b)",
     r"system_role\b",
     r"system_message\b",
     r"<\s*system\s*>",
@@ -54,8 +54,8 @@ INJECTION_PATTERNS = [
     r"jailbreak",
     r"dan\s+mode",
     r"DAN\s+(?:mode|prompt|jailbreak)",
-    r"override\s+(?:safety|restrictions?)",
-    r"bypass\s+(?:the\s+)?(?:evidence|grounding|safety|filter|gate)",
+    r"override\s+(?:safety|restrictions?|all|verification)",
+    r"bypass\s+(?:the\s+)?(?:evidence|grounding|safety|filter|gate|human|hitl|verification)",
     r"do\s+not\s+(?:mention|reveal|disclose|verify|check|cite|ground)",
     r"skip\s+(?:verification|grounding|the\s+evidence|the\s+gate)",
     r"output\s+without\s+(?:citation|grounding|support)",
@@ -65,8 +65,10 @@ INJECTION_PATTERNS = [
     r"expose\s+(?:the\s+)?(?:system\s+)?secrets?",
     r"(?:leaked|leak)\s+(?:the\s+)?(?:secret|prompt|system)",
     r"(?:execute|run|invoke|call)\s+(?:the\s+)?(?:create_it_ticket|create_leave_request|check_leave_balance)",
-    r"(?:execute|call)\s+(?:the\s+)?tool\b",
     r"you\s+must\s+follow\s+(?:the\s+)?(?:rules?|instructions?)\s+from",
+    r"(?:bỏ\s+qua|quên|hủy)\s+(?:mọi|toàn\s+bộ|tất\s+cả|các)?\s*(?:chỉ\s+dẫn|hướng\s+dẫn|quy\s+tắc|lệnh)",
+    r"đóng\s+vai\s+(?:như\s+)?(?:một\s+)?(?:hacker|quản\s+trị)",
+    r"tiết\s+lộ\s+(?:toàn\s+bộ\s+)?(?:thông\s+tin\s+nội\s+bộ|bí\s+mật)",
 ]
 _INJECTION_RE = re.compile("|".join(INJECTION_PATTERNS), re.IGNORECASE)
 

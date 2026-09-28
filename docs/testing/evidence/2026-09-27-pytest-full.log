@@ -1,0 +1,91 @@
+........................................................................ [ 13%]
+........................................................................ [ 27%]
+.................F...................................................... [ 41%]
+........................................................................ [ 55%]
+........................................................................ [ 69%]
+........................................................................ [ 83%]
+........................................................................ [ 97%]
+...............                                                          [100%]
+=================================== FAILURES ===================================
+________________ test_split_documents_matches_fallback_offline _________________
+
+    def test_split_documents_matches_fallback_offline():
+        """Without llama_index installed, the public entry point must behave like
+        the pure fallback (no silent empty results, same coverage invariant)."""
+        rng = random.Random(SEED + 1)
+        for case in range(50):
+            text = _rand_text(rng)
+            words = text.split()
+            chunks = split_documents(_docs(text), chunk_size=512, chunk_overlap=50)
+            if not words:
+>               assert chunks == [], f"case {case}: empty input must yield no chunks"
+E               AssertionError: case 4: empty input must yield no chunks
+E               assert [Chunk(text='...id': 'd0_0'})] == []
+E                 
+E                 Left contains one more item: Chunk(text='', metadata={'doc_id': 'd0', 'filename': 'f.md', 'chunk_id': 'd0_0'})
+E                 Use -v to get more diff
+
+tests/test_invariants_property.py:109: AssertionError
+=============================== warnings summary ===============================
+src/maia/config.py:254
+src/maia/config.py:254
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/src/maia/config.py:254: RuntimeWarning: JWT_SECRET_KEY is not set — using an ephemeral random key. All tokens/sessions will be invalidated on restart. Set JWT_SECRET_KEY in .env for production.
+    warnings.warn(
+
+src/maia/api.py:164
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/src/maia/api.py:164: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(BaseModel):
+
+.venv/lib/python3.14/site-packages/pydantic/_internal/_config.py:386
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/.venv/lib/python3.14/site-packages/pydantic/_internal/_config.py:386: UserWarning: Valid config keys have changed in V2:
+  * 'orm_mode' has been renamed to 'from_attributes'
+    warnings.warn(message, UserWarning)
+
+tests/test_agent.py: 2 warnings
+tests/test_agentic.py: 2 warnings
+tests/test_approval.py: 3 warnings
+tests/test_auth_workflow.py: 2 warnings
+tests/test_authorization.py: 3 warnings
+tests/test_e2e_it_outbox.py: 3 warnings
+tests/test_itsm_scheduler.py: 2 warnings
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/src/maia/notifier.py:80: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "ts": datetime.utcnow().isoformat() + "Z"}
+
+tests/test_auth_workflow.py: 11 warnings
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/.venv/lib/python3.14/site-packages/sqlalchemy/sql/schema.py:4296: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore[call-arg, no-any-return, no-untyped-call]  # noqa: E501
+
+tests/test_auth_workflow.py::test_access_token_roundtrip
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/src/maia/auth.py:61: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/src/maia/auth.py:219: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expires_at=datetime.utcnow() + timedelta(minutes=settings.PASSWORD_RESET_EXPIRE_MIN),
+
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/src/maia/auth.py:233: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    if not rec or rec.used_at is not None or rec.expires_at <= datetime.utcnow():
+
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+tests/test_auth_workflow.py::test_reset_token_single_use_and_expiry
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/src/maia/auth.py:238: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    rec.used_at = datetime.utcnow()
+
+tests/test_authorization.py::test_request_models_ignore_extra_tenant_id[UrlIngestReq]
+tests/test_authorization.py::test_request_models_ignore_extra_tenant_id[MemoryStoreReq]
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/tests/test_authorization.py:37: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.
+    assert "tenant_id" not in m.model_fields
+
+tests/test_document_lifecycle.py::test_upload_creates_v1_manifest
+  /Users/mainguyenbinhtan/Downloads/Project/MAIA/.venv/lib/python3.14/site-packages/_pytest/python.py:171: PytestReturnNotNoneWarning: Test functions should return None, but tests/test_document_lifecycle.py::test_upload_creates_v1_manifest returned <class 'str'>.
+  Did you mean to use `assert` instead of `return`?
+  See https://docs.pytest.org/en/stable/how-to/assert.html#return-not-none for more information.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1 failed, 518 passed, 44 warnings in 155.75s (0:02:35)

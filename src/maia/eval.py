@@ -39,6 +39,39 @@ def _overlap(a: str, b: str) -> float:
     return len(sa & sb) / max(1, len(sa))
 
 
+def faithfulness_embed(answer: str, ctx_chunks: list[str]) -> float | None:
+    """Embedding-grounded faithfulness (offline-capable).
+
+    Mean over answer sentences of max cosine similarity to any retrieved chunk,
+    using the deterministic hash embedder (no model download). Returns None
+    when there is no answer or no context. Unlike the keyword-overlap proxy,
+    paraphrased-but-grounded answers score highly.
+    """
+    import re
+
+    import numpy as np
+
+    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer or "") if s.strip()]
+    ctxs = [c for c in ctx_chunks if c and c.strip()]
+    if not sents or not ctxs:
+        return None
+    try:
+        from maia.embeddings import Embedder
+
+        emb = Embedder()
+        A = np.asarray(emb.embed(sents), dtype=np.float32)
+        C = np.asarray(emb.embed(ctxs), dtype=np.float32)
+    except Exception:
+        return None
+    # cosine (hash embedder already L2-normalizes; normalize defensively)
+    def _norm(M):
+        n = np.linalg.norm(M, axis=1, keepdims=True)
+        return M / np.maximum(n, 1e-9)
+    A, C = _norm(A), _norm(C)
+    sims = A @ C.T
+    return float(np.mean(np.max(sims, axis=1)))
+
+
 # --- per-row evaluation (shared by evaluate / evaluate_group / benchmark) ---
 
 def _eval_row(r: dict, res: dict, top_k: int) -> dict:
@@ -64,6 +97,18 @@ def _eval_row(r: dict, res: dict, top_k: int) -> dict:
     prec = sum(1 for k in kw if k.lower() in ctx.lower()) / max(1, len(kw)) if kw else 1.0
     faith = _overlap(res.get("answer", ""), ctx)
     rel = _overlap(res.get("answer", ""), r["question"])
+    faith_emb = faithfulness_embed(res.get("answer", ""),
+                                   [c.get("text", "") for c in res.get("citations", [])])
+    faith_judge = None
+    try:
+        from maia.eval_judge import judge_enabled, judge_faithfulness
+
+        if judge_enabled():
+            j = judge_faithfulness(res.get("answer", ""),
+                                   [c.get("text", "") for c in res.get("citations", [])])
+            faith_judge = (j or {}).get("faith_judge")
+    except Exception:
+        faith_judge = None
     refused = bool(res.get("refused")) or (not res.get("has_evidence") and not got_ids)
     expect_refusal = bool(r.get("expect_refusal")) or bool(r.get("expect_no_evidence"))
     # G-04-FU2: contact usability — after PII redaction, does the final answer
@@ -84,6 +129,7 @@ def _eval_row(r: dict, res: dict, top_k: int) -> dict:
             in_ctx = 1 if expect_contact in ctx.lower() else 0
     return {"hit": hit, "recall": rec, "mrr": mrr, "prec": prec,
             "faith": min(1.0, faith * 4), "rel": min(1.0, rel * 6),
+            "faith_emb": faith_emb, "faith_judge": faith_judge,
             "refused": refused, "expect_refusal": expect_refusal,
             "leaked": bool(got_ids) if r.get("expect_no_evidence") else None,
             "has_evidence": res.get("has_evidence"),
@@ -98,6 +144,8 @@ def evaluate_group(dataset_path: str, top_k: int = 3, agent: bool = False) -> di
     - mrr: mean reciprocal rank of the first gold chunk"""
     rows = [json.loads(l) for l in Path(dataset_path).read_text().splitlines() if l.strip()]
     hits = recalls = precs = faiths = rels = mrrs = 0.0
+    faith_embs = 0.0
+    faith_emb_n = 0
     false_refusals = refusal_cases = refusal_correct = 0
     leak_cases = leak_hits = 0
     contact_cases = contact_usable = 0
@@ -116,6 +164,8 @@ def evaluate_group(dataset_path: str, top_k: int = 3, agent: bool = False) -> di
             m = _eval_row(r, res, top_k)
         hits += m["hit"]; recalls += m["recall"]; precs += m["prec"]
         faiths += m["faith"]; rels += m["rel"]; mrrs += m["mrr"]
+        if m.get("faith_emb") is not None:
+            faith_embs += m["faith_emb"]; faith_emb_n += 1
         if not m["expect_refusal"] and m["refused"]:
             false_refusals += 1
         if m["expect_refusal"]:
@@ -139,6 +189,7 @@ def evaluate_group(dataset_path: str, top_k: int = 3, agent: bool = False) -> di
     n = max(1, len(rows))
     rep = {"n": len(rows), "hit@k": round(hits / n, 3), "recall@k": round(recalls / n, 3),
            "context_precision": round(precs / n, 3), "faithfulness_proxy": round(faiths / n, 3),
+           "faithfulness_embed": round(faith_embs / faith_emb_n, 3) if faith_emb_n else None,
            "relevance_proxy": round(rels / n, 3), "mrr": round(mrrs / n, 3)}
     if agent:
         rep = {"n": len(rows), "intent_accuracy": round(hits / n, 3), "details": details}
@@ -232,6 +283,10 @@ if __name__ == "__main__":
     p.add_argument("--fail-under-contact", type=float, default=None, metavar="RATE",
                    help="CI gate (G-04-FU2): exit 1 unless contact_context_rate >= RATE "
                         "on the contact_usability split (e.g. 0.8)")
+    p.add_argument("--fail-under-hit", type=float, default=None, metavar="RATE",
+                   help="CI gate: exit 1 unless mean hit@k across groups >= RATE (with --all)")
+    p.add_argument("--fail-under-faith", type=float, default=None, metavar="RATE",
+                   help="CI gate: exit 1 unless mean faithfulness_embed >= RATE (with --all)")
     p.add_argument("--manifest", default=None, metavar="DIR",
                    help="WS7: write a run manifest JSON (git sha, mode, thresholds, "
                         "flags, metrics) into DIR for reproducibility")
@@ -256,6 +311,19 @@ if __name__ == "__main__":
             ok, msg = contact_gate(rep, args.fail_under_contact)
             print(f"contact gate: {msg}", file=sys.stderr)
             raise SystemExit(0 if ok else 1)
+        if args.fail_under_hit is not None or args.fail_under_faith is not None:
+            vals = [v for v in out.values() if isinstance(v, dict)]
+            if args.fail_under_hit is not None:
+                mean_hit = sum(v.get("hit@k", 0) for v in vals) / max(1, len(vals))
+                print(f"hit gate: mean hit@k={mean_hit:.3f} >= {args.fail_under_hit}", file=sys.stderr)
+                if mean_hit < args.fail_under_hit:
+                    raise SystemExit(1)
+            if args.fail_under_faith is not None:
+                fvals = [v["faithfulness_embed"] for v in vals if v.get("faithfulness_embed") is not None]
+                mean_f = sum(fvals) / max(1, len(fvals)) if fvals else 0.0
+                print(f"faith gate: mean faithfulness_embed={mean_f:.3f} >= {args.fail_under_faith}", file=sys.stderr)
+                if mean_f < args.fail_under_faith:
+                    raise SystemExit(1)
     elif args.group:
         path = GOLDEN_DIR / f"{args.group}.jsonl"
         rep = evaluate_group(str(path), top_k=args.top_k, agent=args.agent)

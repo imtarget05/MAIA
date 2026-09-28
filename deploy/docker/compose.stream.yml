@@ -24,6 +24,9 @@ services:
       - ALLOW_PLAINTEXT_LISTENER=yes
     volumes:
       - kafka_data:/bitnami/kafka
+    networks:
+      - default
+      - portfolio-net
     restart: unless-stopped
 
   kafka-ui:
@@ -36,6 +39,9 @@ services:
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
     depends_on:
       - kafka
+    networks:
+      - default
+      - portfolio-net
     restart: unless-stopped
 
   worker:
@@ -54,7 +60,15 @@ services:
       - QDRANT_COLLECTION=maia_knowledge
       - EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
     command: ["python", "-m", "maia.cli", "stream", "worker", "4"]
+    networks:
+      - default
+      - portfolio-net
     restart: unless-stopped
 
 volumes:
   kafka_data:
+
+networks:
+  portfolio-net:
+    external: true
+    name: portfolio-net

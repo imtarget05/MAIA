@@ -1,0 +1,29 @@
+# CI-live — MAIA live/infra tests. MANUAL TRIGGER ONLY (workflow_dispatch):
+# these tests need a live LLM gateway / real infrastructure (Qdrant, DB) and
+# must never run on push/PR. No coverage gate here (report-only run).
+name: CI-live (manual — live/infra tests)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-tests:
+    name: Live/infra tests (manual trigger only)
+    runs-on: ubuntu-latest
+    env:
+      LIVE_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Run live/infra tests (no fail-under)
+        run: pytest tests/ -m "live or infra" --strict-markers -v --tb=short

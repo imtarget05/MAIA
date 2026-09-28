@@ -8,9 +8,9 @@
   [![LangGraph](https://img.shields.io/badge/LangGraph-000000?style=flat-square&logo=langchain&logoColor=white)](https://langchain.com/)
   [![Qdrant](https://img.shields.io/badge/Qdrant-FE3C00?style=flat-square&logo=qdrant&logoColor=white)](https://qdrant.tech/)
   [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
-  [![Tests](https://img.shields.io/badge/Tests-128%20passing-success?style=flat-square)](#)
+  [![Tests](https://img.shields.io/badge/Tests-812%20passing-success?style=flat-square)](#)
 
-  [**Live API**](https://maia-api-irau.onrender.com/docs) • [**Live UI**](https://maia-ui.onrender.com)
+  [**Quick Start**](#-quick-start) • [**Architecture**](#-architecture)
 </div>
 
 ---
@@ -29,6 +29,10 @@ Core workflow: `Find → Understand → Cite → Act`
 - **Multi-Tenant Isolation**: Complete isolation of queries, retrieval, and session memory by `tenant_id` at the Qdrant payload and database level.
 - **Offline-First Development**: Runs with zero cloud dependencies when no Cloudflare credentials are set (every connector degrades to a local mock), and `MAIA_EMBED_FORCE_HASH=1` forces the deterministic hash embedder for tests.
 - **Long-Term Memory**: Maintains cross-session memory for user preferences and facts, stored securely in SQLite.
+- **PromptOps — prompts as versioned artefacts**: Prompts live in `prompts/**/<name>.v<semver>.yaml` with bounded parameters, declared guardrails, a JSON output schema and their own eval suite. `PromptRegistry.diff(a, b)` turns a prompt change into a reviewable diff; the offline golden suite runs without a model. ([docs](docs/PROMPT_ENGINEERING_GUIDE.md))
+- **Model Context Protocol (MCP) tool-calling**: A real JSON-RPC 2.0 implementation (`initialize` → `tools/list` → `tools/call`) with in-process and stdio-subprocess transports, so the same servers serve the API, the agent and an external MCP client (`python -m maia.mcp.bridge`). ([docs](docs/MCP_INTEGRATION.md))
+- **Marketing/Product data plane**: Idempotent connectors (file/JSONL/CSV + opt-in HTTP with cursor pagination) land in a SQLite mini-warehouse with a run ledger; deterministic analytics (lexicon sentiment, topic buckets, KPI rollups, week-over-week + z-score drop detection) and a rule-based NL→SQL planner that **refuses** instead of guessing.
+- **Integration tools, honestly**: Airtable, email, MS Teams and Zalo OA are exposed as MCP tools. Without credentials they run against a local store and report `dry_run: true` / `delivered: false` — never a fake success. Agent-driven calls pass an allowlist, a per-turn budget and a value-free audit log.
 
 ## 🏗️ Architecture
 
@@ -125,6 +129,13 @@ The system provides 40+ endpoints. Here are the core services:
 ├── src/maia/
 │   ├── agent/            # LangGraph StateGraph, intent router, tools, ITSM adapters
 │   ├── loops/            # Guardrails, PII, grounding check, citation check, eval
+│   ├── promptops/        # PromptOps: versioned prompt library, render, eval gate
+│   ├── mcp/              # Model Context Protocol: server/client/transports + integrations
+│   ├── pipeline/         # Marketing data plane: collectors, warehouse, analytics, NL→SQL
+│   ├── json_schema_lite.py # JSON-Schema validation adapter (prompts + MCP tools)
+│   ├── sql_guard.py      # Read-only SQL policy shared by the warehouse and MCP tools
+│   ├── scenarios.py      # 3 end-to-end showcase flows (review/campaign/KPI alert)
+│   ├── market_api.py     # /api/v1/market router (prompts, MCP, pipeline, scenarios)
 │   ├── api.py            # FastAPI Application (RAG, Chat, Auth, Admin, HITL)
 │   ├── retriever.py      # Hybrid Dense+BM25 → RRF
 │   ├── embeddings.py     # FastEmbed/Cloudflare/Hash abstractions
@@ -132,10 +143,12 @@ The system provides 40+ endpoints. Here are the core services:
 │   ├── reranker.py       # Cross-Encoder + RRF fallback
 │   ├── workflow.py       # Approval state management (SQLite)
 │   └── config.py         # Centralized pydantic-settings
+├── prompts/              # Versioned prompt library (semver + eval cases)
+├── data/market/          # Marketing fixtures: reviews (JSONL) + campaign metrics (CSV)
 ├── app_streamlit.py      # Streamlit conversational interface
 ├── data/enterprise/      # Sample company policy documents
 ├── eval/                 # Benchmark datasets (73 golden test cases)
-├── tests/                # 128+ offline unit & integration tests
+├── tests/                # 812 offline unit & integration tests
 ├── deploy/docker/        # Infrastructure orchestration
 ├── alembic/              # Database schema migrations
 └── render.yaml           # Render Cloud Blueprint deployment
@@ -143,20 +156,48 @@ The system provides 40+ endpoints. Here are the core services:
 
 ## 🧪 Testing & Evaluation
 
-The platform is built with rigorous testing standards, featuring over 128 tests that can run entirely offline.
+The platform is built with rigorous testing standards, featuring over 812 tests that can run entirely offline.
 
 ```bash
 # Run the test suite in full offline mock mode
 MAIA_EMBED_FORCE_HASH=1 pytest tests/ -q
 
+# PromptOps only: prompt library policy + offline eval gate
+pytest tests/test_prompt_library.py tests/test_prompt_evals.py -q
+
+# MCP: protocol, real stdio subprocess, integrations, agent dispatch policy
+pytest tests/test_mcp_protocol.py tests/test_mcp_client.py \
+       tests/test_mcp_servers.py tests/test_mcp_dispatch.py -q
+
+# Data plane: SQL guard, connectors, warehouse, analytics, NL→SQL, scenarios
+pytest tests/test_pipeline.py tests/test_scenarios.py -q
+
 # Run internal benchmark evaluations against golden datasets
 PYTHONPATH=src python -m maia.eval eval/dataset.jsonl
 ```
 
-## 🌐 Live Deployment
+### Demo the new surfaces (2 phút, offline)
 
-- **Backend API**: [https://maia-api-irau.onrender.com/docs](https://maia-api-irau.onrender.com/docs)
-- **Frontend UI**: [https://maia-ui.onrender.com](https://maia-ui.onrender.com) (Requires Google OAuth Login)
+```bash
+curl -s localhost:8000/api/v1/market/scenarios | jq                    # 3 kịch bản
+curl -sX POST localhost:8000/api/v1/market/scenarios/run \
+  -H 'content-type: application/json' \
+  -d '{"name":"review_insight_report","params":{"fixture":"samples/game_reviews.jsonl","game_id":"demo-game"}}' | jq
+python -m maia.mcp.bridge --server market_insight --list-tools | jq '.tools[].name'
+```
+
+## 🌐 Deployment status (cập nhật 2026-09-28)
+
+Các link Render free-tier cũ (`maia-api-irau.onrender.com`, `maia-ui.onrender.com`)
+hiện trả về **HTTP 503** khi kiểm chứng (service dừng/sleep) — **không dùng link
+này làm demo**. Cách dựng lại:
+
+- **Local (khuyến nghị, hoạt động offline):** `docker compose up -d` → API
+  `http://localhost:8000/docs`, UI `http://localhost:8501` (xem Quick Start).
+- **Cloud:** `render.yaml` là Render Blueprint — fork repo → New → Blueprint,
+  set `JWT_SECRET_KEY`, embedding/model env theo `src/maia/config.py`.
+- **CI làm bằng chứng vận hành:** `.github/workflows/{ci,cd}.yml` (ruff, pyright,
+  pytest với Qdrant service container, push image GHCR).
 
 ---
 *Developed by [imtarget05](https://github.com/imtarget05)*

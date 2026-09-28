@@ -44,7 +44,8 @@ class SessionStore:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        """Ensure tables exist and clear stale data for fresh instance."""
+        """Ensure tables exist. Never wipe existing rows: sessions and
+        pending HITL actions must survive process restarts (durability)."""
         self._conn.execute(
             """CREATE TABLE IF NOT EXISTS sessions (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,11 +73,8 @@ class SessionStore:
                  used_keys_json TEXT,
                  evidence_json,
                  created_at REAL NOT NULL,
-                 UNIQUE(tenant_id, session_id, tool))"""
+                  UNIQUE(tenant_id, session_id, tool))"""
         )
-        # Clear stale data from previous runs for this instance's tables
-        self._conn.execute("DELETE FROM sessions")
-        self._conn.execute("DELETE FROM pending_actions")
         self._conn.commit()
 
     def _init_store(self, key: tuple) -> None:

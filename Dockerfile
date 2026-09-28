@@ -12,38 +12,47 @@ LABEL description="MAIA RAG Knowledge Platform — FastAPI backend + Streamlit f
 LABEL version="1.0"
 
 # =============================================================================
-# Environment variables
+# Builder stage: install deps into /install (dropped privileges later)
 # =============================================================================
-# Prevent Python from writing .pyc files and buffering stdout
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app/src
+    PIP_NO_CACHE_DIR=1
 
-# =============================================================================
-# Working directory
-# =============================================================================
-WORKDIR /app
+WORKDIR /build
 
-# =============================================================================
-# Install system dependencies (if any) — keep minimal for slim image
-# =============================================================================
-# Add any required system packages here (e.g., libgomp1 for ONNX runtime).
-# Currently none required beyond what python:3.12-slim provides.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# =============================================================================
-# Install Python dependencies (layer caching: copy requirements first)
-# =============================================================================
 COPY requirements.txt .
 
-# Pin pip/setuptools/wheel to stable versions for reproducible builds
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir -r requirements.txt \
-    && pip cache purge
+    && pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# pip --prefix can silently skip deps it sees in the build env (e.g. packaging,
+# which pip itself vendors). Force them into /install and verify imports resolve
+# against the prefix ALONE (python -S ignores system site-packages).
+RUN pip install --no-cache-dir --prefix=/install --ignore-installed packaging \
+    && PYTHONPATH=/install/lib/python3.12/site-packages python -S -c \
+       "import packaging, langchain_core.runnables, fastapi, uvicorn, qdrant_client; print('builder import check ok')"
+
+# =============================================================================
+# Runtime stage: copy only installed deps + app code (no pip cache, no build ctx)
+# =============================================================================
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash appuser
+
+COPY --from=builder /install /usr/local
 
 # =============================================================================
 # Copy application code
@@ -67,9 +76,7 @@ RUN mkdir -p /tmp/storage \
 # =============================================================================
 # Create non-root user for security (production best practice)
 # =============================================================================
-RUN useradd --create-home --shell /bin/bash appuser \
-    && chown -R appuser:appuser /app \
-    && chown -R appuser:appuser /tmp/storage
+RUN chown -R appuser:appuser /app /tmp/storage
 
 USER appuser
 
@@ -89,27 +96,7 @@ EXPOSE 8000 8501
 # When running UI, override with HEALTHCHECK NONE in compose or rely on
 # container-level liveness from the orchestrator.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "
-import os, sys, urllib.request
-service = os.environ.get('SERVICE', 'api').lower()
-if service == 'ui':
-    import socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.settimeout(2)
-        s.connect(('127.0.0.1', 8501))
-        sys.exit(0)
-    except Exception:
-        sys.exit(1)
-    finally:
-        s.close()
-else:
-    try:
-        urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)
-        sys.exit(0)
-    except Exception:
-        sys.exit(1)
-"
+    CMD python -c "import os, socket, urllib.request; (socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(('127.0.0.1', 8501)) if os.environ.get('SERVICE', 'api').lower() == 'ui' else urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2))"
 
 # =============================================================================
 # Entrypoint script (multi-service via SERVICE env var)

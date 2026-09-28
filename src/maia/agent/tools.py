@@ -210,11 +210,27 @@ def get_employee_requests(employee_id: str = "emp_001", tenant_id: str | None = 
     return db.get(employee_id, {}).get("requests", [])
 
 
+def extract_entities(text: str = "", tenant_id: str | None = None,
+                     max_tokens: int = 64) -> dict:
+    """Read-only NLP tool: PhoNER BiLSTM entity extraction (no tenant check).
+
+    ``tenant_id`` is accepted only for signature compatibility with the other
+    tools; it is echoed back and never authorizes/denies. Delegates to
+    :mod:`maia.ner_tool` so torch/checkpoint absence degrades gracefully.
+    """
+    from ..ner_tool import extract_entities as _extract
+
+    res = _extract(text, max_tokens=max_tokens)
+    res["tenant_id"] = tenant_id
+    return res
+
+
 TOOL_REGISTRY = {
     "check_leave_balance": check_leave_balance,
     "create_leave_request": create_leave_request,
     "create_it_ticket": create_it_ticket,
     "get_employee_requests": get_employee_requests,
     "get_it_tickets": get_it_tickets,
+    "extract_entities": extract_entities,
 }
 

@@ -56,8 +56,12 @@ def test_leave_balance_mock():
         try: Path(tmp).unlink()
         except: pass
 
-def test_session_store():
-    s = SessionStore(max_turns=4)
+def test_session_store(tmp_path):
+    # Isolated DB: SessionStore persists to settings.SESSION_DB_PATH by design
+    # (durable sessions across restarts), so asserting on a fixed session id
+    # without a private DB would read rows left behind by every previous run —
+    # green in CI, permanently red on a dev machine.
+    s = SessionStore(max_turns=4, db_path=str(tmp_path / "session.db"))
     s.append("s1", "user", "xin nghỉ 5 ngày", "leave_request")
     s.append("s1", "assistant", "ok", "leave_request")
     assert len(s.history("s1")) == 2

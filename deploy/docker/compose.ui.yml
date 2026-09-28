@@ -13,6 +13,7 @@ services:
     depends_on:
       - api
     environment:
+      - SERVICE=ui
       - MAIA_API_URL=http://api:8000
       - QDRANT_URL=http://qdrant:6333
       - MAIA_EMBED_FORCE_HASH=1
@@ -21,4 +22,12 @@ services:
       - ../../storage:/app/storage
       - ../../data:/app/data:ro
     command: ["streamlit", "run", "app_streamlit.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+    networks:
+      - default
+      - portfolio-net
     restart: unless-stopped
+
+networks:
+  portfolio-net:
+    external: true
+    name: portfolio-net

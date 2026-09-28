@@ -26,6 +26,9 @@ from ..agent.tools import (
 from ..agent.tools import (
     get_employee_requests as _requests,
 )
+from ..agent.tools import (
+    extract_entities as _entities,
+)
 
 # ---------------------------------------------------------------------------
 # Input schemas (typed tool params -> PydanticInputParser / JSON schema)
@@ -54,6 +57,11 @@ class ItTicketInput(BaseModel):
 
 class RequestsInput(BaseModel):
     employee_id: str = Field(..., description="MAIA employee id")
+    tenant_id: str = Field(default="default")
+
+
+class ExtractEntitiesInput(BaseModel):
+    text: str = Field(..., description="Free text to extract PhoNER entities from")
     tenant_id: str = Field(default="default")
 
 
@@ -92,6 +100,12 @@ def _requests_run(**kwargs) -> str:
     return json.dumps(res, ensure_ascii=False)
 
 
+def _entities_run(**kwargs) -> str:
+    inp = ExtractEntitiesInput(**kwargs)
+    res = _entities(inp.text, tenant_id=inp.tenant_id)
+    return json.dumps(res, ensure_ascii=False)
+
+
 # ---------------------------------------------------------------------------
 # Registry: name -> LangChain BaseTool (parallels agent.tools.TOOL_REGISTRY)
 # ---------------------------------------------------------------------------
@@ -125,6 +139,14 @@ TOOL_REGISTRY_LC: dict[str, BaseTool] = {
         description="List the employee's recent leave requests / ticket history.",
         args_schema=RequestsInput,
         func=_requests_run,
+    ),
+    "extract_entities": StructuredTool(
+        name="extract_entities",
+        description="Extract named entities (location, symptom, etc.) from free "
+                    "text with the BiLSTM PhoNER tagger. Read-only NLP helper. "
+                    "Returns JSON with entities [{type, text}].",
+        args_schema=ExtractEntitiesInput,
+        func=_entities_run,
     ),
 }
 

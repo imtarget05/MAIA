@@ -1,0 +1,11 @@
+services:
+  api:
+    ports: !override
+      - "8001:8000"
+  streamlit:
+    ports: !override
+      - "8502:8501"
+  kafka-ui:
+    profiles: ["tools"]
+    ports: !override
+      - "8083:8080"

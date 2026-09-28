@@ -419,7 +419,8 @@ def node_finalize(state: AgentState) -> AgentState:
 # ---------------------------------------------------------------------------
 
 
-def route_after_classify(state: AgentState) -> Literal["simple_answer", "retrieve"]:
+def route_after_classify(state: AgentState) -> Literal["simple_answer", "retrieve",
+                                                         "mcp_dispatch"]:
     """Route after intent classification.
 
     Decision: ``general`` routes to ``retrieve`` (NOT ``simple_answer``).
@@ -428,7 +429,34 @@ def route_after_classify(state: AgentState) -> Literal["simple_answer", "retriev
     answers without any grounded context, which defeats the RAG contract.
     Only truly trivial chit-chat (currently none — no ``greeting`` intent exists
     in the taxonomy) would skip retrieval.
+
+    With ``MCP_ENABLED`` (default true) a marketing/product data question routes to
+    the MCP tool-calling node instead of retrieval: those questions are answered by a
+    live integration, and answering them from the document corpus would be guessing.
+
+    Two guards keep that from hijacking the enterprise path:
+
+    * **Intent gate** — only ``general`` questions are eligible
+      (``MCP_ELIGIBLE_INTENTS``); leave/IT/VPN/expense/benefits/policy questions
+      always go to retrieval, so "bảo hiểm chi trả 100% chi phí" cannot be answered
+      by the CPI tool.
+    * **Specific patterns** — the route table matches metric names and explicit
+      channel/verb phrases, not bare words like "email" or "nội dung".
+
+    With MCP disabled the branch is unreachable and the graph is unchanged.
     """
+    if settings.MCP_ENABLED:
+        from .mcp_dispatch import intent_matches_tool
+
+        for tool in (
+            "review_sentiment_summary",
+            "game_kpi_summary",
+            "send_email_report",
+            "send_teams_card",
+            "create_marketing_task",
+        ):
+            if intent_matches_tool(state.question, tool=tool, intent=state.intent):
+                return "mcp_dispatch"
     if state.intent == "greeting":
         return "simple_answer"
     return "retrieve"
@@ -471,10 +499,22 @@ def build_graph(*, checkpointer=None):
     builder.add_node("finalize", node_finalize)
 
     builder.add_edge(START, "classify_query")
+    classify_routes: dict[str, str] = {
+        "simple_answer": "simple_answer",
+        "retrieve": "retrieve",
+    }
+    if settings.MCP_ENABLED:
+        # Opt-in MCP tool-calling branch. The node and its edge exist ONLY when
+        # MCP_ENABLED is true, so the default graph (and its tests) are unchanged.
+        from .mcp_dispatch import node_mcp_dispatch
+
+        builder.add_node("mcp_dispatch", node_mcp_dispatch)
+        classify_routes["mcp_dispatch"] = "mcp_dispatch"
+        builder.add_edge("mcp_dispatch", END)
     builder.add_conditional_edges(
         "classify_query",
         route_after_classify,
-        {"simple_answer": "simple_answer", "retrieve": "retrieve"},
+        classify_routes,
     )
     builder.add_edge("simple_answer", END)
     builder.add_edge("retrieve", "rerank")

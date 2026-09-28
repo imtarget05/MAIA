@@ -20,7 +20,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from pydantic import PrivateAttr
 
-from ..llm import CloudflareLLM
+from ..llm import CloudflareLLM, LocalOpenAICompatLLM
 
 __all__ = ["CloudflareLangChainAdapter", "bind_maia_tools", "cloudflare_lcel"]
 
@@ -136,14 +136,17 @@ def cloudflare_lcel(model_name: str | None = None) -> CloudflareLangChainAdapter
 
     Convenience entry for LangGraph nodes / builders: returns a
     ``BaseChatModel`` that is already ``Messages -> AIMessage`` callable.
+
+    Backend follows ``settings.LLM_PROVIDER`` (local LAN LM Studio by default,
+    Cloudflare/mock otherwise). ``model_name`` overrides the local chat model
+    when the local provider is active.
     """
     from ..config import settings
+    from ..llm import build_llm
 
-    underlying = CloudflareLLM(
-        account_id=settings.CLOUDFLARE_ACCOUNT_ID,
-        api_token=settings.CLOUDFLARE_API_TOKEN,
-        model=model_name or settings.CLOUDFLARE_MODEL,
-    )
+    underlying = build_llm()
+    if model_name and isinstance(underlying, LocalOpenAICompatLLM):
+        underlying.model = model_name
     return CloudflareLangChainAdapter(underlying)
 
 

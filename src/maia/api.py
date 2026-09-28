@@ -121,6 +121,66 @@ if not cors_origins and settings.ENVIRONMENT != "development":
     )
 
 
+# ---- Minimal rate limiting (Redis when configured, else process-local) -----
+# Fixed window per user on /chat + /chat/stream. Set REDIS_URL for
+# multi-replica deployments; without it the limiter is process-local
+# (documented limitation, honest single-replica default).
+import time as _rl_time
+from collections import defaultdict as _rl_defaultdict
+
+_RL_WINDOW_SEC = 60
+_rl_hits: dict[str, list[float]] = _rl_defaultdict(list)
+_rl_redis = None
+
+
+def _rl_redis_client():
+    global _rl_redis
+    if _rl_redis is not None:
+        return _rl_redis
+    url = (settings.REDIS_URL or "").strip()
+    if not url:
+        return None
+    try:
+        import redis
+
+        _rl_redis = redis.Redis.from_url(url, socket_connect_timeout=2,
+                                         socket_timeout=2, decode_responses=True)
+        _rl_redis.ping()
+        return _rl_redis
+    except Exception:
+        return None
+
+
+def rate_limit_chat(current_user: User = Depends(lambda: None)):
+    # Resolved via explicit dependency chain at endpoints (needs user object).
+    return True
+
+
+def check_chat_rate_limit(user_key: str) -> None:
+    limit = int(settings.CHAT_RATE_LIMIT_PER_MIN or 60)
+    client = _rl_redis_client()
+    if client is not None:
+        try:
+            key = f"maia:rl:{user_key}"
+            n = client.incr(key)
+            if n == 1:
+                client.expire(key, _RL_WINDOW_SEC)
+            if n > limit:
+                raise HTTPException(status_code=429,
+                                    detail=f"Rate limit exceeded: {limit} req/min on chat. Retry after 60s.")
+            return
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Redis failed mid-request -> degrade to memory limiter
+    now = _rl_time.monotonic()
+    hits = [t for t in _rl_hits[user_key] if now - t < _RL_WINDOW_SEC]
+    if len(hits) >= limit:
+        raise HTTPException(status_code=429, detail=f"Rate limit exceeded: {limit} req/min on chat. Retry after 60s.")
+    hits.append(now)
+    _rl_hits[user_key] = hits
+
+
 # ---------------------------------------------------------------- Pydantic models
 # NOTE: these must be defined *before* the routers below reference them
 # (previously they sat at the bottom of the file, causing NameError on import).
@@ -708,10 +768,23 @@ def delete_document_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """Delete a document (admin only)."""
-    # This would need to be implemented based on your document storage
-    # For now, returning a placeholder
-    return {"message": f"Document {doc_id} deletion would be implemented here"}
+    """Delete a document (admin only): remove vectors + mark lifecycle deleted."""
+    if not doc_id or len(doc_id) > 256 or ".." in doc_id or "/" in doc_id:
+        raise HTTPException(status_code=400, detail="Invalid doc_id")
+    try:
+        _, store, _, _, _ = build_stack()
+        store.delete_by_doc(doc_id)
+        try:
+            from maia.loops.knowledge_loop import KnowledgeLoop
+
+            KnowledgeLoop(store=store).delete(doc_id)
+        except Exception:
+            pass
+        return {"document_id": doc_id, "action": "delete", "status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Delete failed: {type(e).__name__}")
 
 
 @admin_router.get("/stats")
@@ -873,6 +946,50 @@ def health():
     return {"status": "ok", "version": app.version}
 
 
+@app.get("/metrics")
+def metrics_prometheus():
+    """Prometheus text exposition of the loops metrics registry (no auth, no ML stack).
+
+    Scraped by the observability stack (observability/prometheus/prometheus.yml).
+    Renders the shared `maia.loops.metrics` registry: ingestion throughput,
+    Kafka consumer lag, embedding latency histogram/p95, tool-call counters.
+    """
+    from fastapi.responses import PlainTextResponse
+
+    from .loops.metrics import registry
+
+    return PlainTextResponse(registry.render(), media_type="text/plain; version=0.0.4")
+
+
+@app.get("/metrics/ai")
+def metrics_ai():
+    """Byte JD evidence: AI reliability as JSON (tokens/latency/cost/grounding).
+
+    Prometheus `/metrics` stays the scrape endpoint; this is the human/demo
+    endpoint recruiters can curl: per-query latency p95/avg, token estimate,
+    commercial-cost-saved estimate, answer/refusal split, citation rate.
+    """
+    from .loops.metrics import registry
+
+    n_q = registry.get("maia_queries_total")
+    n_a = registry.get("maia_query_answers_total")
+    n_r = registry.get("maia_query_refusals_total")
+    n_cit = registry.get("maia_citations_total")
+    return {
+        "queries_total": n_q,
+        "answers_total": n_a,
+        "refusals_total": n_r,
+        "refusal_rate": round(n_r / n_q, 4) if n_q else 0.0,
+        "citations_total": n_cit,
+        "citations_per_answer": round(n_cit / n_a, 2) if n_a else 0.0,
+        "latency_p95_s": round(registry.latency_p95(), 4),
+        "latency_avg_s": round(registry.latency_avg(), 4),
+        "tokens_total_est": registry.get("maia_tokens_total"),
+        "cost_saved_usd_est": round(registry.get("maia_cost_saved_usd_total"), 6),
+        "crag_retrievals_total": registry.get("maia_crag_retrievals_total"),
+    }
+
+
 @app.get("/ready")
 def ready():
     """Readiness probe WITHOUT loading the embedding model.
@@ -884,14 +1001,13 @@ def ready():
     Qdrant connectivity + reports llm/rerank modes (both cheap, no model).
     """
     try:
-        from maia.llm import CloudflareLLM
+        from maia.llm import build_llm
         from maia.reranker import Reranker
         from maia.vector_store import QdrantStore
 
         store = QdrantStore(url=settings.QDRANT_URL, collection=settings.QDRANT_COLLECTION,
                             dim=settings.EMBED_DIM, api_key=settings.QDRANT_API_KEY)
-        llm = CloudflareLLM(settings.CLOUDFLARE_ACCOUNT_ID, settings.CLOUDFLARE_API_TOKEN,
-                             settings.CLOUDFLARE_MODEL)
+        llm = build_llm()
         reranker = Reranker()
         return {"status": "ok", "qdrant_points": store.count(),
                 "collection": settings.QDRANT_COLLECTION,
@@ -914,6 +1030,9 @@ def ingest_enterprise(tenant_id: str | None = None, current_user: User = Depends
 
 @app.post("/ingest/upload")
 async def ingest_upload(files: list[UploadFile] = File(...), current_user: User = Depends(get_current_active_user)):
+    from maia.ingestion import _SUPPORTED_EXTS, validate_upload_bytes
+
+    MAX_UPLOAD_BYTES = 20 * 1024 * 1024
     dest = Path(settings.DATA_DIR)
     dest.mkdir(parents=True, exist_ok=True)
     saved = []
@@ -922,10 +1041,19 @@ async def ingest_upload(files: list[UploadFile] = File(...), current_user: User 
         safe_name = Path(f.filename or "upload.bin").name
         if not safe_name or safe_name in {".", ".."} or ".." in safe_name:
             raise HTTPException(status_code=400, detail=f"Invalid filename: {f.filename!r}")
+        suffix = Path(safe_name).suffix.lower()
+        if suffix not in _SUPPORTED_EXTS:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {safe_name!r}")
+        blob = await f.read()
+        if len(blob) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"File too large (max 20MB): {safe_name!r}")
+        reason = validate_upload_bytes(blob, suffix)
+        if reason is not None:
+            raise HTTPException(status_code=400, detail=f"Invalid file {safe_name!r}: {reason}")
         target = (dest / safe_name).resolve()
         if not str(target).startswith(str(dest.resolve())):
             raise HTTPException(status_code=400, detail=f"Invalid filename: {f.filename!r}")
-        target.write_bytes(await f.read())
+        target.write_bytes(blob)
         saved.append(safe_name)
     result = ingest_data_dir(str(dest))
     result["saved"] = saved
@@ -975,6 +1103,7 @@ def source_delete(doc_id: str, session_id: str = "", current_user: User = Depend
 @app.post("/chat")
 def chat(req: ChatReq, current_user: User = Depends(get_current_active_user)):
     """Agentic RAG: Decide → Memory(rewrite) → Iterative Retrieve → Evidence → Tool → Grounding."""
+    check_chat_rate_limit(f"chat:{current_user.tenant_id}:{current_user.id}")
     from maia.agent.agent import EnterpriseAgent
     # Use authenticated user's tenant_id and employee_id for security
     agent = EnterpriseAgent(tenant_id=current_user.tenant_id)
@@ -984,7 +1113,14 @@ def chat(req: ChatReq, current_user: User = Depends(get_current_active_user)):
 
 @app.post("/chat/stream")
 def chat_stream(req: ChatReq, current_user: User = Depends(get_current_active_user)):
-    """SSE streaming for chat (splits answer into chunks)."""
+    """Chunked SSE streaming for chat.
+
+    Honest contract: sentence-chunked SSE of the grounded answer (retrieval +
+    grounding complete before first chunk). Token-streaming happens inside
+    `LocalOpenAICompatLLM.chat_stream` when the upstream gateway supports SSE;
+    the agent path streams post-grounding chunks so citations stay attached.
+    """
+    check_chat_rate_limit(f"stream:{current_user.tenant_id}:{current_user.id}")
     from fastapi.responses import StreamingResponse
 
     from maia.agent.agent import EnterpriseAgent
@@ -1242,5 +1378,46 @@ def memory_forget(memory_id: int, current_user: User = Depends(get_current_activ
 def count(current_user: User = Depends(get_current_active_user)):
     _, store, _, _, _ = build_stack()
     return {"collection": settings.QDRANT_COLLECTION, "points": store.count()}
+
+
+# ---- API versioning: /api/v1 aliases (same handlers, stable prefix) ---------
+from fastapi import APIRouter as _APIRouter
+
+v1 = _APIRouter(prefix="/api/v1", tags=["v1"])
+
+
+@v1.post("/chat")
+def v1_chat(req: ChatReq, current_user: User = Depends(get_current_active_user)):
+    return chat(req, current_user)
+
+
+@v1.post("/query")
+def v1_query(req: QueryReq, current_user: User = Depends(get_current_active_user)):
+    return do_query(req, current_user)
+
+
+@v1.get("/health")
+def v1_health():
+    return health()
+
+
+@v1.get("/ready")
+def v1_ready():
+    return ready()
+
+
+@v1.get("/metrics/ai")
+def v1_metrics_ai():
+    return metrics_ai()
+
+
+app.include_router(v1)
+
+# Marketing/Product surface (PromptOps + MCP + data pipeline). Mounted on the same
+# /api/v1 prefix; every route is behind the same auth dependency as the rest of the
+# service — see maia/market_api.py.
+from maia.market_api import market_router as _market_router
+
+app.include_router(_market_router)
 
 

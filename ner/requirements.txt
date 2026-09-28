@@ -1,0 +1,9 @@
+# torch 2.2.2 (last macOS x86_64 wheel) + transformers 4.48 (torch>=2.5 guard starts at 5.x)
+torch==2.2.2
+transformers==4.48.3
+datasets
+seqeval
+accelerate
+scikit-learn
+rank-bm25
+numpy<2

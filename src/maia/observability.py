@@ -21,6 +21,11 @@ from typing import Any
 
 logger = logging.getLogger("maia.pipeline")
 
+# Raw text / PII-bearing field names. Dropped by finalize_redacted() and by
+# maia.tracing.sanitize_attributes() so OTEL span attributes carry only
+# structural signal (scores, counts, flags) — never chunk content or PII.
+REDACTED_FIELDS = frozenset({"query", "text", "chunk_text", "context", "answer"})
+
 
 @dataclass
 class Span:
@@ -78,7 +83,7 @@ class PipelineTracer:
         for s in self.spans:
             redacted = {}
             for k, v in s.fields.items():
-                if k in ("query", "text", "chunk_text", "context", "answer"):
+                if k in REDACTED_FIELDS:
                     continue  # drop raw text / PII-bearing fields
                 redacted[k] = v
             safe_fields[s.stage] = redacted

@@ -1,0 +1,63 @@
+# Service-Level Objectives for this repo.
+#
+# Every SLO carries: name, sli (PromQL or gate), target, window, error_budget, alert.
+# `sli: gate` means the objective is enforced by a test/load harness, not by a metric.
+# Ports match prometheus/prometheus.yml; see that file for the scrape list.
+version: "1.0"
+
+constants:
+  P95_LATENCY_SECONDS: 2
+
+targets:
+  - job: maia
+    port: 8000
+    metrics_path: /metrics
+    source: MAIA service (see prometheus/prometheus.yml)
+    uncertain: false
+  - job: llm-gateway
+    port: 8787
+    metrics_path: /metrics
+    source: vendored llm-gateway/ in this repo
+    uncertain: false
+
+slos:
+
+  - name: maia-grounding-score
+    sli: avg(maia_grounding_score)
+    target: 0.95
+    window: 30d
+    error_budget: 0.05
+    alert: ServiceDown
+    note: "Batch-eval gate (MAIA/eval/); maia_grounding_score is a placeholder series until eval output is exported."
+
+  - name: ingestion-lag
+    sli: max(maia_kafka_consumer_lag)
+    target: 1000
+    window: 7d
+    error_budget: 20%
+    alert: ServiceDown
+    note: "Backlog of uncommitted messages; a sustained climb means the workers cannot keep up."
+
+  - name: chat-latency-p95
+    sli: histogram_quantile(0.95, maia_query_latency_seconds)
+    target: 2
+    window: 7d
+    error_budget: 10%
+    alert: LatencyP95
+    note: "RAG answer path p95 under 2s in mock/offline mode; LLM-backed deploys track separately via llm-gateway stats."
+
+  - name: refusal-rate-bound
+    sli: maia_query_refusals_total / maia_queries_total
+    target: 0.30
+    window: 7d
+    error_budget: 10%
+    alert: HighErrorRate
+    note: "Upper bound: evidence gate refusing >30% means the corpus or threshold needs attention."
+
+  - name: eval-hit-at-k
+    sli: gate
+    target: 0.50
+    window: 7d
+    error_budget: 0%
+    alert: ServiceDown
+    note: "CI gate: `python -m maia.eval --all --fail-under-hit 0.5 --fail-under-faith 0.4` must pass."

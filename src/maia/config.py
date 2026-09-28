@@ -64,10 +64,45 @@ class Settings(BaseSettings):
     # Hybrid = LlamaIndex dense (MaiaQdrantStore) + BM25 -> RRF k=60.
     LLAMA_INDEX_DATA_PLANE: bool = True
 
-    # LLM (§9)
+    # LLM (§9) — Cloudflare (legacy) hoặc local OpenAI-compat (LM Studio LAN).
     CLOUDFLARE_ACCOUNT_ID: str = ""
     CLOUDFLARE_API_TOKEN: str = ""
     CLOUDFLARE_MODEL: str = "@cf/meta/llama-3.1-8b-instruct"
+    # Local OpenAI-compatible LLM, reached through the centralized llm-gateway
+    # proxy so usage is attributable in the gateway's central telemetry.
+    # LLM_PROVIDER: cloudflare (creds) | local (gateway/LAN) | mock (forced).
+    LLM_PROVIDER: str = "local"
+    # Base URL resolution order (see maia.llm_endpoints): the explicit
+    # LLM_BASE_URL wins when set, then the gateway, then the direct LAN
+    # upstream (tried only when the gateway refuses the connection).
+    LLM_BASE_URL: str = ""
+    LLM_GATEWAY_URL: str = "http://localhost:8787/v1"
+    LLM_DIRECT_UPSTREAM_URL: str = "http://192.168.1.8:1234/v1"
+    LLM_CHAT_MODEL: str = "qwen2.5-vl-3b-instruct"
+    LLM_TIMEOUT_SEC: int = 120
+    # Short connect budget so a gateway that is down is skipped in seconds
+    # instead of blocking for the full LLM_TIMEOUT_SEC.
+    LLM_CONNECT_TIMEOUT_SEC: float = 3.0
+    # Identifies MAIA in the gateway's centralized telemetry
+    # (llm-telemetry.jsonl -> "project"). Canonical ids: MAIA / ApexInspect-AI.
+    LLM_PROJECT: str = "MAIA"
+
+    # Embeddings endpoint: same gateway, same X-Project attribution.
+    # EMBEDDINGS_PROVIDER is "" (auto) by default, which keeps the existing
+    # backend chain unchanged (Cloudflare -> fastembed -> hash). Set it to
+    # local_openai / lmstudio / ollama to route embeddings through the
+    # gateway's /v1/embeddings. EMBEDDINGS_BASE_URL follows the same
+    # gateway -> direct-upstream resolution as LLM_BASE_URL.
+    EMBEDDINGS_PROVIDER: str = ""
+    EMBEDDINGS_BASE_URL: str = ""
+    EMBEDDINGS_MODEL: str = "text-embedding-nomic-embed-text-v1.5"
+    EMBEDDINGS_API_KEY: str = ""
+    EMBEDDINGS_TIMEOUT_SEC: int = 60
+    EMBEDDINGS_CONNECT_TIMEOUT_SEC: float = 3.0
+    # Vector width of the gateway embedding model. It must match the Qdrant
+    # collection width, otherwise embedding raises EmbeddingDimMismatch
+    # rather than writing meaningless vectors into the collection.
+    EMBEDDINGS_DIM: int = 0
 
     # Storage
     STORAGE_DIR: str = "./storage"
@@ -156,8 +191,21 @@ class Settings(BaseSettings):
 
     # Observability / UI
     PIPELINE_TRACE: bool = False
+    # OpenTelemetry OTLP exporter (opt-in). When OTEL_ENABLED is False (default)
+    # tracing helpers are NoOp and the opentelemetry packages are not required.
+    # When True, spans are exported to OTEL_EXPORTER_OTLP_ENDPOINT
+    # (HTTP/protobuf or gRPC, auto-detected by the exporter).
+    OTEL_ENABLED: bool = False
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_SERVICE_NAME: str = "maia"
     UI_SHOW_TECH_BADGE: bool = False
     ANSWER_STYLE: str = "concise"
+
+    # Rate limiting: fixed window per user on /chat + /chat/stream.
+    # REDIS_URL="" (default) -> process-local memory limiter (single replica).
+    # Set REDIS_URL=redis://... for multi-replica deployments.
+    REDIS_URL: str = ""
+    CHAT_RATE_LIMIT_PER_MIN: int = 60
 
     # Reliability (circuit breakers, retries)
     RELIABILITY_FAILURE_THRESHOLD: int = 5
@@ -200,6 +248,61 @@ class Settings(BaseSettings):
     APP_BASE_URL: str = "http://localhost:8501"
     PASSWORD_RESET_EXPIRE_MIN: int = 30
     BOOTSTRAP_FIRST_ADMIN: bool = True
+
+    # PromptOps (versioned prompt library + offline eval gate).
+    # Prompts live on disk under PROMPTS_DIR, never inline in code, so a prompt
+    # change is a reviewable Git diff with its own eval suite. See prompts/README.md.
+    PROMPTS_DIR: str = "./prompts"
+    # Minimum pass rate for the prompt eval gate (1.0 = every case must pass).
+    PROMPT_EVAL_MIN_SCORE: float = 1.0
+    # Output directory for eval reports (CI artefact / audit evidence).
+    PROMPT_EVAL_REPORT_DIR: str = "./storage/prompt_evals"
+
+    # MCP (Model Context Protocol) — tool-calling over JSON-RPC 2.0.
+    # ON by default: the agent is expected to be able to call tools. The risk is
+    # bounded by four things, not by switching the feature off —
+    #   1. taxonomy gate: only `general` questions are eligible
+    #      (MCP_ELIGIBLE_INTENTS); leave/IT/VPN/expense/benefits/policy questions
+    #      always go to retrieval, so an HR question cannot be answered by a
+    #      marketing tool;
+    #   2. specific route patterns: metric names and explicit channel/verb phrases
+    #      only — bare "email" / "chi phí" / "nội dung" do not match;
+    #   3. MCP_TOOL_ALLOWLIST + MCP_MAX_TOOL_CALLS per turn;
+    #   4. every call is audited (tool + hashed args) and every integration degrades
+    #      to a visible dry run without credentials.
+    # Set it to false to remove the mcp_dispatch node from the graph entirely.
+    MCP_ENABLED: bool = True
+    MCP_SERVERS: str = "airtable,notification,sql_analytics,market_insight"
+    MCP_BRIDGE_TRANSPORT: str = "inprocess"  # inprocess | stdio
+    MCP_TOOL_TIMEOUT_SEC: float = 15.0
+    # Hard cap on tool calls per agent turn: a runaway plan must not fan out into
+    # dozens of side effects (emails, Airtable rows) before a human notices.
+    MCP_MAX_TOOL_CALLS: int = 4
+    MCP_TOOL_ALLOWLIST: str = ""  # empty = every tool of the enabled servers
+    MCP_AUDIT_LOG_PATH: str = "./storage/mcp_audit.jsonl"
+
+    # Integrations used by the MCP servers. Empty credential = the server runs in
+    # local/dry-run mode and says so in its result (`dry_run: true`); it never
+    # pretends a message was delivered.
+    AIRTABLE_API_KEY: str = ""
+    AIRTABLE_BASE_ID: str = ""
+    AIRTABLE_TABLE: str = "Content Calendar"
+    AIRTABLE_TIMEOUT_SEC: int = 10
+    TEAMS_WEBHOOK_URL: str = ""
+    ZALO_OA_ACCESS_TOKEN: str = ""
+    ZALO_OA_ENDPOINT: str = "https://business.openapi.zalo.me/message/template"
+    NOTIFICATION_OUTBOX_PATH: str = "./storage/notification_outbox.jsonl"
+    NOTIFICATION_DRY_RUN: bool = True
+
+    # Marketing / product data pipeline (mini warehouse + collectors).
+    MARKET_DB_PATH: str = "./storage/market.db"
+    MARKET_DATA_DIR: str = "./data/market"
+    # Real HTTP collection is opt-in: offline by default so tests and demos never
+    # depend on an external API (or silently scrape something).
+    MARKET_HTTP_ENABLED: bool = False
+    MARKET_HTTP_TIMEOUT_SEC: float = 10.0
+    MARKET_HTTP_MAX_PAGES: int = 3
+    MARKET_MAX_ROWS: int = 5000
 
     model_config = SettingsConfigDict(
         env_file=".env",

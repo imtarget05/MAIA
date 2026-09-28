@@ -1,0 +1,11 @@
+# Optional production extras (NOT installed by Dockerfile/CI by default).
+# Install only what your deployment needs:
+#
+#   pip install -r requirements-optional.txt
+#
+# redis — multi-replica chat rate limiting (REDIS_URL). Without it the
+#   process-local memory limiter is used (correct for a single instance).
+redis>=5.0
+# python-docx — .docx ingestion. Without it .docx files are skipped with
+#   a documented message; .md/.txt/.pdf/.csv/.html work on stdlib.
+python-docx>=1.1

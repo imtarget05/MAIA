@@ -24,9 +24,17 @@ services:
       - ../../storage:/app/storage
       - ../../data:/app/data:ro
     command: ["uvicorn", "maia.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - default
+      - portfolio-net
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
       retries: 12
     restart: unless-stopped
+
+networks:
+  portfolio-net:
+    external: true
+    name: portfolio-net

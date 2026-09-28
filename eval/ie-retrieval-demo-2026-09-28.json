@@ -1,0 +1,76 @@
+{
+ "date": "2026-09-28",
+ "model": "checkpoints-bilstm",
+ "cases": [
+  {
+   "query": "Bệnh viện Bạch Mai ở Hà Nội tiếp nhận bệnh nhân COVID-19",
+   "entities": [],
+   "bm25_top5": [
+    "Thông báo tạm dừng tiếp nhận bệnh nhân của Bệnh viện Bạch Mai sáng 28 - 3 .",
+    "Quận Hai Bà Trưng ( TP Hà Nội ) lập chốt khoanh vùng khu nhà trọ các bệnh nhân chạy thận nhân tạo ở bệnh viện Bạch Mai .",
+    "Liên quan đến Bệnh viện Bạch Mai , thêm ca thứ 45 - \" bệnh nhân 243 \" , nam , 47 tuổi , ở Mê Linh , TP Hà Nội .",
+    "Chị từng tiếp xúc gần với \" bệnh nhân 163 \" - người đi chăm bà ở khoa Thần kinh Bệnh viện Bạch Mai .",
+    "Hôm 27 - 3 , bệnh nhân đi cùng đoàn của Bệnh viện Bạch Mai về cơ sở 2 của bệnh viện ở Hà Nam với 2 nhân viên khác của Công ty Trường Sinh ."
+   ],
+   "entity_filtered": [
+    "Thông báo tạm dừng tiếp nhận bệnh nhân của Bệnh viện Bạch Mai sáng 28 - 3 .",
+    "Quận Hai Bà Trưng ( TP Hà Nội ) lập chốt khoanh vùng khu nhà trọ các bệnh nhân chạy thận nhân tạo ở bệnh viện Bạch Mai .",
+    "Liên quan đến Bệnh viện Bạch Mai , thêm ca thứ 45 - \" bệnh nhân 243 \" , nam , 47 tuổi , ở Mê Linh , TP Hà Nội .",
+    "Chị từng tiếp xúc gần với \" bệnh nhân 163 \" - người đi chăm bà ở khoa Thần kinh Bệnh viện Bạch Mai .",
+    "Hôm 27 - 3 , bệnh nhân đi cùng đoàn của Bệnh viện Bạch Mai về cơ sở 2 của bệnh viện ở Hà Nam với 2 nhân viên khác của Công ty Trường Sinh ."
+   ],
+   "precision_base": 1.0,
+   "precision_filtered": 1.0
+  },
+  {
+   "query": "Bệnh nhân 35 tuổi làm việc tại chợ Đồng Xuân có triệu chứng sốt cao",
+   "entities": [
+    {
+     "type": "LOCATION",
+     "text": "chợ"
+    },
+    {
+     "type": "SYMPTOM_AND_DISEASE",
+     "text": "sốt cao"
+    }
+   ],
+   "bm25_top5": [
+    "Một căn bệnh bí ẩn khiến gần 30 nhân viên chăm sóc khách hàng ở Chicago đồng loạt xuất hiện triệu chứng ho khan và sốt cao hồi tháng 1 .",
+    "Các triệu chứng đáng báo động khi người nhiễm bệnh sốt cao và ho ra máu .",
+    "Bệnh nhân từng mua thịt và cá tại chợ đầu mối Tân Phát Địa 8 ngày trước khi có triệu chứng .",
+    "Bác sĩ Nhương , 35 tuổi , làm việc ở khoa C4 , ở luôn trong viện từ 19/3 do trực tiếp điều trị cho \" bệnh nhân 86 \" .",
+    "Còn bệnh nhân 419 có triệu chứng tức ngực , khó thở nhẹ , không sốt ."
+   ],
+   "entity_filtered": [
+    "Một căn bệnh bí ẩn khiến gần 30 nhân viên chăm sóc khách hàng ở Chicago đồng loạt xuất hiện triệu chứng ho khan và sốt cao hồi tháng 1 .",
+    "Các triệu chứng đáng báo động khi người nhiễm bệnh sốt cao và ho ra máu .",
+    "Bệnh nhân từng mua thịt và cá tại chợ đầu mối Tân Phát Địa 8 ngày trước khi có triệu chứng .",
+    "Bác sĩ Nhương , 35 tuổi , làm việc ở khoa C4 , ở luôn trong viện từ 19/3 do trực tiếp điều trị cho \" bệnh nhân 86 \" .",
+    "Còn bệnh nhân 419 có triệu chứng tức ngực , khó thở nhẹ , không sốt ."
+   ],
+   "precision_base": 1.0,
+   "precision_filtered": 1.0
+  },
+  {
+   "query": "Chuyến bay VN118 từ Đà Nẵng hạ cánh xuống Tân Sơn Nhất",
+   "entities": [],
+   "bm25_top5": [
+    "Ngày 17 - 3 , T. từ Sarawak , Malaysia nhập cảnh về Việt Nam bằng đường hàng không , hạ cánh xuống sân bay Tân Sơn Nhất ( TP. HCM ) , số hiệu chuyến bay BI 381 .",
+    "Từ 18h45 ngày 1 - 3 , bệnh nhân từ sân bay này về Tân Sơn Nhất trên chuyến bay Qatar Aiways QR 974 , hạ cánh lúc 6h sáng 2 - 3 .",
+    "Chuyến bay VN0054 từ Anh hạ cánh xuống sân bay Nội Bài lúc 4h30 sáng 2/3 có hành khách Nguyễn Hồng Nhung được xác nhận dương tính nCoV ngày 6/3 .",
+    "Hành khách đi cùng chuyến bay trên và tiếp tục di chuyển trên chuyến bay VN223 từ Nội Bài vào sân bay Tân Sơn Nhất lúc 9h54 sáng 2/3 .",
+    "Ngày 11 - 7 , các chuyên gia này từ Liên bang Nga nhập cảnh sân bay Tân Sơn Nhất trên chuyến bay IO 4405 ."
+   ],
+   "entity_filtered": [
+    "Ngày 17 - 3 , T. từ Sarawak , Malaysia nhập cảnh về Việt Nam bằng đường hàng không , hạ cánh xuống sân bay Tân Sơn Nhất ( TP. HCM ) , số hiệu chuyến bay BI 381 .",
+    "Từ 18h45 ngày 1 - 3 , bệnh nhân từ sân bay này về Tân Sơn Nhất trên chuyến bay Qatar Aiways QR 974 , hạ cánh lúc 6h sáng 2 - 3 .",
+    "Chuyến bay VN0054 từ Anh hạ cánh xuống sân bay Nội Bài lúc 4h30 sáng 2/3 có hành khách Nguyễn Hồng Nhung được xác nhận dương tính nCoV ngày 6/3 .",
+    "Hành khách đi cùng chuyến bay trên và tiếp tục di chuyển trên chuyến bay VN223 từ Nội Bài vào sân bay Tân Sơn Nhất lúc 9h54 sáng 2/3 .",
+    "Ngày 11 - 7 , các chuyên gia này từ Liên bang Nga nhập cảnh sân bay Tân Sơn Nhất trên chuyến bay IO 4405 ."
+   ],
+   "precision_base": 1.0,
+   "precision_filtered": 1.0
+  }
+ ],
+ "note": "entities from the trained BiLSTM act as retrieval filters; compare precision_base vs precision_filtered per query."
+}

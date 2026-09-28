@@ -315,8 +315,100 @@ def fetch_url(url: str, session_id: str = "") -> RawDoc:
     )
 
 
+_SUPPORTED_EXTS = (".md", ".txt", ".pdf", ".docx", ".csv", ".html", ".htm")
+
+
+def validate_upload_bytes(blob: bytes, suffix: str) -> str | None:
+    """Magic-byte / binary validation for uploaded files.
+
+    Returns None when OK, else a human-readable rejection reason.
+    Stdlib only: PDF header, ZIP header (docx), NUL-byte + decode check
+    for text formats. Empty files are rejected.
+    """
+    if not blob:
+        return "empty file"
+    suf = suffix.lower()
+    if suf == ".pdf":
+        if not blob.startswith(b"%PDF"):
+            return "not a PDF file (missing %PDF header)"
+        return None
+    if suf == ".docx":
+        if not blob.startswith(b"PK\x03\x04"):
+            return "not a DOCX file (missing ZIP header)"
+        return None
+    # text formats: reject binaries (NUL bytes) and undecodable content
+    if b"\x00" in blob[:8192]:
+        return "binary content in text file"
+    try:
+        blob.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            blob.decode("latin-1")
+        except Exception:
+            return "undecodable text content"
+    return None
+
+
+def _read_docx_text(fpath) -> str:
+    """Read .docx via python-docx (optional dep). Raises ImportError if missing."""
+    from docx import Document as _Docx
+
+    doc = _Docx(str(fpath))
+    return "\n\n".join([(p.text or "") for p in doc.paragraphs])
+
+
+def _read_csv_text(fpath) -> str:
+    """Flatten CSV rows to lines (header: values) so retrieval can cite rows."""
+    import csv
+
+    lines: list[str] = []
+    with open(fpath, newline="", encoding="utf-8", errors="ignore") as f:
+        reader = csv.reader(f)
+        try:
+            header = next(reader)
+        except StopIteration:
+            return ""
+        lines.append(" | ".join(header))
+        for i, row in enumerate(reader):
+            if not any(c.strip() for c in row):
+                continue
+            lines.append(f"row{i + 1}: " + " | ".join(row))
+            if len(lines) > 2000:
+                lines.append("... [truncated at 2000 rows]")
+                break
+    return "\n".join(lines)
+
+
+def _read_html_text(fpath) -> str:
+    """Strip HTML tags with stdlib only (no bs4 dep)."""
+    import html
+    from html.parser import HTMLParser
+
+    class _Strip(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.parts: list[str] = []
+
+        def handle_data(self, data):
+            t = data.strip()
+            if t:
+                self.parts.append(t)
+
+    raw = fpath.read_text(encoding="utf-8", errors="ignore")
+    # drop script/style blocks crudely before parsing
+    import re
+
+    raw = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", raw, flags=re.S | re.I)
+    p = _Strip()
+    try:
+        p.feed(raw)
+    except Exception:
+        return ""
+    return html.unescape("\n".join(p.parts))
+
+
 def load_documents(data_dir: str | Path) -> list[RawDoc]:
-    """Load .md/.txt/.pdf from data_dir using LlamaIndex if present."""
+    """Load .md/.txt/.pdf/.docx/.csv/.html from data_dir using LlamaIndex if present."""
     data_dir = Path(data_dir)
     docs: list[RawDoc] = []
     if not data_dir.exists():
@@ -327,7 +419,7 @@ def load_documents(data_dir: str | Path) -> list[RawDoc]:
         from llama_index.core import SimpleDirectoryReader
 
         reader_docs = SimpleDirectoryReader(
-            input_dir=str(data_dir), recursive=True, required_exts=[".md", ".txt", ".pdf"]
+            input_dir=str(data_dir), recursive=True, required_exts=[".md", ".txt", ".pdf", ".docx", ".csv", ".html", ".htm"]
         ).load_data()
         # Group pages by file: a PDF arrives as one LlamaIndex doc per page,
         # but every page shares the same doc_id — chunk ids would collide and
@@ -364,9 +456,10 @@ def load_documents(data_dir: str | Path) -> list[RawDoc]:
     except Exception:
         pass
 
-    # Fallback: pure python for .md/.txt (+ pypdf for .pdf)
+    # Fallback: pure python for .md/.txt (+ pypdf for .pdf, stdlib for .csv/.html,
+    # optional python-docx for .docx)
     for fpath in sorted(data_dir.rglob("*")):
-        if not fpath.is_file() or fpath.suffix.lower() not in (".md", ".txt", ".pdf"):
+        if not fpath.is_file() or fpath.suffix.lower() not in _SUPPORTED_EXTS:
             continue
         try:
             if fpath.suffix.lower() == ".pdf":
@@ -375,6 +468,23 @@ def load_documents(data_dir: str | Path) -> list[RawDoc]:
 
                     reader = PdfReader(str(fpath))
                     text = "\n\n".join([(p.extract_text() or "") for p in reader.pages])
+                except Exception:
+                    continue
+            elif fpath.suffix.lower() == ".docx":
+                try:
+                    text = _read_docx_text(fpath)
+                except ImportError:
+                    continue  # python-docx not installed: documented in requirements
+                except Exception:
+                    continue
+            elif fpath.suffix.lower() == ".csv":
+                try:
+                    text = _read_csv_text(fpath)
+                except Exception:
+                    continue
+            elif fpath.suffix.lower() in (".html", ".htm"):
+                try:
+                    text = _read_html_text(fpath)
                 except Exception:
                     continue
             else:

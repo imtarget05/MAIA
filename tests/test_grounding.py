@@ -171,3 +171,69 @@ def test_llm_grounding_checker_rejects_unsupported_claim():
         assert reason == UNVERIFIABLE
     finally:
         settings.USE_LLM_GROUNDING = False
+
+
+# ---- MAIA-008 & MAIA-022 Coverage (Phase-2 Remediation) ---------------
+
+def test_maia_008_contradictory_documents_isolation():
+    """MAIA-008: Verify contradictory SOPs do not cause hallucinated conclusions.
+
+    When two candidate chunks have conflicting policy parameters (e.g. 5 million vs 10 million limit),
+    an answer presenting both evidences with citations [S1] and [S2] is grounded and valid.
+    An invented conclusion fabricating ungrounded figures (e.g. 20 million) must be rejected
+    by GroundingChecker as ungrounded hallucination.
+    """
+    candidates = [
+        {"chunk_id": "sop_v1", "text": "SOP-A quy định hạn mức tạm ứng công tác tối đa là 5 triệu đồng.",
+         "metadata": {"filename": "SOP_A.md"}},
+        {"chunk_id": "sop_v2", "text": "SOP-B quy định hạn mức tạm ứng công tác tối đa là 10 triệu đồng.",
+         "metadata": {"filename": "SOP_B.md"}},
+    ]
+    context = " ".join(c["text"] for c in candidates)
+    gc = GroundingChecker(threshold=0.3)
+    cc = CitationChecker(candidates)
+
+    # Leg 1: Stating both conflicting rules accurately citing respective sources
+    answer_both = "Theo SOP-A hạn mức là 5 triệu [S1]. Trong khi SOP-B quy định 10 triệu [S2]."
+    valid, invalid = cc.check(answer_both)
+    assert valid is True and not invalid
+    assert gc.grounded(answer_both, context) is True
+    assert cc.verify_support("Theo SOP-A hạn mức là 5 triệu [S1]", cite_tag=1) is True
+    assert cc.verify_support("Trong khi SOP-B quy định 10 triệu [S2]", cite_tag=2) is True
+
+    # Leg 2: Invented conclusion (hallucinating 20 million) fails grounding
+    hallucinated = "Do có sự khác nhau nên hạn mức thống nhất được duyệt là 20 triệu đồng cho toàn bộ nhân viên."
+    assert gc.grounded(hallucinated, context) is False
+    assert gc.score(hallucinated, context) < gc.threshold
+
+
+def test_maia_022_citation_stability_deterministic():
+    """MAIA-022: Verify repeated queries on the same context yield deterministic citations and grounding scores."""
+    candidates = [
+        {"chunk_id": "doc1", "text": "Chính sách bảo hiểm y tế doanh nghiệp chi trả 100% chi phí khám.",
+         "metadata": {"filename": "Insurance.md"}},
+        {"chunk_id": "doc2", "text": "Gói khám sức khỏe định kỳ diễn ra vào tháng 10 hàng năm.",
+         "metadata": {"filename": "Health.md"}},
+    ]
+    answer = "Doanh nghiệp chi trả 100% chi phí [S1] và khám sức khỏe định kỳ tháng 10 [S2]."
+    context = " ".join(c["text"] for c in candidates)
+
+    gc = GroundingChecker(threshold=0.15)
+    cc = CitationChecker(candidates)
+
+    # First run baseline
+    cites_0 = extract_cites(answer)
+    valid_0, reasons_0 = cc.check_reasons(answer)
+    score_0 = gc.score(answer, context)
+
+    # Run 10 consecutive iterations
+    for _ in range(10):
+        cites_i = extract_cites(answer)
+        valid_i, reasons_i = cc.check_reasons(answer)
+        score_i = gc.score(answer, context)
+
+        assert cites_i == cites_0 == [1, 2]
+        assert valid_i == valid_0 is True
+        assert reasons_i == reasons_0
+        assert score_i == score_0
+

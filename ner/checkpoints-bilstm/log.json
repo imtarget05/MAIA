@@ -1,0 +1,10 @@
+{
+ "epochs": 8,
+ "batch": 32,
+ "lr": 0.001,
+ "n_train": 5027,
+ "n_dev": 500,
+ "dev_microF1": 0.7687031082529475,
+ "arch": "emb128+BiLSTM128 greedy (Lample-2016 minus CRF)",
+ "elapsed_s": 907
+}

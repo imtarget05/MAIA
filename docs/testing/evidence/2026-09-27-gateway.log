@@ -1,0 +1,11 @@
+# Session log 2026-09-27 — MAIA gateway (observed output, key lines)
+
+Command: `./.venv/bin/python -m pytest -q` in `MAIA/llm-gateway/`
+Observed tail:
+  `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.`
+  `52 passed, 1 warning in 7.03s`
+Verdict: 52/52 VERIFIED.
+
+Collect check: `/tmp/factorygen/bin/python -m pytest --collect-only -q tests/test_invariants_property.py`
+in `MAIA/` → `ModuleNotFoundError: No module named 'pydantic_settings'`, `no tests collected, 1 error`.
+Same for `tests/test_approval.py`. App suite = CI-ONLY offline.
