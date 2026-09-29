@@ -86,8 +86,42 @@ def strip_comments(sql: str) -> str:
     return _WHITESPACE_RE.sub(" ", without_line).strip()
 
 
+#: Dấu nháy đơn trong SQL. Một `;` nằm GIỮA hai dấu này là dữ liệu, không
+#: phải ranh giới statement.
+_STRING_LITERAL_RE = re.compile(r"'(?:[^']|'')*'")
+
+
 def _split_statements(sql: str) -> list[str]:
-    return [p.strip() for p in sql.split(";") if p.strip()]
+    """
+    Tách statement theo `;` bên ngoài string literal.
+
+    `sql.split(";")` là cách ngắn nhưng SAI: một truy vấn hợp lệ có
+    `WHERE note = 'a;b'` sẽ bị cắt làm hai và bị từ chối. Đó không chỉ là
+    false positive — nó cũng có nghĩa là kẻ tấn công không cần viết SQL
+    đúng, chỉ cần một chuỗi chứa `;` là vô hiệu hoá allowlist.
+
+    Chiến lược: thay mỗi string literal bằng placeholder KHÔNG chứa `;`, tách
+    theo đó, rồi TRẢ LẠI literal gốc trong mỗi mảnh.
+
+    Bước khôi phục là bắt buộc, không phải tuỳ chọn: nếu ta trả về chuỗi
+    còn placeholder, câu hỏi đúng sẽ chạy trên dữ liệu sai — một SQL guard
+    "thành công" nhưng cho kết quả khác với ý định là lỗi tệ hơn là từ chối.
+    """
+    literals: list[str] = []
+
+    def _stash(m: re.Match) -> str:
+        literals.append(m.group(0))
+        return f"\x00{len(literals) - 1}\x00"
+
+    masked = _STRING_LITERAL_RE.sub(_stash, sql)
+    parts = [p.strip() for p in masked.split(";") if p.strip()]
+
+    restored = []
+    for part in parts:
+        for i, lit in enumerate(literals):
+            part = part.replace(f"\x00{i}\x00", lit)
+        restored.append(part)
+    return restored
 
 
 def _check_keywords(sql: str) -> None:
