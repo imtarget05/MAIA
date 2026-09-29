@@ -9,3 +9,10 @@ redis>=5.0
 # python-docx — .docx ingestion. Without it .docx files are skipped with
 #   a documented message; .md/.txt/.pdf/.csv/.html work on stdlib.
 python-docx>=1.1
+# Durable thread state across process restarts (maia.persistence). Optional
+#   because it needs a reachable Postgres; without it the agent falls back to
+#   langgraph-checkpoint-sqlite, which survives restarts but is single-node.
+#   PersistenceUnavailable is raised when MAIA_POSTGRES_DSN is unset, so a
+#   missing DSN is loud rather than a silent write to the wrong database.
+langgraph-checkpoint-postgres>=3.0
+psycopg[binary,pool]>=3.2
