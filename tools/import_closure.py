@@ -33,33 +33,81 @@ def module_path(mod: str):
     return None
 
 
-def imports_of(path, module_scope_only: bool, package: str):
-    """Yield import names, relative imports đã resolve về absolute.
+CLASSES_THAT_DEFER_IMPORTS = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.Lambda,
+)
 
-    `from .agent import X` phải trở thành `maia.agent`, nếu không node.module là
-    "agent" và bị tính nhầm là package ngoài — đó là lý do danh sách đầu ra
-    toàn agent/config/pipeline, tức là chính các module của MAIA.
+
+def imports_of(path, include_deferred: bool, package: str):
+    """Yield absolute import names.
+
+    `include_deferred=False` giữ lại đúng các import chạy lúc uvicorn khởi
+    động app; True thì lấy thêm cả import bên trong hàm.
+
+    Bốn lỗi đã tốn thời gian ở đây, tất cả đều là "quét hụt import":
+
+    1. Chỉ đọc `tree.body` bỏ sót import nằm trong `try:` / `if:` ở CẤP MODULE.
+       Chúng vẫn chạy lúc import — chỉ khác là được bọc try/except. Đây
+       chính là lý do langgraph biến mất khỏi danh sách rồi app crash.
+    2. Dùng `ast.walk` thì ngược lại quá tay: nó lặn vào thân hàm, nên Reranker
+       và toàn bộ RAG stack trông như bắt buộc lúc khởi động, và image sẽ
+       phình lên hàng GB.
+    3. `from .agent import X` phải resolve thành `maia.agent`, nếu không node.module
+       là "agent" và bị tính nhầm là package của bên thứ ba.
+    4. Duyệt cả class body cũng quá tay theo cùng lý do.
+
+    Vì vậy: đi toàn bộ cây, nhưng KHÔNG lặn vào thân hàm/lớp.
     """
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
         return
 
-    for node in tree.body:  # chỉ duyệt body cấp module
+    def resolve(node) -> str:
+        if not node.level:
+            return node.module
+        base = package.split(".") if package else []
+        trimmed = base[: len(base) - (node.level - 1)] if node.level > 1 else base
+        return ".".join([*trimmed, node.module])
+
+    stack = list(tree.body)
+    while stack:
+        node = stack.pop()
         if isinstance(node, ast.Import):
             for alias in node.names:
                 yield alias.name
         elif isinstance(node, ast.ImportFrom) and node.module:
-            if node.level:
-                base = package.split(".")
-                # level=1 -> package của module hiện tại; level=2 -> bố của nó
-                trimmed = base[: len(base) - (node.level - 1)]
-                yield ".".join([*trimmed, node.module])
-            else:
-                yield node.module
+            yield resolve(node)
+        elif isinstance(node, CLASSES_THAT_DEFER_IMPORTS):
+            if include_deferred:
+                # iter_child_nodes chứ không phải node.body: Lambda.body là
+                # một ast.Call chứ không phải list, nên extend() sẽ vỡ.
+                stack.extend(ast.iter_child_nodes(node))
+        else:
+            # if / try / with / for ở cấp module: vẫn là import-time.
+            stack.extend(ast.iter_child_nodes(node))
 
 
-def collect(module_scope_only: bool):
+def ancestors(mod: str):
+    """Các package cha của `mod`, từ sâu về nông.
+
+    Import `maia.agent.mcp_dispatch` buộc phải chạy `maia/__init__.py` rồi
+    `maia/agent/__init__.py` TRƯỚC khi module con được nạp. Bỏ qua chuỗi này
+    là lý do langgraph không xuất hiện: `maia/agent/__init__.py` dòng 6 import
+    `.langgraph_agent`, và đó mới là nơi langgraph thực sự được cần.
+
+    Đây là loại lỗi mà chỉ lộ ra khi deploy thật — mọi phân tích tĩnh chỉ đọc
+    file được import trực tiếp thì đều bỏ lọt.
+    """
+    parts = mod.split(".")
+    for depth in range(len(parts) - 1, 0, -1):
+        yield ".".join(parts[:depth])
+
+
+def collect(include_deferred: bool):
     seen, external, unresolved = set(), set(), set()
     queue = ["maia.api"]
     while queue:
@@ -71,12 +119,15 @@ def collect(module_scope_only: bool):
         if path is None:
             unresolved.add(mod)
             continue
+        # package cha phải được nạp trước, và `__init__.py` của nó cũng vậy
+        for parent in ancestors(mod):
+            queue.append(parent)
         # package của module: bỏ `.py`; `__init__` nằm ngay tại package
         is_pkg = path.name == "__init__.py"
         package = mod if is_pkg else mod.rsplit(".", 1)[0]
         if is_pkg and "." not in mod:
             package = ""
-        for imported in imports_of(path, module_scope_only, package):
+        for imported in imports_of(path, include_deferred, package):
             head = imported.split(".", 1)[0]
             if head == "maia":
                 queue.append(imported)
@@ -89,8 +140,8 @@ STDLIB = set(sys.stdlib_module_names)
 
 
 def main() -> int:
-    modules, required, unresolved = collect(module_scope_only=True)
-    _, everything, _ = collect(module_scope_only=False)
+    modules, required, unresolved = collect(include_deferred=False)
+    _, everything, _ = collect(include_deferred=True)
     lazy_only = everything - required
 
     print(f"maia modules walked : {len(modules)}")

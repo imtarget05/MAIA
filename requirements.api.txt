@@ -2,32 +2,40 @@
 #
 # KHÔNG phải requirements.txt của repo. File đó kéo cả embedding model, reranker,
 # onnxruntime và toàn bộ RAG stack — hàng GB, trong khi profile Container Apps
-# Consumption ở 1GiB. Cài nó chỉ để trả lời /health là tự tạo OOM.
+# Consumption chỉ 1GiB. Cài nó chỉ để trả lời /health là tự tạo OOM.
 #
 # Danh sách KHÔNG đoán. Nó là closure thật của import, sinh bởi
-# tools/import_closure.py, phân biệt hai mức:
+# tools/import_closure.py, tách hai mức:
 #
-#   MODULE SCOPE (bắt buộc, app không import được nếu thiếu):
-#     fastapi, pydantic, pydantic-settings, sqlalchemy,
-#     python-jose, passlib, langchain-core, requests,
-#     numpy, pandas, pyyaml, qdrant-client
+#   MODULE SCOPE (bắt buộc, app không import được nếu thiếu) — 14 gói:
+#     fastapi, pydantic, pydantic-settings, sqlalchemy, python-jose, passlib,
+#     langchain-core, langgraph, jsonschema, requests, numpy, pandas,
+#     pyyaml, qdrant-client
 #
-#   LAZY (chỉ cần khi endpoint gọi tới): không có mục nào ở đây là bắt buộc
-#     lúc khởi động, vì vậy app vẫn đứng vững khi thiếu.
+#   LAZY (12 gói, chỉ cần khi endpoint gọi tới): torch, sentence-transformers,
+#     fastembed, llama-index, rank-bm25, trafilatura, pypdf, docx, redis,
+#     google, httpx, bilstm. Không gói nào trong số này chặn khởi động, nên
+#     app vẫn đứng vững khi thiếu và /ready báo degraded.
 #
-# Ba bug thật đã tốn thời gian ở lần build đầu, ghi lại để không lặp lại:
-#   1. Quét AST chỉ một file là KHÔNG ĐỦ. api.py chỉ ghi `from maia.auth
-#      import ...`; passlib nằm trong auth.py. Image build xanh rồi mới crash
-#      lúc uvicorn import.
-#   2. Phải resolve RELATIVE import (`from .agent import`). Bỏ qua chúng thì
-#      "agent", "config", "pipeline" bị tính nhầm là package ngoài.
-#   3. Import trong thân hàm không chặn khởi động. Reranker chỉ được gọi khi
-#      /ready chạy, nên bỏ nó đi không làm app chết — nó làm /ready degrade.
+# Sáu lỗi thật đã phát hiện khi deploy, đều là "quét hụt import", ghi lại để
+# không lặp lại:
+#   1. Quét AST một file là KHÔNG ĐỦ. api.py chỉ ghi `from maia.auth import
+#      ...`; passlib nằm trong auth.py.
+#   2. Phải resolve RELATIVE import (`from .agent import`), nếu không chính các
+#      module của MAIA bị tính nhầm là package ngoài.
+#   3. Chỉ đọc `tree.body` bỏ sót import trong `try:`/`if:` Ở CẤP MODULE. Chúng
+#      vẫn chạy lúc import.
+#   4. Import trong thân hàm KHÔNG chặn khởi động. Dùng ast.walk sẽ quá tay và
+#      kéo cả torch vào, biến image thành hàng GB.
+#   5. Phải nạp `__init__.py` của MỌI package cha. `maia/agent/__init__.py`
+#      dòng 6 import `.langgraph_agent` — đó mới là nơi langgraph cần, và nó
+#      không xuất hiện nếu chỉ đi thẳng vào `maia.agent.mcp_dispatch`.
+#   6. Lambda.body là ast.Call chứ không phải list, nên dùng iter_child_nodes.
 #
-# Cố tình KHÔNG có: fastembed, onnxruntime, sentence-transformers, rank-bm25.
-# Đó là RAG runtime. /ready báo degraded rõ ràng thay vì đóng gói một stack
-# không dùng rồi che việc nó không chạy. qdrant-client được giữ lại vì nó là
-# client gọi HTTP, không phải server và không kéo theo model nào.
+# Cố tình KHÔNG có: fastembed, onnxruntime, sentence-transformers, torch,
+# rank-bm25. Đó là RAG runtime. /ready báo degraded rõ ràng thay vì đóng gói
+# một stack không dùng rồi che việc nó không chạy. qdrant-client được giữ lại
+# vì nó là client gọi HTTP, không phải server và không kéo theo model nào.
 fastapi>=0.110
 uvicorn[standard]>=0.27
 pydantic>=2.5
@@ -37,9 +45,12 @@ python-jose[cryptography]>=3.3
 python-multipart>=0.0.9
 passlib>=1.7
 langchain-core>=0.3
+langgraph>=0.2
+jsonschema>=4.20
 requests>=2.31
 numpy>=1.26
 pandas>=2.0
 pyyaml>=6.0
 qdrant-client>=1.7
+
 
