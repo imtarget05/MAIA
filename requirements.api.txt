@@ -1,20 +1,33 @@
-# Dependencies tối thiểu để MAIA API khởi động (maia.api:app).
+# Dependency tối thiểu để MAIA API khởi động (maia.api:app) trên Azure.
 #
-# KHÔNG phải requirements.txt của repo. File đó kéo cả embedding model,
-# reranker, Kafka client và toàn bộ RAG stack — hàng GB, và tất cả những thứ
-# đó đều không cần để app trả lời /health, /metrics, và 401 trước khi auth.
+# KHÔNG phải requirements.txt của repo. File đó kéo cả embedding model, reranker,
+# onnxruntime và toàn bộ RAG stack — hàng GB, trong khi profile Container Apps
+# Consumption ở 1GiB. Cài nó chỉ để trả lời /health là tự tạo OOM.
 #
-# Danh sách lấy từ AST import của src/maia/api.py, không đoán:
-#   fastapi, uvicorn      — web
-#   pydantic, sqlalchemy  — models + settings
-#   python-jose           — JWT (auth.py)
-#   python-multipart      — OAuth2 form
-#   langchain-core        — RunnableConfig dùng trong agent
-#   requests, redis       — loops/outbox client
+# Danh sách KHÔNG đoán. Nó là closure thật của import, sinh bởi
+# tools/import_closure.py, phân biệt hai mức:
 #
-# Cố tình KHÔNG có: fastembed, onnxruntime, qdrant-client, rank-bm25. Đó là
-# RAG runtime, và cloud-demo chạy /ready ở degraded mode — nói thẳng hơn là
-# đóng gói một stack không dùng rồi che việc nó không chạy.
+#   MODULE SCOPE (bắt buộc, app không import được nếu thiếu):
+#     fastapi, pydantic, pydantic-settings, sqlalchemy,
+#     python-jose, passlib, langchain-core, requests,
+#     numpy, pandas, pyyaml, qdrant-client
+#
+#   LAZY (chỉ cần khi endpoint gọi tới): không có mục nào ở đây là bắt buộc
+#     lúc khởi động, vì vậy app vẫn đứng vững khi thiếu.
+#
+# Ba bug thật đã tốn thời gian ở lần build đầu, ghi lại để không lặp lại:
+#   1. Quét AST chỉ một file là KHÔNG ĐỦ. api.py chỉ ghi `from maia.auth
+#      import ...`; passlib nằm trong auth.py. Image build xanh rồi mới crash
+#      lúc uvicorn import.
+#   2. Phải resolve RELATIVE import (`from .agent import`). Bỏ qua chúng thì
+#      "agent", "config", "pipeline" bị tính nhầm là package ngoài.
+#   3. Import trong thân hàm không chặn khởi động. Reranker chỉ được gọi khi
+#      /ready chạy, nên bỏ nó đi không làm app chết — nó làm /ready degrade.
+#
+# Cố tình KHÔNG có: fastembed, onnxruntime, sentence-transformers, rank-bm25.
+# Đó là RAG runtime. /ready báo degraded rõ ràng thay vì đóng gói một stack
+# không dùng rồi che việc nó không chạy. qdrant-client được giữ lại vì nó là
+# client gọi HTTP, không phải server và không kéo theo model nào.
 fastapi>=0.110
 uvicorn[standard]>=0.27
 pydantic>=2.5
@@ -22,6 +35,11 @@ pydantic-settings>=2.0
 sqlalchemy>=2.0
 python-jose[cryptography]>=3.3
 python-multipart>=0.0.9
+passlib>=1.7
 langchain-core>=0.3
 requests>=2.31
-redis>=5.0
+numpy>=1.26
+pandas>=2.0
+pyyaml>=6.0
+qdrant-client>=1.7
+
