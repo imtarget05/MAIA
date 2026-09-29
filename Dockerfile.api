@@ -48,6 +48,10 @@ USER maia
 # production cần volume gắn ngoài. Claim "durable Postgres-backed checkpoints"
 # của repo nằm ở test và kiến trúc, không nằm ở deployment này.
 
+# tools/ được copy riêng (nằm ngoài src/) vì seed script là thứ chỉ dùng lúc
+# khởi động demo, không phải một phần của package ứng dụng.
+COPY tools/ ./tools/
+
 EXPOSE 8000
 
 # Healthcheck gọi /health — endpoint cố tình KHÔNG load ML stack, vì probe mà
@@ -55,4 +59,12 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4)"
 
-CMD ["python", "-m", "uvicorn", "maia.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Seed hai user demo thuộc hai tenant khác nhau, rồi mới khởi động app.
+#
+# `python tools/seed_demo_users.py` tự no-op nếu DEMO_SEED_ENABLED khác
+# "true", nên lệnh ghép này an toàn cho mọi revision không bật seeding —
+# không cần shell phức tạp hay entrypoint script riêng.
+#
+# Mật khẩu đến từ biến môi trường của Container Apps, KHÔNG nằm trong image
+# hay trong repo.
+CMD ["sh", "-c", "python tools/seed_demo_users.py && exec python -m uvicorn maia.api:app --host 0.0.0.0 --port 8000"]
