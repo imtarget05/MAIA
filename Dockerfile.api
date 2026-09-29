@@ -24,9 +24,13 @@ COPY requirements.api.txt ./
 RUN pip install --no-cache-dir -r requirements.api.txt
 
 COPY src/ ./src/
-# Fixture nhỏ để app khởi động có nội dung. KHÔNG phải corpus doanh nghiệp —
-# xem docs/evidence/ cho provenance.
-COPY data/ ./data/ 2>/dev/null || true
+# `data/` chứa fixture nhỏ (56K) để app khởi động có nội dung. KHÔNG phải
+# corpus doanh nghiệp — xem docs/evidence/ cho provenance.
+#
+# Không dùng `|| true` ở đây: `||` là cú pháp shell, chỉ hợp lệ trong RUN/CMD.
+# Buildx báo lỗi "failed to calculate checksum" chứ không phải "file not
+# found" — đọc sai thông báo sẽ dễ chẩn đoán nhầm là vấn đề context.
+COPY data/ ./data/
 
 RUN useradd --create-home --uid 10001 maia \
     && mkdir -p /var/lib/maia \
