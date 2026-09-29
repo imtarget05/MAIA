@@ -33,9 +33,20 @@ COPY src/ ./src/
 COPY data/ ./data/
 
 RUN useradd --create-home --uid 10001 maia \
-    && mkdir -p /var/lib/maia \
-    && chown -R maia:maia /app /var/lib/maia
+    && chown -R maia:maia /app
 USER maia
+
+# Về thư mục dữ liệu:
+#
+# Container Apps chưa có podSecurityContext.fsGroup, nên một emptyDir mount
+# thuộc root và uid 10001 KHÔNG ghi được vào đó. Vì vậy sqlite nằm trong /app,
+# vốn đã được chown cho maia.
+#
+# Hệ quả phải nói thẳng: dữ liệu này SỐNG TRONG BỘ NHỚ ĐỆM của container và
+# mất khi revision scale về 0 rồi scale lại. Đó là chấp nhận được ở cloud-demo
+# (không có dữ liệu người dùng thật), và KHÔNG phải cách làm cho production —
+# production cần volume gắn ngoài. Claim "durable Postgres-backed checkpoints"
+# của repo nằm ở test và kiến trúc, không nằm ở deployment này.
 
 EXPOSE 8000
 
