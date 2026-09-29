@@ -1,0 +1,98 @@
+name: Build and Publish API Image to GHCR
+
+# Cùng pipeline đã chứng minh hoạt động với Factory API: build trên
+# GitHub Actions, push GHCR, Azure Container Apps pull theo digest.
+# Mục tiêu là laptop KHÔNG build image.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/maia/**'
+      - 'Dockerfile.api'
+      - 'requirements.api.txt'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: maia-api
+
+jobs:
+  build:
+    name: Build, smoke-test, push to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        # Hai quy tắc đã học từ lần build thất bại ở Factory:
+        #   1. tên phải có namespace owner, nếu không sẽ gửi tới Docker Hub
+        #      và nhận 401 trông như hỏng quyền GHCR
+        #   2. tên repository phải lowercase, registry OCI từ chối mixed case
+        id: meta
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA}"
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          REPO_LC="$(printf '%s' "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE="${REGISTRY}/${OWNER}/${REPO_LC}-${IMAGE_NAME}"
+          echo "sha=${SHA}"         >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}"     >> "$GITHUB_OUTPUT"
+          echo "tag=${IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Resolved: ${IMAGE}:${SHA}"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          push: true
+          tags: ${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Export provenance metadata
+        run: |
+          mkdir -p /tmp/meta
+          cat > /tmp/meta/image-evidence.json <<EOF
+          {
+            "registry": "${{ env.REGISTRY }}",
+            "repository": "${{ steps.meta.outputs.image }}",
+            "tag": "${{ steps.meta.outputs.tag }}",
+            "digest": "${{ steps.build.outputs.digest }}",
+            "source_commit": "${{ steps.meta.outputs.sha }}",
+            "build_location": "GitHub Actions",
+            "mode": "cloud-demo, self-contained (no Qdrant/Postgres/LLM gateway)",
+            "workflow_run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          cat /tmp/meta/image-evidence.json
+
+      - name: Commit image evidence
+        run: |
+          mkdir -p docs/evidence/images
+          cp /tmp/meta/image-evidence.json docs/evidence/images/maia-api.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/evidence/images/maia-api.json
+          git diff --cached --quiet || git commit -m "chore: record MAIA image digest for ${{ steps.meta.outputs.sha }}"
+          git push || echo "push skipped"

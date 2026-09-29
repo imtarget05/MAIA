@@ -1,0 +1,27 @@
+# Dependencies tối thiểu để MAIA API khởi động (maia.api:app).
+#
+# KHÔNG phải requirements.txt của repo. File đó kéo cả embedding model,
+# reranker, Kafka client và toàn bộ RAG stack — hàng GB, và tất cả những thứ
+# đó đều không cần để app trả lời /health, /metrics, và 401 trước khi auth.
+#
+# Danh sách lấy từ AST import của src/maia/api.py, không đoán:
+#   fastapi, uvicorn      — web
+#   pydantic, sqlalchemy  — models + settings
+#   python-jose           — JWT (auth.py)
+#   python-multipart      — OAuth2 form
+#   langchain-core        — RunnableConfig dùng trong agent
+#   requests, redis       — loops/outbox client
+#
+# Cố tình KHÔNG có: fastembed, onnxruntime, qdrant-client, rank-bm25. Đó là
+# RAG runtime, và cloud-demo chạy /ready ở degraded mode — nói thẳng hơn là
+# đóng gói một stack không dùng rồi che việc nó không chạy.
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
+pydantic-settings>=2.0
+sqlalchemy>=2.0
+python-jose[cryptography]>=3.3
+python-multipart>=0.0.9
+langchain-core>=0.3
+requests>=2.31
+redis>=5.0

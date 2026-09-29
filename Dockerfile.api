@@ -1,0 +1,43 @@
+# Image cho MAIA API trên Azure Container Apps.
+#
+# CLOUD-DEMO MODE, self-contained: không Qdrant, không Postgres, không LLM
+# gateway. Những thứ đó là hạ tầng runtime nặng và sẽ biến bài toán
+# "deploy được app không" thành "dựng được cả stack không".
+#
+# Thay vào đó app chạy với:
+#   - AUTH_DB_URL=sqlite trong emptyDir (bền vững cho một container instance)
+#   - không bật RAG stack -> /ready báo degraded rõ ràng
+#   - /health và /metrics không cần bất kỳ dependency nào
+#
+# Ranh giới được ghi rõ trong registry.json của repo: đây là demo mode, và
+# /ready nói rõ nó không phải production topology.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/src
+
+WORKDIR /app
+
+COPY requirements.api.txt ./
+RUN pip install --no-cache-dir -r requirements.api.txt
+
+COPY src/ ./src/
+# Fixture nhỏ để app khởi động có nội dung. KHÔNG phải corpus doanh nghiệp —
+# xem docs/evidence/ cho provenance.
+COPY data/ ./data/ 2>/dev/null || true
+
+RUN useradd --create-home --uid 10001 maia \
+    && mkdir -p /var/lib/maia \
+    && chown -R maia:maia /app /var/lib/maia
+USER maia
+
+EXPOSE 8000
+
+# Healthcheck gọi /health — endpoint cố tình KHÔNG load ML stack, vì probe mà
+# load model là cách làm container bị OOM trong profile nhỏ.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4)"
+
+CMD ["python", "-m", "uvicorn", "maia.api:app", "--host", "0.0.0.0", "--port", "8000"]
