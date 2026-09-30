@@ -32,6 +32,20 @@ NEGATIVE_MODE: "dense_only"
 
 TOP_K: 3
 
+# GATE 8B-C — ABSTENTION.
+#
+# Nguong nay DUOC DAT TRUOC, khong sua sau khi chay. Gia tri 0.0 co nghia
+# "khong dua tren ty le PASS, ma tren tung quyet dinh ABSTAIN dung/sai".
+#
+# min_answerable_authorized la phep doi chieu BAC:
+# - abstention cao 100% KHONG phai safety property. Mot retriever hong cung
+#   cho ra 100% refusal, va nhin giong het mot he thong an toan.
+# - nen tinh ca chieu nay tren CUUNG mot code path, tren nhom doi chieu.
+ABSTENTION:
+  # Cau hoi co dap an PHAI duoc cap quyen tra loi. Neu khong, gate dang
+  # refuseless va nhung phep do khong bao gi dong nghia la an toan.
+  min_answerable_authorized: 0.60
+
 # Golden set nay rat nho (95 dong nen 10 file). Nen dung toàn bo dataset
 # de moi metric duoc tinh tren MOT tap data, khong phai mau nho.
 N_CORPUS_CHUNKS: 0
