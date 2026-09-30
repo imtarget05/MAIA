@@ -2,7 +2,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from langchain_core.runnables import RunnableConfig
@@ -1112,27 +1112,143 @@ def chat(req: ChatReq, current_user: User = Depends(get_current_active_user)):
 
 
 @app.post("/chat/stream")
-def chat_stream(req: ChatReq, current_user: User = Depends(get_current_active_user)):
-    """Chunked SSE streaming for chat.
+async def chat_stream(req: ChatReq, request: Request,
+                      current_user: User = Depends(get_current_active_user)):
+    """SSE token streaming for chat (realtime closeout).
 
-    Honest contract: sentence-chunked SSE of the grounded answer (retrieval +
-    grounding complete before first chunk). Token-streaming happens inside
-    `LocalOpenAICompatLLM.chat_stream` when the upstream gateway supports SSE;
-    the agent path streams post-grounding chunks so citations stay attached.
+    Flow: auth → tenant isolation → retrieval/grounding (existing agent
+    stack) → token events → citations event → done (exactly once).
+    HIGH_RISK tools never execute here: a ``needs_approval`` result emits
+    ``approval_required`` and stops; execution stays in ``/actions/confirm``
+    (C1). Client disconnect discards buffered session writes, so a partial
+    answer is never stored as completed. No background tasks are created.
     """
-    check_chat_rate_limit(f"stream:{current_user.tenant_id}:{current_user.id}")
+    import asyncio
+    import time as _t
+
     from fastapi.responses import StreamingResponse
 
+    from maia import streaming as _sm
     from maia.agent.agent import EnterpriseAgent
 
-    agent = EnterpriseAgent(tenant_id=current_user.tenant_id)
+    check_chat_rate_limit(f"stream:{current_user.tenant_id}:{current_user.id}")
+    trace_id = _sm.new_trace_id()
+    t_start = _t.monotonic()
+    session_id = req.session_id or "default"
+    tenant_id = current_user.tenant_id
+    agent = EnterpriseAgent(tenant_id=tenant_id)
+    done_sent = False
 
-    def gen():
-        for chunk in agent.stream_answer(req.question, session_id=req.session_id or "default", employee_id=current_user.employee_id, tenant_id=current_user.tenant_id, requester_email=current_user.email):
-            yield f"data: {chunk}\n\n"
-        yield "data: [DONE]\n\n"
+    async def gen():
+        nonlocal done_sent
+        from maia.config import settings as _settings
+        _provider = (_settings.LLM_PROVIDER or "mock").strip().lower()
+        yield _sm.sse_event("meta", {"trace_id": trace_id, "mode": "MOCK"
+                                     if _provider == "mock" else "REAL_MODEL",
+                                     "tenant_id": tenant_id})
+        # Retrieval + grounding run inside the request task (to_thread, so the
+        # event loop stays responsive); session writes are buffered and only
+        # flushed after the stream completes cleanly.
+        result: dict | None = None
+        error_code: str | None = None
+        try:
+            with _sm.defer_session_persist(tenant_id, session_id) as flush:
+                try:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            agent.chat, req.question, session_id,
+                            current_user.employee_id,
+                            req.top_k, tenant_id,
+                            None, current_user.email),
+                        timeout=_sm.STREAM_TIMEOUT_SEC)
+                except asyncio.TimeoutError:
+                    error_code = _sm.ERR_PROVIDER_TIMEOUT
+                    result = None
+                except Exception:
+                    error_code = _sm.ERR_PROVIDER_ERROR
+                    result = None
+                if result is None:
+                    yield _sm.sse_event(
+                        "error", {"code": error_code or _sm.ERR_PROVIDER_ERROR,
+                                  "recoverable": True})
+                else:
+                    status = result.get("status", "answered")
+                    citations = result.get("citations") or []
+                    if status == "needs_approval" or result.get("pending_action"):
+                        pending = result.get("pending_action") or {}
+                        yield _sm.sse_event("approval_required", {
+                            "tool": pending.get("tool", ""),
+                            "summary": pending.get("summary", ""),
+                            "session_id": session_id})
+                        yield _sm.sse_event(
+                            "citations",
+                            {"sources": _sm.citations_to_sources(citations)})
+                        # Approval pause survives the stream (pending store is
+                        # separate from the buffered session writes), so flush
+                        # the user question + proposal card, then stop — never
+                        # execute the tool here.
+                        flush()
+                        yield _sm.sse_event("done", {
+                            "finish_reason": "approval_required",
+                            "latency_ms": round((_t.monotonic() - t_start) * 1000, 1),
+                            "status": status, "needs_approval": True})
+                        done_sent = True
+                        return
+                    answer = result.get("answer", "") or ""
+                    if not answer.strip():
+                        # Empty/abstain: still a bounded, complete stream.
+                        yield _sm.sse_event(
+                            "citations",
+                            {"sources": _sm.citations_to_sources(citations)})
+                        flush()
+                        yield _sm.sse_event("done", {
+                            "finish_reason": "stop",
+                            "latency_ms": round((_t.monotonic() - t_start) * 1000, 1),
+                            "status": status, "empty": True})
+                        done_sent = True
+                        return
+                    seq = 0
+                    completed = True
+                    for delta in _sm.split_tokens(answer):
+                        try:
+                            if await request.is_disconnected():
+                                completed = False
+                                break
+                        except Exception:
+                            pass
+                        seq += 1
+                        yield _sm.sse_event("token", {"delta": delta, "seq": seq})
+                        await asyncio.sleep(0)
+                    if not completed:
+                        # Disconnect mid-stream: drop buffered writes (partial
+                        # answer never committed), close without done/flush.
+                        return
+                    yield _sm.sse_event(
+                        "citations",
+                        {"sources": _sm.citations_to_sources(citations)})
+                    flush()
+                    yield _sm.sse_event("done", {
+                        "finish_reason": "stop",
+                        "latency_ms": round((_t.monotonic() - t_start) * 1000, 1),
+                        "status": status})
+                    done_sent = True
+        except asyncio.CancelledError:
+            # Client went away: buffered writes are discarded by the context
+            # manager. Never emit done after a cancellation.
+            return
+        finally:
+            if not done_sent and result is None and error_code:
+                # Error path already emitted error above inside the context;
+                # emit the terminal done exactly once here (outside flush).
+                yield _sm.sse_event("done", {
+                    "finish_reason": "error",
+                    "latency_ms": round((_t.monotonic() - t_start) * 1000, 1),
+                    "status": "error", "code": error_code})
+                done_sent = True
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
 
 
 @app.get("/chat/history/{session_id}")
