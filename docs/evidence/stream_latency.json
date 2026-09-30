@@ -1,0 +1,14 @@
+{
+  "sample_size": 20,
+  "provider": "stubbed-agent (no LLM server)",
+  "model": "n/a (deterministic canned answer)",
+  "stream_mode": "MOCK",
+  "ttft_ms": {
+    "p50": 2.1,
+    "p95": 97.2
+  },
+  "e2e_ms": {
+    "p50": 2.1,
+    "p95": 97.2
+  }
+}

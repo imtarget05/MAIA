@@ -119,6 +119,7 @@ The system provides 40+ endpoints. Here are the core services:
 |----------|-----------|-------------|
 | **Auth** | `/auth/login`, `/auth/google` | JWT authentication and OAuth2 integration. |
 | **RAG** | `/chat`, `/agent/chat` | Main interaction endpoints (single-turn & LangGraph agentic). |
+| **Streaming** | `POST /chat/stream` | SSE token streaming: `meta → token* → citations → done` (typed events, auth + tenant enforced, disconnect cancels, `approval_required` pauses HIGH_RISK instead of executing). See `docs/evidence/stream_closeout.md`. |
 | **Knowledge** | `/ingest/upload`, `/ingest/url` | Document ingestion with chunking and embedding. |
 | **Actions (HITL)** | `/actions/pending`, `/actions/confirm` | Manage and confirm pending side-effect executions. |
 | **Tools** | `/tools/leave/request`, `/tools/it/ticket` | Tool execution interfaces for the agent. |
@@ -138,6 +139,7 @@ The system provides 40+ endpoints. Here are the core services:
 │   ├── scenarios.py      # 3 end-to-end showcase flows (review/campaign/KPI alert)
 │   ├── market_api.py     # /api/v1/market router (prompts, MCP, pipeline, scenarios)
 │   ├── api.py            # FastAPI Application (RAG, Chat, Auth, Admin, HITL)
+│   ├── streaming.py      # SSE event contract + deferred session persistence
 │   ├── retriever.py      # Hybrid Dense+BM25 → RRF
 │   ├── embeddings.py     # FastEmbed/Cloudflare/Hash abstractions
 │   ├── vector_store.py   # Qdrant adapter
@@ -160,9 +162,18 @@ The system provides 40+ endpoints. Here are the core services:
 The platform is built with rigorous testing standards. The full suite runs
 entirely offline.
 
-**Verified: 967 passed, 7 skipped, 3 xfailed**
+**Verified: 997 passed, 3 skipped, 3 xfailed, 1 failed (pre-existing, proven on parent — see below)**
 **Reproduce:** `pytest tests/ -q -p no:cacheprovider`
-**Verified at:** commit `38189ca`, from a clean worktree
+**Verified at:** commit `dd39026` (clean worktree @ commit; parent `20ec528` clean worktree also run)
+
+> The previous `967 passed @ 38189ca` figure is historical and retired by this
+> change. The single residual failure,
+> `test_format_checker_rejects_bad_datetime`, fails identically on the clean
+> parent `20ec528` (installed `jsonschema` version does not enforce `format`
+> without an explicit FormatChecker) — classified
+> **PRE-EXISTING / NOT CAUSED BY STREAMING**. Full proof chain (parent /
+> parent+streaming / final, same env + command) in
+> `docs/evidence/stream_closeout.md`.
 
 ### Honest status of the answerability gate
 
