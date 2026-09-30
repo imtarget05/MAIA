@@ -8,7 +8,11 @@ from .embeddings import get_embedder
 from .ingestion_pipeline import (
     ingest_data_dir,  # noqa: F401  (canonical ingest entry — re-exported; tests + CI import it from here)
 )
-from .llm import build_llm
+from .llm import (  # noqa: F401 - test seam: patched by name in test_health_endpoints
+    CloudflareLLM,
+    LocalOpenAICompatLLM,
+    build_llm,
+)
 from .loops.metrics import registry
 from .pipeline_wiring import PipelineTracer
 from .prompt import assemble, build_messages
