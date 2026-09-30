@@ -1,0 +1,37 @@
+# GATE 8B - MAIA RAG QUALITY GATE
+#
+# Nguyên tắc: RETRIEVAL phải được gate riêng khỏi GENERATION.
+#
+# Lý do: nếu gộp generation vào gate, một regression retrieval bị che bởi
+# LLM trả lời hay, và ngược lại. Tách ra thì biết chính xác hỏng ở đâu.
+#
+# Blocking CI chỉ dùng metric DETERMINISTIC:
+#   Hit@K / Recall@K / MRR / citation validity / abstention logic
+#
+# LLM judge (câu tự nhiên, mờa chào, phong cách) là NON-BLOCKING vì
+# hosted model có thể đổi bất cứ lúc nào -> CI flaky không kiểm soát được.
+#
+# Quan trọng: eval/README.md nói rõ canonical dataset là eval/golden/
+# (95 rows, 10 groups). eval/retrieval_dataset.jsonl và eval/dataset.jsonl
+# là LEGACY, dùng để claim quality là sai dataset.
+GATE_VERSION: "1.0"
+
+GOLDEN_DIR: "eval/golden"
+
+# Nguong dinh nghia TRUOC khi chay candidate.
+# Dat tren approved baseline, commit cung file nay truoc final verification.
+GATES:
+  min_recall_at_3: 0.36
+  min_mrr: 0.26
+  min_citation_validity: 1.00
+
+# Negative candidate: bo BM25, chi dung dense.
+# Day la regression thuc te - developer refactor retrieval roi vô tinh
+# bo lexical retriever, lai mat kha nang kiem tra citation bang tu khoa.
+NEGATIVE_MODE: "dense_only"
+
+TOP_K: 3
+
+# Golden set nay rat nho (95 dong nen 10 file). Nen dung toàn bo dataset
+# de moi metric duoc tinh tren MOT tap data, khong phai mau nho.
+N_CORPUS_CHUNKS: 0
