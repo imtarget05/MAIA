@@ -57,9 +57,15 @@ streaming reduces total generation time.
 | Tree | Result |
 |---|---|
 | Clean parent `20ec528` (worktree) | 981 passed, 3 skipped, 3 xfailed, **1 failed** (`test_format_checker_rejects_bad_datetime`) |
-| Parent + streaming diff only (worktree) | 997 passed, 3 skipped, 3 xfailed, **1 failed** (same test) |
-| `dd39026` (worktree) | **997 passed, 3 skipped, 3 xfailed, 1 failed** (same test) |
-| **CI on `2d2eaf9` (run `36768831367`)** | **GREEN 14/14 jobs** (incl. unit-tests, lint, promptops-mcp, threshold-regression, reranker) |
+| Parent + streaming diff only (worktree) | 997 passed*, 3 skipped, 3 xfailed, **1 failed** (same test) |
+| `dd39026` (worktree) | 997 passed*, 3 skipped, 3 xfailed, 1 failed (same test) |
+| **CI on `2d2eaf9` (run `36768831367`)** | **GREEN 14/14 jobs** — unit-tests job: **987 passed, 12 skipped, 2 deselected, 3 xfailed, 0 failed** |
+
+\* `997` was a dirty-worktree figure (two untracked foreign test files present).
+Clean `dd39026`/`a80e330` trees collect 992 nodes (983 passed + skips/xfails,
+independently reproduced). The CI unit-tests job on `2d2eaf9` is the canonical
+count: 987 passed (different skip profile: 12 env-dependent skips, 2
+live/infra deselected), 0 failed.
 
 CI triage on the canonical push (failures were all drift, fixed minimally):
 `e566cef` (ruff 18 + stdlib date-time check), `a7319ac` (mock.patch test seam),
@@ -103,7 +109,7 @@ Mutation controls           VERIFIED
 Mock TTFT evidence          VERIFIED (orchestration only)
 Real provider token stream  PARTIAL / provider-dependent (fallback documented)
 Compute cancellation        PARTIAL (delivery stops, in-flight sync call drops result)
-Full suite                  CI GREEN 14/14 @ 2d2eaf9 (run 36768831367); local 997/3/3, 0 failed
+Full suite                  CI GREEN 14/14 @ 2d2eaf9 (run 36768831367); unit-tests 987/12/2-deselected/3, 0 failed
 Canonical SHA               2d2eaf9 (code, CI-backed) + docs commit below
 ```
 

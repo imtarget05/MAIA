@@ -162,16 +162,18 @@ The system provides 40+ endpoints. Here are the core services:
 The platform is built with rigorous testing standards. The full suite runs
 entirely offline.
 
-**Verified: CI GREEN 14/14 jobs on canonical `2d2eaf9` (run `36768831367`); suite 997 passed, 3 skipped, 3 xfailed, 0 failed**
+**Verified: CI GREEN 14/14 jobs on canonical `2d2eaf9` (run `36768831367`); unit-tests job 987 passed, 12 skipped, 2 deselected, 3 xfailed, 0 failed**
 **Reproduce (local):** `pytest tests/ -q -p no:cacheprovider`
 **Image:** `ghcr.io/imtarget05/maia-maia-api:2d2eaf9…@sha256:4398f981…` (build run `36768831564`, SLSA provenance attested)
 **Cloud scope:** CI-backed code is newer than the running Azure revision (`47110b8` era) — remote CI verified, cloud runtime predates streaming. No claim beyond that.
 
-> `dd39026` (streaming feature) and the `967 @ 38189ca` figure are historical.
-> The single former residual (`test_format_checker_rejects_bad_datetime`) was
-> fixed by registering a stdlib RFC-3339 date-time check; the suite is green
-> with no residual failures. Proof chain (parent / parent+streaming / final +
-> CI triage) in `docs/evidence/stream_closeout.md`.
+> `dd39026` (streaming feature), the `967 @ 38189ca` figure, and the interim
+> `997` worktree figure are historical. (`997` was measured in a dirty
+> worktree containing two untracked foreign test files; clean trees collect
+> 992 nodes.) The former single residual
+> (`test_format_checker_rejects_bad_datetime`) was fixed by registering a
+> stdlib RFC-3339 date-time check. Proof chain in
+> `docs/evidence/stream_closeout.md`.
 
 ### Honest status of the answerability gate
 
