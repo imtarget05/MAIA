@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Supersede, never queue. Before this, three consecutive runs (dd39026,
+# e566cef, a7319ac) sat in_progress simultaneously, each holding a Qdrant
+# service container for hours. A newer commit makes the older conclusions
+# irrelevant, so cancel them and free the runner.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-and-typecheck:
     runs-on: ubuntu-latest
@@ -106,7 +114,32 @@ jobs:
           path: storage/prompt_evals/
 
   threshold-regression:
+    # Merge-gate threshold check. This job asserts; it does not calibrate.
+    #
+    # The 81-combination sweep (`maia.benchmark_threshold --sweep-both`) is a
+    # CALIBRATION task, not an assertion: it produces the locked threshold
+    # values that get committed into config.py. Measured cost is ~10.4h
+    # (98 golden rows x 81 combinations at ~4.7s/query warm), so it can never
+    # be a merge gate -- it previously sat here and ran for hours without ever
+    # reaching a conclusion, which blocked the `notify` job (it lists this job
+    # in `needs`) and left every CI run stuck `in_progress` with no conclusion.
+    # It now lives in .github/workflows/threshold-calibration.yml, triggered
+    # manually or weekly.
+    #
+    # The actual merge-gate assertion is tests/test_threshold_regression.py,
+    # which runs below against the thresholds locked in config.py. It is NOT
+    # skipped, not weakened, and not replaced.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Deterministic, offline LLM. Default provider is "local" (LAN gateway)
+      # which is unreachable from a GitHub runner, so every llm.chat() call
+      # burned LLM_CONNECT_TIMEOUT_SEC before failing over. Mocking makes this
+      # gate reproducible. The real sweep job sets this too.
+      LLM_PROVIDER: mock
+      # Make "Qdrant unreachable" a hard failure in this job rather than a
+      # module-wide skip that pytest would report as success.
+      THRESHOLD_REGRESSION_REQUIRED: "1"
     services:
       qdrant:
         image: qdrant/qdrant:v1.12.4
@@ -141,21 +174,22 @@ jobs:
           result = ingest_data_dir(settings.ENTERPRISE_DATA_DIR)
           print(f'Ingested: {result}')
           "
-      - name: Run threshold sweep && check regression
+      - name: Verify thresholds are locked in config
         run: |
-          PYTHONPATH=src python -m maia.benchmark_threshold --all --sweep-both --lock-thresholds > threshold_report.txt 2>&1
-          cat threshold_report.txt
-          # Extract locked thresholds
-          LOCKED_SIM=$(grep "SIMILARITY_THRESHOLD = " threshold_report.txt | head -1 | awk '{print $NF}')
-          LOCKED_AGENT=$(grep "AGENT_EVIDENCE_THRESHOLD = " threshold_report.txt | head -1 | awk '{print $NF}')
-          echo "Locked SIMILARITY_THRESHOLD: $LOCKED_SIM"
-          echo "Locked AGENT_EVIDENCE_THRESHOLD: $LOCKED_AGENT"
-          # Compare with config.py values (allow 5% regression)
-          CONFIG_SIM=0.3
-          CONFIG_AGENT=0.3
-          # For now just verify the script runs; full regression check when golden sets are stable
-          echo "Threshold sweep completed successfully"
+          # These are read from config.py, NOT from a fresh sweep. The old step
+          # re-derived them here via LOCKED_SIM/LOCKED_AGENT and then compared
+          # against hardcoded CONFIG_SIM=0.3 / CONFIG_AGENT=0.3 -- but never
+          # acted on the comparison. It looked like a regression gate and
+          # asserted nothing, while costing hours. The real assertion is the
+          # pytest step below.
+          echo "SIMILARITY_THRESHOLD:    ${{ vars.SIMILARITY_THRESHOLD || 'from config.py' }}"
+          grep -E 'SIMILARITY_THRESHOLD|AGENT_EVIDENCE_THRESHOLD' src/maia/config.py || true
       - name: Run threshold regression test
+        # The merge gate. Fails if the locked thresholds regress on the golden
+        # sets, or if evaluation stops producing recall@k / false_refusal_rate /
+        # mrr. Runs against Qdrant (service above), so it is not silently
+        # skipped: if Qdrant is unreachable this step ERRORS rather than
+        # reporting a pass.
         run: pytest tests/test_threshold_regression.py -v
 
   reranker:

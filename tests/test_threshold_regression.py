@@ -24,10 +24,35 @@ def _check_qdrant():
         return False
 
 
+# When set, an unreachable Qdrant is a FAILURE, not a skip.
+#
+# Without this, the whole module skips when Qdrant is down, pytest exits 0, and
+# CI reports the threshold regression gate as PASSED having asserted nothing.
+# That is the exact failure mode a merge gate must not have. Local runs leave
+# it unset so a developer without Qdrant still gets a fast skip instead of a
+# wall of errors; CI sets it so "no signal" can never masquerade as "green".
+THRESHOLD_REGRESSION_REQUIRED = os.environ.get(
+    "THRESHOLD_REGRESSION_REQUIRED", ""
+).strip().lower() in ("1", "true", "yes", "on")
+
+
 @pytest.fixture(scope="module")
 def qdrant_available():
-    """Check if Qdrant is reachable."""
+    """Check if Qdrant is reachable.
+
+    Skips for local convenience, but FAILS in CI (where
+    THRESHOLD_REGRESSION_REQUIRED=1) so a missing Qdrant cannot be reported as
+    a passing threshold regression.
+    """
     if not _check_qdrant():
+        if THRESHOLD_REGRESSION_REQUIRED:
+            pytest.fail(
+                "Qdrant is not reachable at "
+                f"{QDRANT_URL!r} and THRESHOLD_REGRESSION_REQUIRED is set, so the "
+                "threshold regression gate cannot be evaluated. Failing instead "
+                "of skipping, because a skipped gate must never be reported as "
+                "a pass."
+            )
         pytest.skip(SKIP_REASON)
     return True
 

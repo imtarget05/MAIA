@@ -1,0 +1,104 @@
+name: Threshold Calibration
+
+# The 81-combination threshold sweep is CALIBRATION, not assertion.
+#
+# It produces the SIMILARITY_THRESHOLD / AGENT_EVIDENCE_THRESHOLD values that get
+# committed into src/maia/config.py. It is deliberately NOT a merge gate:
+#   - measured cost is ~10.4h (98 golden rows x 81 combinations at ~4.7s/query
+#     warm), so it cannot finish inside a PR loop;
+#   - the threshold regression GATE lives in ci.yml as
+#     tests/test_threshold_regression.py, which runs against the already-locked
+#     config values and is never skipped.
+#
+# Known limitation, recorded rather than hidden: the sweep calls
+# evaluate_group(..., agent=False), so AGENT_EVIDENCE_THRESHOLD is never read on
+# the evaluation path. The agent axis of the 9x9 grid is therefore inert and 72
+# of the 81 combinations are duplicates of the other 9. This workflow still
+# runs the full grid so the published report matches the committed tool, but do
+# not read the agent axis as a measured dimension until the sweep is changed to
+# evaluate with agent=True. Tracked in docs/evidence/ as a P1.
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Sunday 03:17 UTC. Off-the-hour on purpose: the repo's other
+    # scheduled workflows fire on :00, and sharing a start minute with them
+    # queues this 10h job behind a burst of short ones.
+    - cron: "17 3 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    # Bounded: the job must always terminate with a conclusion. 12h is above
+    # the measured 10.4h worst case with headroom, and well below the 6h
+    # GitHub default that previously let it hang without ever reporting.
+    timeout-minutes: 720
+    env:
+      # Offline + deterministic. The default provider is "local" (LAN gateway),
+      # unreachable from a runner, so each llm.chat() burned a connect timeout.
+      LLM_PROVIDER: mock
+      QDRANT_URL: http://localhost:6333
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports: ["6333:6333"]
+        # No healthcheck: the image ships no curl/wget, so --health-cmd never
+        # succeeds and GitHub marks the service unhealthy. Readiness is polled
+        # runner-side below instead.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:6333/healthz && break
+            sleep 2
+          done
+          curl -sf http://localhost:6333/healthz
+      - name: Ingest enterprise docs for evaluation
+        run: |
+          PYTHONPATH=src python -c "
+          from maia.pipeline_query import ingest_data_dir
+          from maia.config import settings
+          settings.QDRANT_URL = 'http://localhost:6333'
+          result = ingest_data_dir(settings.ENTERPRISE_DATA_DIR)
+          print(f'Ingested: {result}')
+          "
+      - name: Run threshold sweep
+        # -c keeps the non-zero exit code. The previous step redirected into
+        # threshold_report.txt and then ran further commands, so a crashed sweep
+        # could still leave the job green.
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python -m maia.benchmark_threshold \
+            --all --sweep-both --lock-thresholds 2>&1 | tee threshold_report.txt
+      - name: Summarise locked thresholds
+        if: always()
+        run: |
+          {
+            echo "### Locked thresholds (calibration output, NOT a gate)"
+            grep -E 'SIMILARITY_THRESHOLD|AGENT_EVIDENCE_THRESHOLD' threshold_report.txt || true
+            echo
+            echo "### Currently committed in config.py"
+            grep -E 'SIMILARITY_THRESHOLD|AGENT_EVIDENCE_THRESHOLD' src/maia/config.py || true
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload sweep report
+        # if: always() so a failed or timed-out sweep still leaves the partial
+        # report for debugging. Without this, a timeout produced no evidence.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: threshold-report-${{ github.run_id }}
+          path: |
+            threshold_report.txt
+            eval/reports/threshold_report_*.json
+          retention-days: 30
+          if-no-files-found: warn
