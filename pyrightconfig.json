@@ -1,7 +1,8 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "extraPaths": ["src"],
+  "//extraPaths": "'ner' mirrors src/maia/ner_tool.py, which does sys.path.insert(0, <repo>/ner) before `from bilstm import BiLSTMTagger`. Without it pyright reported reportMissingImports for bilstm on an import that resolves fine at runtime. This makes the checker see the same module graph the interpreter does; it silences nothing. NOTE: this file, not [tool.pyright] in pyproject.toml, is what pyright actually reads.",
+  "extraPaths": ["src", "ner"],
   "typeCheckingMode": "basic",
   "executionEnvironments": [{ "root": "src" }, { "root": "tests" }]
 }

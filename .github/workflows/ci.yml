@@ -26,6 +26,19 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          # Optional extras are installed HERE, in the lint job, on purpose.
+          #
+          # maia imports redis / docx / psycopg_pool / langgraph.postgres /
+          # bilstm behind lazy, optional paths. They live in
+          # requirements-optional.txt, which this job previously did not
+          # install, so pyright reported 5 reportMissingImports errors on code
+          # that is correct. That is a false positive from a wrong environment,
+          # not a type defect, and it made this job red on every push.
+          #
+          # Installing them removes the errors at the source instead of
+          # silencing them: no pyright ignore, no exclude, no relaxed
+          # strictness. If a real type error exists, it is still reported.
+          pip install -r requirements-optional.txt
           # Pinned: unpinned `ruff`/`pyright` drifted (0.16.x flags 200+
           # pre-existing intentional patterns) && broke this job on every
           # push. Versions below are verified green against pyproject policy.
