@@ -55,6 +55,30 @@ __all__ = [
 
 _FORMAT_CHECKER = FormatChecker() if FormatChecker is not None else None
 
+
+def _is_rfc3339_datetime(value: object) -> bool:
+    """Stdlib RFC 3339 date-time check (no optional ``rfc3339-validator`` dep).
+
+    ``jsonschema>=4.24`` no longer ships a ``date-time`` format checker, so
+    ``format: date-time`` silently passes everything unless we register one.
+    Requires a full date + ``T`` + time (a bare ``YYYY-MM-DD`` is a *date*,
+    not a date-time).
+    """
+    if not isinstance(value, str) or "T" not in value:
+        return False
+    try:
+        import datetime as _dt
+
+        # requires-python >=3.12: fromisoformat parses the "Z" suffix natively.
+        _dt.datetime.fromisoformat(value)
+        return True
+    except ValueError:
+        return False
+
+
+if _FORMAT_CHECKER is not None and "date-time" not in _FORMAT_CHECKER.checkers:
+    _FORMAT_CHECKER.checks("date-time")(_is_rfc3339_datetime)
+
 _TYPE_CHECKS: dict[str, tuple[type, ...]] = {
     "object": (dict,),
     "array": (list,),

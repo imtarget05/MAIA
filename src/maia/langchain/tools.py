@@ -24,10 +24,10 @@ from ..agent.tools import (
     create_leave_request as _leave,
 )
 from ..agent.tools import (
-    get_employee_requests as _requests,
+    extract_entities as _entities,
 )
 from ..agent.tools import (
-    extract_entities as _entities,
+    get_employee_requests as _requests,
 )
 
 # ---------------------------------------------------------------------------

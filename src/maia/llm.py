@@ -93,7 +93,7 @@ class LocalOpenAICompatLLM:
                 # model, so trying the next candidate cannot duplicate work.
                 last_error = e
                 continue
-            except Exception as e:  # noqa: BLE001 — degraded, never hang
+            except Exception as e:
                 return f"[LLM local degraded: {e}] " + self._mock(messages)
             if content.strip():
                 return content

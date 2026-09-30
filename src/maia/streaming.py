@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 import uuid
 from contextlib import contextmanager
 from typing import Any
@@ -111,6 +110,7 @@ def _patched_append(sid: str, role: str, content: str,
                 (sid, role, content, intent, tenant_id))
             return
         target = _true_append
+    assert target is not None  # set before the patch installs; single-flight under _buffer_lock
     target(sid, role, content, intent, tenant_id=tenant_id)
 
 
@@ -147,6 +147,7 @@ def defer_session_persist(tenant_id: str | None, session_id: str):
             _buffered_writes[key] = []
             target = _true_append
         n = 0
+        assert target is not None  # set before the patch installs; single-flight under _buffer_lock
         for (sid, role, content, intent, tid) in writes:
             target(sid, role, content, intent, tenant_id=tid)
             n += 1

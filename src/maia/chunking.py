@@ -57,6 +57,22 @@ def _dict_to_llama_doc(text, meta):
     return Document(text=text, metadata=dict(meta))
 
 
+def _flush_paragraph(chunks: list[Chunk], buf: list[str],
+                     meta: dict, idx: int) -> int:
+    """Append one paragraph-group chunk; returns the next chunk index.
+
+    Module-level (not a loop closure) so late-binding over the per-document
+    loop variables is impossible by construction.
+    """
+    if not buf:
+        return idx
+    m = dict(meta)
+    m["chunk_id"] = f"{m.get('doc_id', 'doc')}_{idx}"
+    m["chunk_strategy"] = "paragraph"
+    chunks.append(Chunk(text="\n\n".join(buf), metadata=m))
+    return idx + 1
+
+
 def _paragraph_split(docs, chunk_size: int, chunk_overlap: int) -> list[Chunk]:
     """Group blank-line-separated paragraphs into ~chunk_size-char chunks.
 
@@ -76,19 +92,9 @@ def _paragraph_split(docs, chunk_size: int, chunk_overlap: int) -> list[Chunk]:
         buf_len = 0
         idx = 0
 
-        def _flush() -> None:
-            nonlocal buf, buf_len, idx
-            if not buf:
-                return
-            m = dict(meta)
-            m["chunk_id"] = f"{m.get('doc_id', 'doc')}_{idx}"
-            m["chunk_strategy"] = "paragraph"
-            chunks.append(Chunk(text="\n\n".join(buf), metadata=m))
-            idx += 1
-
         for p in paras:
             if buf and buf_len + len(p) + 2 > chunk_size:
-                _flush()
+                idx = _flush_paragraph(chunks, buf, meta, idx)
                 # overlap: keep trailing paragraphs worth ~chunk_overlap chars
                 if chunk_overlap > 0:
                     keep: list[str] = []
@@ -104,7 +110,7 @@ def _paragraph_split(docs, chunk_size: int, chunk_overlap: int) -> list[Chunk]:
                     buf, buf_len = [], 0
             buf.append(p)
             buf_len += len(p) + 2
-        _flush()
+        idx = _flush_paragraph(chunks, buf, meta, idx)
     return chunks
 
 

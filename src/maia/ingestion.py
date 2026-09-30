@@ -398,7 +398,7 @@ def _read_html_text(fpath) -> str:
     # drop script/style blocks crudely before parsing
     import re
 
-    raw = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", raw, flags=re.S | re.I)
+    raw = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", raw, flags=re.DOTALL | re.IGNORECASE)
     p = _Strip()
     try:
         p.feed(raw)

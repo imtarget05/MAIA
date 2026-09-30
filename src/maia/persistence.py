@@ -110,7 +110,7 @@ async def durable_checkpointer(conn: Any = None):
     )
     await pool.open()
     try:
-        async with pool.connection() as conn:
-            yield await open_saver(conn)
+        async with pool.connection() as pool_conn:
+            yield await open_saver(pool_conn)
     finally:
         await pool.close()

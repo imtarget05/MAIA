@@ -1161,7 +1161,7 @@ async def chat_stream(req: ChatReq, request: Request,
                             req.top_k, tenant_id,
                             None, current_user.email),
                         timeout=_sm.STREAM_TIMEOUT_SEC)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     error_code = _sm.ERR_PROVIDER_TIMEOUT
                     result = None
                 except Exception:
@@ -1207,16 +1207,14 @@ async def chat_stream(req: ChatReq, request: Request,
                             "status": status, "empty": True})
                         done_sent = True
                         return
-                    seq = 0
                     completed = True
-                    for delta in _sm.split_tokens(answer):
+                    for seq, delta in enumerate(_sm.split_tokens(answer), start=1):
                         try:
                             if await request.is_disconnected():
                                 completed = False
                                 break
                         except Exception:
                             pass
-                        seq += 1
                         yield _sm.sse_event("token", {"delta": delta, "seq": seq})
                         await asyncio.sleep(0)
                     if not completed:

@@ -42,8 +42,7 @@ def _normalize(base_url: str) -> str:
     """Strip trailing slash and a full endpoint-path suffix."""
     base = (base_url or "").strip().rstrip("/")
     for suffix in ("/chat/completions", "/completions", "/embeddings"):
-        if base.endswith(suffix):
-            base = base[: -len(suffix)]
+        base = base.removesuffix(suffix)
     return base
 
 

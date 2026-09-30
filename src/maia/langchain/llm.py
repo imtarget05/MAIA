@@ -141,7 +141,6 @@ def cloudflare_lcel(model_name: str | None = None) -> CloudflareLangChainAdapter
     Cloudflare/mock otherwise). ``model_name`` overrides the local chat model
     when the local provider is active.
     """
-    from ..config import settings
     from ..llm import build_llm
 
     underlying = build_llm()

@@ -56,8 +56,10 @@ def _title_for(text: str) -> str:
 
 
 def _day_group(ts: float) -> str:
-    d = datetime.date.fromtimestamp(ts)
-    today = datetime.date.today()
+    # Pinned naive-local display convention (both sides naive-local;
+    # test_ui_formatting pins this behavior).
+    d = datetime.date.fromtimestamp(ts)  # noqa: DTZ012
+    today = datetime.date.today()  # noqa: DTZ011
     if d == today: return "Hôm nay"
     if d == today - datetime.timedelta(days=1): return "Hôm qua"
     return d.strftime("%d/%m")
@@ -65,7 +67,8 @@ def _day_group(ts: float) -> str:
 
 def _fmt_ts(ts) -> str:
     try:
-        return datetime.datetime.fromtimestamp(float(ts or 0)).strftime("%d/%m %H:%M")
+        # Naive-local display, pinned by test_fmt_ts_falsy_means_epoch.
+        return datetime.datetime.fromtimestamp(float(ts or 0)).strftime("%d/%m %H:%M")  # noqa: DTZ006
     except Exception:
         return "—"
 
