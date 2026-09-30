@@ -8,7 +8,8 @@
   [![LangGraph](https://img.shields.io/badge/LangGraph-000000?style=flat-square&logo=langchain&logoColor=white)](https://langchain.com/)
   [![Qdrant](https://img.shields.io/badge/Qdrant-FE3C00?style=flat-square&logo=qdrant&logoColor=white)](https://qdrant.tech/)
   [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
-  [![Tests](https://img.shields.io/badge/Tests-812%20passing-success?style=flat-square)](#)
+  [![CI](https://github.com/imtarget05/MAIA/actions/workflows/ci.yml/badge.svg)](https://github.com/imtarget05/MAIA/actions/workflows/ci.yml)
+  [![Azure Live](https://img.shields.io/badge/Azure-Container%20Apps-Live-0078D4?style=flat-square&logo=microsoftazure&logoColor=white)](https://ca-maia-api.wittysand-b748274c.eastasia.azurecontainerapps.io/health)
 
   [**Quick Start**](#-quick-start) • [**Architecture**](#-architecture)
 </div>
@@ -148,7 +149,7 @@ The system provides 40+ endpoints. Here are the core services:
 ├── app_streamlit.py      # Streamlit conversational interface
 ├── data/enterprise/      # Sample company policy documents
 ├── eval/                 # Benchmark datasets (73 golden test cases)
-├── tests/                # 812 offline unit & integration tests
+├── tests/                # offline unit & integration suite
 ├── deploy/docker/        # Infrastructure orchestration
 ├── alembic/              # Database schema migrations
 └── render.yaml           # Render Cloud Blueprint deployment
@@ -156,7 +157,29 @@ The system provides 40+ endpoints. Here are the core services:
 
 ## 🧪 Testing & Evaluation
 
-The platform is built with rigorous testing standards, featuring over 812 tests that can run entirely offline.
+The platform is built with rigorous testing standards. The full suite runs
+entirely offline.
+
+**Verified: 967 passed, 7 skipped, 3 xfailed**
+**Reproduce:** `pytest tests/ -q -p no:cacheprovider`
+**Verified at:** commit `38189ca`, from a clean worktree
+
+### Honest status of the answerability gate
+
+`eval/audit_eval_rows.py --only no_answer` reports:
+
+```
+no_answer   rows=9   usable=0   unusable=8   rejected=1   conflict=0
+```
+
+**Zero no-answer rows are currently usable in metrics.** The suite is green,
+but the abstention metric is *unmeasured*, not *passing*. One row (`NOANS-009`)
+was retired after corpus verification contradicted its label — the audit CLI
+keeps retired rows in place and excludes them from metrics, so the record that
+a label was ever corrected is not lost.
+
+No refusal-accuracy number is published here, because producing one over 0
+usable rows would be reporting a metric of nothing.
 
 ```bash
 # Run the test suite in full offline mock mode
