@@ -133,7 +133,10 @@ def _free_streaming_thread(thread_id: str) -> None:
     try:
         from .langgraph_agent import graph
 
-        graph.checkpointer.delete_thread(thread_id)
+        checkpointer = graph.checkpointer
+        if checkpointer is None or isinstance(checkpointer, bool):
+            return
+        checkpointer.delete_thread(thread_id)
     except Exception:
         pass
 
