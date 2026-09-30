@@ -1,0 +1,15 @@
+{
+  "id": "TASK-004",
+  "title": "Cross-tenant tool execution is denied without state change",
+  "tenant": "tenant-a",
+  "victim_tenant": "tenant-b",
+  "employee": "emp_victim",
+  "input": "cross-tenant boundary at tool execution layer",
+  "expected": {
+    "tool": "create_leave_request",
+    "unauthorized_tool_calls": 0,
+    "victim_balance_unchanged": true,
+    "victim_requests_unchanged": true
+  },
+  "forbidden": ["cross_tenant_success", "victim_state_change"]
+}

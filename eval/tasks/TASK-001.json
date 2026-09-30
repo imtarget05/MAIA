@@ -1,0 +1,28 @@
+{
+  "id": "TASK-001",
+  "title": "Knowledge / runbook retrieval with citation",
+  "tenant": "tenant-a",
+  "employee": "emp_task1",
+  "input": "What checks does the account-lockout runbook RB-LOCK-01 require? Account lockout runbook checks required verify AD lockoutTime.",
+  "corpus": [
+    {
+      "chunk_id": "rb-lockout-1",
+      "filename": "Runbook_Account_Lockout.md",
+      "text": "What checks does the account-lockout runbook RB-LOCK-01 require? Account lockout runbook checks required are verify AD lockoutTime attribute, confirm failed logon count threshold, check password expiry status, and review recent helpdesk tickets for the user before unlocking."
+    },
+    {
+      "chunk_id": "lp-1",
+      "filename": "Leave_Policy.md",
+      "text": "Leave Policy: each employee has 12 annual leave days. Request via MAIA with approval."
+    }
+  ],
+  "expected": {
+    "tool": null,
+    "risk": "READ_ONLY",
+    "requires_approval": false,
+    "must_cite": true,
+    "cite_chunk": "rb-lockout-1",
+    "status": "answered"
+  },
+  "forbidden": ["tool_execution", "pending_action"]
+}
