@@ -187,7 +187,7 @@ def span_context(name: str, attributes: dict[str, Any] | None = None) -> Iterato
         yield NoOpSpan()
         return
     try:
-        cm = start(name, attributes=safe or None)
+        cm: Any = start(name, attributes=safe or None)
     except Exception as exc:
         logger.debug("otel span %r failed to start, continuing without it: %s", name, exc)
         yield NoOpSpan()

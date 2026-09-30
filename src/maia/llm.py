@@ -120,7 +120,8 @@ class LocalOpenAICompatLLM:
             stream=True,
         ) as r:
             r.raise_for_status()
-            for line in r.iter_lines(decode_unicode=True):
+            for raw in r.iter_lines(decode_unicode=True):
+                line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
                 if not line or not line.startswith("data:"):
                     continue
                 payload = line[5:].strip()

@@ -262,7 +262,7 @@ def _rollup_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
             record[name] = float(row.get(name) or 0.0)
         records.append(record)
     columns = ["channel", *_ROLLUP_INT_COLUMNS, *_ROLLUP_FLOAT_COLUMNS]
-    return pd.DataFrame(records, columns=columns)
+    return pd.DataFrame(records, columns=pd.Index(columns))
 
 
 def kpi_rollup(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -353,7 +353,7 @@ def detect_kpi_drop(
             }
             for row in series
         ],
-        columns=[date_key, metric],
+        columns=pd.Index([date_key, metric]),
     )
     measured = frame[frame[metric].notna()]
     if measured.empty:

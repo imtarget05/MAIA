@@ -29,6 +29,7 @@ checkpointed (durable execution) and streamed node-by-node.
 """
 from __future__ import annotations
 
+from collections.abc import Hashable
 from typing import Literal
 
 from langchain_core.runnables import RunnableConfig
@@ -499,7 +500,8 @@ def build_graph(*, checkpointer=None):
     builder.add_node("finalize", node_finalize)
 
     builder.add_edge(START, "classify_query")
-    classify_routes: dict[str, str] = {
+    # dict values/keys are invariant under pyright: path_map wants Hashable keys.
+    classify_routes: dict[Hashable, str] = {
         "simple_answer": "simple_answer",
         "retrieve": "retrieve",
     }

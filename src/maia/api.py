@@ -141,7 +141,7 @@ def _rl_redis_client():
     if not url:
         return None
     try:
-        import redis
+        import redis  # pyright: ignore[reportMissingImports] - optional dep; absence degrades to memory limiter
 
         _rl_redis = redis.Redis.from_url(url, socket_connect_timeout=2,
                                          socket_timeout=2, decode_responses=True)
@@ -774,12 +774,12 @@ def delete_document_admin(
     try:
         _, store, _, _, _ = build_stack()
         store.delete_by_doc(doc_id)
-        try:
-            from maia.loops.knowledge_loop import KnowledgeLoop
-
-            KnowledgeLoop(store=store).delete(doc_id)
-        except Exception:
-            pass
+        # NOTE: a KnowledgeLoop cleanup used to live here, but
+        # maia.loops.knowledge_loop only defines KnowledgeManager (whose
+        # __init__/delete signature differs), so that import always raised
+        # ImportError and the except-pass below skipped it. Removed as dead
+        # code with zero behavior change; lifecycle deletion is covered by
+        # store.delete_by_doc above.
         return {"document_id": doc_id, "action": "delete", "status": "deleted"}
     except HTTPException:
         raise
@@ -1356,7 +1356,7 @@ def _agent_chat_stream(g, req, current_user, config: RunnableConfig):
         requester_email=current_user.email,
     )
 
-    thread_id = config["configurable"]["thread_id"]
+    thread_id = (config.get("configurable") or {})["thread_id"]
     # Budget the thread before the first checkpoint is written, so the map can
     # never exceed its cap even for a burst of concurrent new sessions.
     streaming_sessions.track(thread_id)

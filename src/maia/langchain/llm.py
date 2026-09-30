@@ -47,13 +47,13 @@ class CloudflareLangChainAdapter(BaseChatModel):
 
     # Pydantic v2 private attributes (the previous object.__setattr__ hack
     # is equivalent at runtime but opaque to type-checkers).
-    _underlying: CloudflareLLM = PrivateAttr()
+    _underlying: CloudflareLLM | LocalOpenAICompatLLM = PrivateAttr()
     _max_tokens: int = PrivateAttr(default=512)
     _temperature: float = PrivateAttr(default=0.1)
     _top_p: float = PrivateAttr(default=1.0)
     _top_k: int = PrivateAttr(default=50)
 
-    def __init__(self, underlying: CloudflareLLM, max_tokens: int = 512,
+    def __init__(self, underlying: CloudflareLLM | LocalOpenAICompatLLM, max_tokens: int = 512,
                  temperature: float = 0.1, top_p: float = 1.0, top_k: int = 50,
                  **kwargs: Any):
         super().__init__(**kwargs)
@@ -68,7 +68,7 @@ class CloudflareLangChainAdapter(BaseChatModel):
         return "maia-cloudflare-llm"
 
     @property
-    def underlying(self) -> CloudflareLLM:
+    def underlying(self) -> CloudflareLLM | LocalOpenAICompatLLM:
         """The wrapped adapter (read-only — set once in __init__)."""
         return self._underlying
 

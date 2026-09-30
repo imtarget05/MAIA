@@ -90,7 +90,9 @@ def _load_bundle():
 
         sys.path.insert(0, str(ckpt.parent))
         try:
-            from bilstm import BiLSTMTagger
+            from bilstm import (
+                BiLSTMTagger,  # pyright: ignore[reportMissingImports] - resolved via sys.path hack above; optional NER dep
+            )
 
             model = BiLSTMTagger(len(vocab), c=len(labels))
             model.load_state_dict(torch.load(str(ckpt / "model.pt"), map_location="cpu"))
