@@ -108,6 +108,8 @@ jobs:
                  tests/test_pipeline_pandas_parity.py \
                  -q --tb=short --strict-markers
       - name: "Write prompt eval report (provenance: prompt content hashes)"
+        env:
+          PYTHONPATH: src
         run: |
           mkdir -p storage/prompt_evals
           python - <<'PY'

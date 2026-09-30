@@ -73,7 +73,7 @@ def _load_bundle():
         return _bundle
 
     try:
-        import torch  # lazy: main venv has no torch
+        import torch  # lazy: main venv has no torch  # pyright: ignore[reportMissingImports] - optional dep; ImportError becomes bundle error below
     except Exception as e:
         _bundle = {"error": f"torch not available: {e}"}
         raise RuntimeError(_bundle["error"])
@@ -140,7 +140,7 @@ def extract_entities(text: str, max_tokens: int = 64) -> dict:
         return {"ok": True, "entities": [], "model": MODEL_NAME}
     try:
         vocab, labels, model = _load_bundle()
-        import torch
+        import torch  # pyright: ignore[reportMissingImports] - optional dep; guarded by _load_bundle above
 
         words = text.split()[:max(1, max_tokens)]
         ids = torch.tensor(
