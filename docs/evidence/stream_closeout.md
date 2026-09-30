@@ -2,6 +2,7 @@
 
 Date (UTC): 2026-09-30
 Code commit: `dd39026` — `feat(stream): SSE token streaming for POST /chat/stream`
+Canonical CI-backed commit: `2d2eaf9` (streaming + CI triage fixes; `dd39026` is historical)
 Parent: `20ec528`. Scope: MAIA only. No WebSocket, no Redis/Kafka, no new service.
 
 ## 1. Pre-existing streaming audit (no duplication)
@@ -57,7 +58,23 @@ streaming reduces total generation time.
 |---|---|
 | Clean parent `20ec528` (worktree) | 981 passed, 3 skipped, 3 xfailed, **1 failed** (`test_format_checker_rejects_bad_datetime`) |
 | Parent + streaming diff only (worktree) | 997 passed, 3 skipped, 3 xfailed, **1 failed** (same test) |
-| Final code commit `dd39026` (worktree) | **997 passed, 3 skipped, 3 xfailed, 1 failed** (same test) |
+| `dd39026` (worktree) | **997 passed, 3 skipped, 3 xfailed, 1 failed** (same test) |
+| **CI on `2d2eaf9` (run `36768831367`)** | **GREEN 14/14 jobs** (incl. unit-tests, lint, promptops-mcp, threshold-regression, reranker) |
+
+CI triage on the canonical push (failures were all drift, fixed minimally):
+`e566cef` (ruff 18 + stdlib date-time check), `a7319ac` (mock.patch test seam),
+`482ac30` + `89ef655` (pyright 16, typing-only), `2d2eaf9`
+(torch ignores + CI `PYTHONPATH`). The former single residual
+(`test_format_checker_rejects_bad_datetime`) is FIXED, not waived: the
+installed `jsonschema>=4.24` ships no `date-time` checker, so the adapter now
+registers a stdlib RFC-3339 check. Suite green with no residuals.
+
+```text
+source   2d2eaf9
+CI       run 36768831367 — success 14/14
+image    ghcr.io/imtarget05/maia-maia-api:2d2eaf9…@sha256:4398f981… (run 36768831564, provenance attested)
+runtime  Azure revision predates streaming (deployed 47110b8 era); Render CD success
+```
 
 Residual classification:
 
@@ -76,7 +93,7 @@ The old `967/7/3 @ 38189ca` figure is retired.
 ## 7. Verdict table
 
 ```text
-Feature implementation      VERIFIED (dd39026)
+Feature implementation      VERIFIED (dd39026, CI-backed at 2d2eaf9)
 Typed SSE contract          VERIFIED
 Auth / tenant isolation     VERIFIED
 Approval-safe execution     VERIFIED
@@ -86,8 +103,8 @@ Mutation controls           VERIFIED
 Mock TTFT evidence          VERIFIED (orchestration only)
 Real provider token stream  PARTIAL / provider-dependent (fallback documented)
 Compute cancellation        PARTIAL (delivery stops, in-flight sync call drops result)
-Full suite                  997/3/3 + 1 PRE-EXISTING failure (proven on parent)
-Canonical SHA               dd39026 (code) + docs commit below
+Full suite                  CI GREEN 14/14 @ 2d2eaf9 (run 36768831367); local 997/3/3, 0 failed
+Canonical SHA               2d2eaf9 (code, CI-backed) + docs commit below
 ```
 
 ## 8. Approved CV wording (do not strengthen)

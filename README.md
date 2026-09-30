@@ -162,18 +162,16 @@ The system provides 40+ endpoints. Here are the core services:
 The platform is built with rigorous testing standards. The full suite runs
 entirely offline.
 
-**Verified: 997 passed, 3 skipped, 3 xfailed, 1 failed (pre-existing, proven on parent — see below)**
-**Reproduce:** `pytest tests/ -q -p no:cacheprovider`
-**Verified at:** commit `dd39026` (clean worktree @ commit; parent `20ec528` clean worktree also run)
+**Verified: CI GREEN 14/14 jobs on canonical `2d2eaf9` (run `36768831367`); suite 997 passed, 3 skipped, 3 xfailed, 0 failed**
+**Reproduce (local):** `pytest tests/ -q -p no:cacheprovider`
+**Image:** `ghcr.io/imtarget05/maia-maia-api:2d2eaf9…@sha256:4398f981…` (build run `36768831564`, SLSA provenance attested)
+**Cloud scope:** CI-backed code is newer than the running Azure revision (`47110b8` era) — remote CI verified, cloud runtime predates streaming. No claim beyond that.
 
-> The previous `967 passed @ 38189ca` figure is historical and retired by this
-> change. The single residual failure,
-> `test_format_checker_rejects_bad_datetime`, fails identically on the clean
-> parent `20ec528` (installed `jsonschema` version does not enforce `format`
-> without an explicit FormatChecker) — classified
-> **PRE-EXISTING / NOT CAUSED BY STREAMING**. Full proof chain (parent /
-> parent+streaming / final, same env + command) in
-> `docs/evidence/stream_closeout.md`.
+> `dd39026` (streaming feature) and the `967 @ 38189ca` figure are historical.
+> The single former residual (`test_format_checker_rejects_bad_datetime`) was
+> fixed by registering a stdlib RFC-3339 date-time check; the suite is green
+> with no residual failures. Proof chain (parent / parent+streaming / final +
+> CI triage) in `docs/evidence/stream_closeout.md`.
 
 ### Honest status of the answerability gate
 
