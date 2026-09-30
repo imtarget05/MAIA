@@ -17,7 +17,10 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "eval"))
+# tests/eval/test_audit_cli.py -> parents[0]=eval, parents[1]=tests, parents[2]=repo root.
+# The original parents[1]/"eval" resolved to tests/eval, where audit_eval_rows.py
+# does not live, so collection failed with ModuleNotFoundError.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "eval"))
 
 from audit_eval_rows import main, parse_args  # noqa: E402
 

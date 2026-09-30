@@ -12,8 +12,23 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+# llama-index is an OPTIONAL opt-in dependency of this adapter, not a runtime
+# requirement of the API: it is deliberately absent from requirements.api.txt
+# (see the comment there) and gated behind settings.LLAMA_INDEX_DATA_PLANE.
+# requirements.txt lists it for the full/dev environment only.
+#
+# This module imports llama_index at module scope, so without it the file raises
+# ModuleNotFoundError during COLLECTION and aborts the whole suite - which is
+# what Phase A observed. importorskip() declares the dependency as optional at
+# collection time and yields a clean skip instead, so the adapter is still fully
+# tested wherever the package is installed.
+llama_index_core = pytest.importorskip(
+    "llama_index.core", reason="optional opt-in dependency: llama-index (LLAMA_INDEX_DATA_PLANE)"
+)
 
 from llama_index.core import VectorStoreIndex
 from llama_index.core.schema import TextNode
