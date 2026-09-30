@@ -37,6 +37,10 @@ from .protocol import (
     METHOD_INITIALIZE,
     METHOD_INITIALIZED,
     METHOD_PING,
+    METHOD_PROMPTS_GET,
+    METHOD_PROMPTS_LIST,
+    METHOD_RESOURCES_LIST,
+    METHOD_RESOURCES_READ,
     METHOD_TOOLS_CALL,
     METHOD_TOOLS_LIST,
     MCPError,
@@ -125,6 +129,9 @@ class MCPClient:
         self.protocol_version: str | None = None
         self.server_info: dict[str, Any] = {}
         self._tools: dict[str, ToolInfo] = {}
+        self._resources: list[dict[str, Any]] = []
+        self._prompts: list[dict[str, Any]] = []
+        self.server_capabilities: dict[str, Any] = {}
         self._connected = False
         self._request_counter = 0
 
@@ -166,17 +173,28 @@ class MCPClient:
         )
         self.protocol_version = str(result.get("protocolVersion") or MCP_PROTOCOL_VERSION)
         self.server_info = result.get("serverInfo") or {}
+        capabilities = result.get("capabilities")
+        self.server_capabilities = capabilities if isinstance(capabilities, dict) else {}
         # The spec requires the client to confirm; a server may otherwise treat
         # this client as "still negotiating".
         self._transport.send(make_notification(METHOD_INITIALIZED))
         self._connected = True
         self.refresh_tools()
+        # Resources and prompts are discovered up front, but only when the
+        # server advertised them — asking a tool-only server for a resource
+        # list would earn a METHOD_NOT_FOUND the caller never expects.
+        if "resources" in self.server_capabilities:
+            self.refresh_resources()
+        if "prompts" in self.server_capabilities:
+            self.refresh_prompts()
         self.audit.write(
             {
                 "event": "connect",
                 "server": self.server_name,
                 "protocol_version": self.protocol_version,
                 "tools": sorted(self._tools),
+                "resources": [r.get("uri") for r in self._resources],
+                "prompts": [p.get("name") for p in self._prompts],
             }
         )
         return result
@@ -235,6 +253,53 @@ class MCPClient:
 
     def tool(self, name: str) -> ToolInfo | None:
         return self._tools.get(name)
+
+    # ---- resources and prompts -------------------------------------------
+    def refresh_resources(self) -> list[dict[str, Any]]:
+        """Re-fetch and cache the resource list."""
+        self._resources = list(self._request(METHOD_RESOURCES_LIST).get("resources") or [])
+        return self._resources
+
+    def refresh_prompts(self) -> list[dict[str, Any]]:
+        """Re-fetch and cache the prompt list."""
+        self._prompts = list(self._request(METHOD_PROMPTS_LIST).get("prompts") or [])
+        return self._prompts
+
+    def list_resources(self) -> list[dict[str, Any]]:
+        """Current resource list, re-fetched from the server."""
+        return self.refresh_resources()
+
+    def read_resource(self, uri: str) -> str:
+        """Read one resource and return its text.
+
+        Raises :class:`MCPError` on an unknown uri — unlike :meth:`call_tool`
+        this is a hard failure, because there is no partial result to degrade
+        to: the caller asked for a specific document and it does not exist.
+        """
+        result = self._request(METHOD_RESOURCES_READ, {"uri": uri})
+        contents = result.get("contents") or []
+        if not contents:
+            return ""
+        first = contents[0]
+        return str(first.get("text") or "") if isinstance(first, dict) else ""
+
+    def list_prompts(self) -> list[dict[str, Any]]:
+        """Current prompt list, re-fetched from the server."""
+        return self.refresh_prompts()
+
+    @property
+    def resources(self) -> list[dict[str, Any]]:
+        return list(self._resources)
+
+    @property
+    def prompts(self) -> list[dict[str, Any]]:
+        return list(self._prompts)
+
+    def get_prompt(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Render a prompt by name; raises :class:`MCPError` if it cannot be."""
+        return self._request(METHOD_PROMPTS_GET, {"name": name, "arguments": arguments or {}})
 
     # ---- calling ---------------------------------------------------------
     def call_tool(

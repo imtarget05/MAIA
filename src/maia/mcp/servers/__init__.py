@@ -9,6 +9,10 @@ Four servers ship today, each a thin, testable adapter over a real system:
 | ``sql_analytics`` | the market warehouse (read-only SQLite) | list tables, describe table, run guarded SELECT, KPI summary |
 | ``market_insight`` | the ingestion/analytics pipeline | ingest reviews/metrics, review insight, campaign performance |
 
+``prompts`` is the odd one out: it carries no tools, only **resources** and
+**prompts** read from the PromptOps library under ``prompts/**``, so an MCP
+client can discover MAIA's curated prompts instead of hard-coding them.
+
 ``build_server`` is the single entry point used by the bridge, the API and the
 agent dispatch layer, so the name→server mapping cannot diverge between them.
 """
@@ -23,6 +27,7 @@ SERVER_NAMES: tuple[str, ...] = (
     "notification",
     "sql_analytics",
     "market_insight",
+    "prompts",
 )
 
 
@@ -48,6 +53,10 @@ def build_server(name: str, **kwargs) -> MCPServer:
         from .market_insight_server import build_market_insight_server
 
         return build_market_insight_server(**kwargs)
+    if name == "prompts":
+        from .prompts_server import build_prompts_server
+
+        return build_prompts_server(**kwargs)
     raise KeyError(
         f"unknown MCP server {name!r}; known servers: {list(SERVER_NAMES)}"
     )

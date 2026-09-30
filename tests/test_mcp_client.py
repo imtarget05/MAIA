@@ -61,11 +61,19 @@ def test_call_before_connect_is_a_protocol_error():
         _client().call_tool("list_content_calendar", {})
 
 
-def test_every_known_server_builds_and_advertises_at_least_one_tool():
+def test_every_known_server_builds_and_advertises_something():
+    """Every known server must offer at least one capability over MCP.
+
+    A server may be tool-based, or resource/prompt-based: ``prompts`` exposes the
+    PromptOps library and deliberately carries no tools. What is *not* allowed is
+    a server that answers every discovery call with an empty list.
+    """
     for name in SERVER_NAMES:
         client = MCPClient(name, InProcessTransport(build_server(name)))
         client.connect()
-        assert client.tools, f"{name} advertises no tools"
+        assert client.tools or client.resources or client.prompts, (
+            f"{name} advertises nothing"
+        )
         assert all(t.input_schema for t in client.tools)
 
 
@@ -235,7 +243,9 @@ def test_stdio_bridge_reports_json_parse_errors(bridge):
 def test_stdio_bridge_reports_unknown_method(bridge):
     _rpc(bridge, {"jsonrpc": "2.0", "id": 1, "method": "initialize",
                  "params": {"protocolVersion": MCP_PROTOCOL_VERSION}})
-    error = _rpc(bridge, {"jsonrpc": "2.0", "id": 2, "method": "resources/list"})
+    # A method no server implements — resources/list IS implemented now, so
+    # using it here would stop exercising the unknown-method path.
+    error = _rpc(bridge, {"jsonrpc": "2.0", "id": 2, "method": "sampling/createMessage"})
     assert error["error"]["code"] == -32601
 
 

@@ -30,11 +30,20 @@ __all__ = [
     "METHOD_INITIALIZE",
     "METHOD_INITIALIZED",
     "METHOD_PING",
+    "METHOD_PROMPTS_GET",
+    "METHOD_PROMPTS_LIST",
+    "METHOD_RESOURCES_LIST",
+    "METHOD_RESOURCES_READ",
     "METHOD_TOOLS_CALL",
     "METHOD_TOOLS_LIST",
     "MCPError",
     "McpToolError",
+    "PromptArgument",
+    "PromptMessage",
+    "PromptSpecWire",
     "RPCErrorCode",
+    "ResourceContents",
+    "ResourceSpec",
     "ToolResult",
     "ToolSpec",
     "error_response",
@@ -51,6 +60,10 @@ METHOD_INITIALIZED = "notifications/initialized"
 METHOD_PING = "ping"
 METHOD_TOOLS_LIST = "tools/list"
 METHOD_TOOLS_CALL = "tools/call"
+METHOD_RESOURCES_LIST = "resources/list"
+METHOD_RESOURCES_READ = "resources/read"
+METHOD_PROMPTS_LIST = "prompts/list"
+METHOD_PROMPTS_GET = "prompts/get"
 
 # Newest first. A client sending any of these is answered with its own version;
 # an unknown version is answered with MCP_PROTOCOL_VERSION so the client can
@@ -156,6 +169,97 @@ class ToolResult:
             structured=data if isinstance(data, dict) else {"result": data},
             is_error=is_error,
         )
+
+
+# --------------------------------------------------------------------------- #
+# Resources and prompts.
+#
+# Tools let a model *do* something; resources let it *read* something and
+# prompts let it reuse a curated instruction. MAIA already has both as
+# first-class artefacts — the PromptOps library under ``prompts/**`` and the
+# warehouse schema — so exposing them over MCP reuses those rather than
+# re-encoding them as tool arguments.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class ResourceSpec:
+    """An addressable, read-only document exposed via ``resources/read``."""
+
+    uri: str
+    name: str = ""
+    description: str = ""
+    mime_type: str = "text/plain"
+
+    def to_mcp(self) -> dict[str, Any]:
+        return {
+            "uri": self.uri,
+            "name": self.name or self.uri,
+            "description": self.description,
+            "mimeType": self.mime_type,
+        }
+
+
+@dataclass(frozen=True)
+class ResourceContents:
+    """Body of a resource: the spec plus the text it resolves to."""
+
+    spec: ResourceSpec
+    text: str
+
+    def to_mcp(self) -> dict[str, Any]:
+        return {
+            "contents": [{
+                "uri": self.spec.uri,
+                "mimeType": self.spec.mime_type,
+                "text": self.text,
+            }],
+        }
+
+
+@dataclass(frozen=True)
+class PromptArgument:
+    """A named input a prompt expects, advertised in ``prompts/list``."""
+
+    name: str
+    description: str = ""
+    required: bool = False
+
+    def to_mcp(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "required": self.required,
+        }
+
+
+@dataclass(frozen=True)
+class PromptMessage:
+    """One chat message of a rendered prompt (role + text)."""
+
+    role: str
+    text: str
+
+    def to_mcp(self) -> dict[str, Any]:
+        return {"role": self.role, "content": {"type": "text", "text": self.text}}
+
+
+@dataclass(frozen=True)
+class PromptSpecWire:
+    """A prompt advertised by ``prompts/list``."""
+
+    name: str
+    description: str = ""
+    arguments: tuple[PromptArgument, ...] = ()
+
+    def to_mcp(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "name": self.name,
+            "description": self.description,
+        }
+        if self.arguments:
+            payload["arguments"] = [a.to_mcp() for a in self.arguments]
+        return payload
 
 
 # --------------------------------------------------------------------------- #

@@ -109,6 +109,19 @@ class Settings(BaseSettings):
     DATA_DIR: str = "./data/samples"
     ENTERPRISE_DATA_DIR: str = "./data/enterprise"
 
+    # Streaming checkpoint budget (the MemorySaver graph in langgraph_agent).
+    #
+    # The SSE path runs on a process-wide in-memory checkpointer keyed by
+    # "tenant:session", so without a bound every new session_id leaks a thread
+    # that is never released for the life of the process. These two knobs cap
+    # that: MAX_SESSIONS evicts the least-recently-used thread once the map is
+    # full, SESSION_TTL_SEC evicts anything idle for longer than the TTL.
+    #
+    # Deliberately NOT applied to the durable (SqliteSaver) graph: a paused
+    # HITL run must survive until the human answers, however long that takes.
+    MAX_STREAMING_SESSIONS: int = 512
+    STREAMING_SESSION_TTL_SEC: int = 3600
+
     # Agent core (multi-tenant, grounding, HRIS)
     TENANT_ID: str = "default"
     DEFAULT_EMPLOYEE_ID: str = "emp_001"
@@ -280,6 +293,26 @@ class Settings(BaseSettings):
     MCP_MAX_TOOL_CALLS: int = 4
     MCP_TOOL_ALLOWLIST: str = ""  # empty = every tool of the enabled servers
     MCP_AUDIT_LOG_PATH: str = "./storage/mcp_audit.jsonl"
+
+    # MCP prompts (the PromptOps library exposed as maia://prompts/...).
+    #
+    # OFF by default, and it stays off even when MCP_ENABLED is on, because a
+    # prompt is an *instruction injected into the model's turn* rather than a
+    # side-effecting call. Tool calls are bounded by an allowlist and a budget;
+    # a prompt changes what the model believes it was asked to do, so it earns
+    # its own opt-in and its own allowlist.
+    #
+    # Prompts are also never keyword-routed. The model lists them and asks for
+    # one *by name*; auto-matching a prompt on question words is how an HR
+    # question ends up executing a marketing instruction.
+    MCP_PROMPTS_ENABLED: bool = False
+    # Empty = every prompt advertised by the `prompts` server. Set it to
+    # "prompts.nl_to_sql" style entries to pin exactly which ones are usable.
+    MCP_PROMPT_ALLOWLIST: str = ""
+    # Prompts are read-only, so this is a runaway-loop guard, not a side-effect
+    # budget. Kept small: a turn that needs more than a couple of prompts is
+    # better served by the RAG corpus.
+    MCP_MAX_PROMPT_FETCHES: int = 2
 
     # Integrations used by the MCP servers. Empty credential = the server runs in
     # local/dry-run mode and says so in its result (`dry_run: true`); it never

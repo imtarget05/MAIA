@@ -216,6 +216,23 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(lg_mod, "get_durable_graph", _get_graph)
     monkeypatch.setattr(lg_mod, "graph", fresh_graph)
     settings.HR_MOCK_DB_PATH = str(tmp_path / "hr_api.json")
+    # The streaming-budget registry is a module singleton, so give each test a
+    # fresh one — otherwise threads leak between tests and the release/budget
+    # assertions below would measure another test's leftovers. monkeypatch
+    # restores the original on teardown.
+    from maia.agent import session_registry as sr_mod
+    from maia.agent.session_registry import StreamingSessionRegistry
+
+    monkeypatch.setattr(
+        sr_mod, "streaming_sessions",
+        StreamingSessionRegistry(
+            max_sessions=512,
+            ttl_sec=3600,
+            on_evict=lambda tid: fresh_graph.checkpointer.delete_thread(tid),
+        ),
+    )
+
+    settings.HR_MOCK_DB_PATH = str(tmp_path / "hr_api.json")
     app.dependency_overrides[get_current_active_user] = lambda: SimpleNamespace(
         tenant_id="t_api", employee_id="emp_api", email="api@company.com")
     c = TestClient(app, raise_server_exceptions=False)
@@ -311,3 +328,65 @@ def test_agent_chat_stream_sse_resume_after_hitl(client):
     assert r2.status_code == 200, r2.text
     body = r2.json()
     assert body["status"] == "action_completed"
+
+
+# --- streaming session budget ------------------------------------------- #
+#
+# The SSE path runs on a process-wide MemorySaver graph, so without a bound
+# every new session_id leaks a thread for the life of the process. These pin
+# the wiring: the endpoint tracks the thread while the stream is open and
+# releases it when the stream ends.
+
+def test_streaming_releases_its_thread_when_the_stream_completes(client):
+    from maia.agent import session_registry as sr_mod
+
+    r = client.post("/agent/chat", json={
+        "question": "leave days?", "session_id": "budget-completed", "stream": True,
+    })
+    assert r.status_code == 200
+    assert "t_api:budget-completed" not in sr_mod.streaming_sessions.live_threads()
+
+
+def test_streaming_releases_its_thread_on_client_disconnect(client):
+    """An abandoned stream must not strand its thread.
+
+    The generator is closed without being drained, which is what a browser tab
+    closing mid-stream does; the ``finally`` in ``tracked_stream`` still runs.
+    """
+    from maia.agent import session_registry as sr_mod
+
+    with client.stream("POST", "/agent/chat", json={
+        "question": "leave days?", "session_id": "budget-abandoned", "stream": True,
+    }) as response:
+        assert response.status_code == 200
+        next(response.iter_lines())  # consume one frame, then leave early
+
+    assert "t_api:budget-abandoned" not in sr_mod.streaming_sessions.live_threads()
+
+
+def test_streaming_budget_never_exceeds_the_configured_cap(client):
+    """Many distinct sessions in a row must not grow the map past the cap."""
+    from maia.agent import session_registry as sr_mod
+
+    original = sr_mod.streaming_sessions.max_sessions
+    sr_mod.streaming_sessions._max = 3
+    try:
+        for i in range(8):
+            client.post("/agent/chat", json={
+                "question": "leave days?", "session_id": f"budget-flood-{i}",
+                "stream": True,
+            })
+        assert len(sr_mod.streaming_sessions) <= 3
+    finally:
+        sr_mod.streaming_sessions._max = original
+
+
+def test_non_streaming_chat_does_not_touch_the_streaming_budget(client):
+    """The durable graph serves non-streaming turns; it is not this budget's job."""
+    from maia.agent import session_registry as sr_mod
+
+    before = set(sr_mod.streaming_sessions.live_threads())
+    client.post("/agent/chat", json={
+        "question": "How many leave days?", "session_id": "budget-durable",
+    })
+    assert set(sr_mod.streaming_sessions.live_threads()) == before

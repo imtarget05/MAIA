@@ -1218,6 +1218,13 @@ def _agent_chat_stream(g, req, current_user, config: RunnableConfig):
     durable ``g`` path passed by the caller.  Splitting is intentional: a
     stream cannot be resumed across requests, and an approval pause is
     blocking (no stream to keep alive) anyway.
+
+    Because that checkpointer is process-wide and keyed by
+    ``"{tenant_id}:{session_id}"``, every new session would otherwise leak a
+    thread for the life of the process.  The thread is therefore tracked in
+    ``streaming_sessions`` (LRU cap + idle TTL) and released when the client
+    disconnects.  The durable graph is untouched — a paused approval must
+    survive however long the human takes to answer.
     """
     import json as _json
 
@@ -1225,6 +1232,7 @@ def _agent_chat_stream(g, req, current_user, config: RunnableConfig):
 
     from maia.agent.langgraph_agent import AgentState
     from maia.agent.langgraph_agent import graph as mem_graph
+    from maia.agent.session_registry import streaming_sessions
 
     init_state = AgentState(
         question=req.question,
@@ -1233,6 +1241,11 @@ def _agent_chat_stream(g, req, current_user, config: RunnableConfig):
         employee_id=current_user.employee_id,
         requester_email=current_user.email,
     )
+
+    thread_id = config["configurable"]["thread_id"]
+    # Budget the thread before the first checkpoint is written, so the map can
+    # never exceed its cap even for a burst of concurrent new sessions.
+    streaming_sessions.track(thread_id)
 
     def event_stream():
         try:
@@ -1257,8 +1270,18 @@ def _agent_chat_stream(g, req, current_user, config: RunnableConfig):
             final = {"status": "error", "answer": "Could not read final state"}
         yield f"event: done\ndata: {_json.dumps(final, ensure_ascii=False)}\n\n"
 
+    def tracked_stream():
+        # `finally` covers the client-disconnect path too: a generator closed
+        # early (GeneratorExit) still runs it, which is exactly when an
+        # abandoned stream would otherwise strand its thread until the LRU cap
+        # caught up.
+        try:
+            yield from event_stream()
+        finally:
+            streaming_sessions.release(thread_id)
+
     return StreamingResponse(
-        event_stream(), media_type="text/event-stream",
+        tracked_stream(), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 

@@ -33,10 +33,18 @@ from .protocol import (
     METHOD_INITIALIZE,
     METHOD_INITIALIZED,
     METHOD_PING,
+    METHOD_PROMPTS_GET,
+    METHOD_PROMPTS_LIST,
+    METHOD_RESOURCES_LIST,
+    METHOD_RESOURCES_READ,
     METHOD_TOOLS_CALL,
     METHOD_TOOLS_LIST,
     MCPError,
     McpToolError,
+    PromptMessage,
+    PromptSpecWire,
+    ResourceContents,
+    ResourceSpec,
     RPCErrorCode,
     ToolResult,
     ToolSpec,
@@ -44,9 +52,13 @@ from .protocol import (
     make_response,
 )
 
-__all__ = ["MCPHandler", "MCPServer", "ServerInfo"]
+__all__ = ["MCPHandler", "MCPServer", "PromptRenderer", "ServerInfo"]
 
 MCPHandler = Callable[[dict[str, Any]], ToolResult]
+
+# Fills a prompt's arguments into its chat messages. Raises ``ValueError`` for a
+# missing/unknown argument, which the server maps to INVALID_PARAMS.
+PromptRenderer = Callable[[dict[str, Any]], list[PromptMessage]]
 
 DEFAULT_PAGE_SIZE = 50
 
@@ -82,6 +94,8 @@ class MCPServer:
         self.info = ServerInfo(name=name, version=version, title=title, instructions=instructions)
         self.page_size = max(1, page_size)
         self._tools: dict[str, tuple[ToolSpec, MCPHandler]] = {}
+        self._resources: dict[str, ResourceContents] = {}
+        self._prompts: dict[str, tuple[PromptSpecWire, PromptRenderer]] = {}
         self._initialized = False
         self._client_protocol: str | None = None
 
@@ -120,6 +134,102 @@ class MCPServer:
         if spec.name in self._tools:
             raise ValueError(f"duplicate tool name {spec.name!r} in server {self.info.name!r}")
         self._tools[spec.name] = (spec, handler)
+
+    # ---- resources -------------------------------------------------------
+    def add_resource(self, spec: ResourceSpec, body: str) -> None:
+        """Register a readable document.
+
+        ``body`` is the text as of registration. Callers that must reflect
+        on-disk changes re-register (or drop and re-add) after their own
+        change detection — the server deliberately does no file watching.
+        """
+        if not spec.uri or not spec.uri.strip():
+            raise ValueError("resource uri cannot be empty")
+        if spec.uri in self._resources:
+            raise ValueError(
+                f"duplicate resource uri {spec.uri!r} in server {self.info.name!r}"
+            )
+        self._resources[spec.uri] = ResourceContents(spec=spec, text=body)
+
+    @property
+    def resource_uris(self) -> list[str]:
+        return sorted(self._resources)
+
+    def list_resources(self) -> dict[str, Any]:
+        """``resources/list`` result.
+
+        Not paginated: a server's resource set is small and bounded at
+        registration time, and a cursor here would buy nothing.
+        """
+        return {
+            "resources": [
+                self._resources[uri].spec.to_mcp() for uri in self.resource_uris
+            ],
+        }
+
+    def read_resource(self, uri: str) -> dict[str, Any]:
+        """``resources/read`` result for an exact uri.
+
+        An unknown uri is ``INVALID_PARAMS`` (the request named something this
+        server does not have), not a server fault — matching how ``tools/call``
+        treats an unknown tool name.
+        """
+        entry = self._resources.get(uri)
+        if entry is None:
+            raise MCPError(
+                RPCErrorCode.INVALID_PARAMS,
+                f"unknown resource uri {uri!r}",
+                {"available": self.resource_uris},
+            )
+        return entry.to_mcp()
+
+    # ---- prompts ---------------------------------------------------------
+    def add_prompt(self, spec: PromptSpecWire,
+                   render: Callable[[dict[str, Any]], list[PromptMessage]]) -> None:
+        """Register a reusable prompt and the function that fills its arguments.
+
+        ``render`` raises ``ValueError`` for a missing or extra argument; that
+        is surfaced as ``INVALID_PARAMS`` so the caller learns which argument it
+        got wrong instead of receiving half a prompt.
+        """
+        if not spec.name or not spec.name.strip():
+            raise ValueError("prompt name cannot be empty")
+        if spec.name in self._prompts:
+            raise ValueError(
+                f"duplicate prompt name {spec.name!r} in server {self.info.name!r}"
+            )
+        self._prompts[spec.name] = (spec, render)
+
+    @property
+    def prompt_names(self) -> list[str]:
+        return sorted(self._prompts)
+
+    def list_prompts(self) -> dict[str, Any]:
+        return {"prompts": [self._prompts[n][0].to_mcp() for n in self.prompt_names]}
+
+    def get_prompt(self, name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
+        """``prompts/get`` result: the rendered messages plus a description.
+
+        The spec allows an optional ``description`` override; we echo the
+        registered one so a client can label the call without re-listing.
+        """
+        entry = self._prompts.get(name)
+        if entry is None:
+            raise MCPError(
+                RPCErrorCode.INVALID_PARAMS,
+                f"unknown prompt {name!r}",
+                {"available": self.prompt_names},
+            )
+        spec, render = entry
+        try:
+            messages = render(arguments or {})
+        except ValueError as exc:
+            raise MCPError(RPCErrorCode.INVALID_PARAMS, str(exc)) from exc
+        payload: dict[str, Any] = {
+            "description": spec.description,
+            "messages": [m.to_mcp() for m in messages],
+        }
+        return payload
 
     # ---- introspection ---------------------------------------------------
     @property
@@ -216,7 +326,25 @@ class MCPServer:
             return self.list_tools(params.get("cursor"))
         if method == METHOD_TOOLS_CALL:
             return self._call_tool(params)
+        if method == METHOD_RESOURCES_LIST:
+            return self.list_resources()
+        if method == METHOD_RESOURCES_READ:
+            return self.read_resource(self._require_str(params, "uri"))
+        if method == METHOD_PROMPTS_LIST:
+            return self.list_prompts()
+        if method == METHOD_PROMPTS_GET:
+            return self.get_prompt(
+                self._require_str(params, "name"), params.get("arguments")
+            )
         raise MCPError(RPCErrorCode.METHOD_NOT_FOUND, f"unknown method {method!r}")
+
+    @staticmethod
+    def _require_str(params: dict, key: str) -> str:
+        """Read a required non-empty string parameter."""
+        value = params.get(key)
+        if not isinstance(value, str) or not value:
+            raise MCPError(RPCErrorCode.INVALID_PARAMS, f"{key!r} is required")
+        return value
 
     def _initialize(self, params: dict) -> dict[str, Any]:
         requested = params.get("protocolVersion")
@@ -225,7 +353,15 @@ class MCPServer:
         server_info = params.get("clientInfo")
         return {
             "protocolVersion": chosen,
-            "capabilities": {"tools": {"listChanged": False}},
+            # Advertise only what this server actually has. Claiming a
+            # capability we would answer with an empty list is how a client ends
+            # up probing a feature that does not exist.
+            "capabilities": {
+                "tools": {"listChanged": False},
+                **({"resources": {"subscribe": False, "listChanged": False}}
+                   if self._resources else {}),
+                **({"prompts": {"listChanged": False}} if self._prompts else {}),
+            },
             "serverInfo": self.info.to_mcp(),
             # Echoed so a client can log which version it actually negotiated,
             # including the case where it asked for something we do not support.
