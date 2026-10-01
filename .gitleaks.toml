@@ -1,0 +1,28 @@
+# Gitleaks configuration — default rules PLUS narrow, justified allowlists.
+#
+# CRITICAL: a custom config REPLACES the default rule set unless extended
+# below. Without [extend] useDefault the scanner runs zero rules and every
+# negative control passes vacuously. Do not remove the extend block.
+[extend]
+useDefault = true
+
+title = "MAIA: gitleaks allowlists (narrow, verified both directions)"
+
+# OCI image references pinned by full commit SHA (immutable deploy tags).
+# A 40-hex git SHA trips generic-api-key on entropy alone; it is a content
+# address, not a credential. Path AND regex must BOTH match (gitleaks ANDs
+# criteria within one entry), so a real credential in these files — or an
+# image-like string anywhere else — still fails the scan.
+[[allowlists]]
+description = "Full-SHA GHCR image tags in IaC parameter files, not credentials"
+condition = "AND"
+paths = [
+  '''infra/parameters/''',
+]
+# regexTarget "line": the finding SECRET is only the 40-hex entropy string,
+# which can never carry the ghcr.io prefix. Matching against the whole line
+# is what makes path+regex a true intersection (verified empirically).
+regexTarget = "line"
+regexes = [
+  '''ghcr\.io/\S+:[0-9a-f]{40}''',
+]
