@@ -155,12 +155,39 @@ printf '%s-- 5. no secret values in templates or params%s\n' "$BOLD" "$OFF"
 # Deliberately narrow: a broad /secret/ pattern matches the many legitimate
 # references to secret NAMES and to the Key Vault module, and a check that
 # always fires eventually gets disabled.
-leaked="$(grep -rnE "(password|clientSecret|accountKey|connectionString|sharedAccessKey)[[:space:]]*[:=][[:space:]]*['\"][^'\"]" \
-  --include='*.bicep' --include='*.bicepparam' . || true)"
+#
+# WHY -i (case-insensitive). Proven blind spot: this grep was case-SENSITIVE,
+# so it matched `password = 'x'` but not `DEMO_USER_A_PASSWORD = 'x'` -- which
+# is the exact naming convention this repo and Azure use for every secret
+# variable (DEMO_USER_A_PASSWORD, JWT_SECRET_KEY, QDRANT_API_KEY). A control
+# that is green while missing its own convention is worse than no control.
+# Narrowness is preserved; only the case sensitivity is closed.
+#
+# WHY ./validate/* is excluded: that tree is negative-test FIXTURES. It must
+# contain real secrets on purpose, so scanning it as if it were shipped IaC
+# would make the suite permanently red. validate/negative-secret asserts below
+# that the scanner still fires on those fixtures.
+leaked="$(grep -rniE "(password|clientSecret|accountKey|connectionString|sharedAccessKey)[[:space:]]*[:=][[:space:]]*['\"][^'\"]" \
+  --include='*.bicep' --include='*.bicepparam' --exclude-dir=validate . || true)"
 if [[ -n "$leaked" ]]; then
   fail "secret scan" "$leaked"
 else
   pass "secret scan  no literal secret values"
+fi
+
+# --------------------------------------------- 5b. the scanner must BITE
+# A scanner that has never been shown to fail is an assumption, not a control.
+# This runs the SAME detector over the fixture tree and requires it to fire.
+# The fixture uses the repo's own uppercase convention, which is precisely
+# what the case-sensitive version missed.
+# ----------------------------------------------------------------------
+printf '%s-- 5b. secret scanner negative control (must CATCH)%s\n' "$BOLD" "$OFF"
+fixture_hits="$(grep -rniE "(password|clientSecret|accountKey|connectionString|sharedAccessKey)[[:space:]]*[:=][[:space:]]*['\"][^'\"]" \
+  validate/negative-secret 2>/dev/null || true)"
+if [[ -n "$fixture_hits" ]]; then
+  pass "secret scanner bites  uppercase secret fixture is detected"
+else
+  fail "secret scanner bites" "the uppercase fixture in validate/negative-secret was NOT detected -- the detector is blind again"
 fi
 
 # A committed real parameter file is the other way secrets and tenant ids leak

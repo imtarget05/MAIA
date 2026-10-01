@@ -5,15 +5,6 @@ production in TODO 3.** The Bicep stack is reviewed, builds clean, and is
 gated in CI. Deployment, migration and runtime verification belong to later
 waves with their own evidence.
 
-Two entrypoints, split deliberately (not feature flags — a flag can be
-flipped by accident, a missing module cannot be deployed):
-
-- `main.bicep` — **V1 ONLY**: resource groups, managed identity, Key Vault,
-  RBAC. Enforced by `infra/scripts/validate-v1-scope.py` (CI-gated).
-- `main.v6-target.bicep` — full target architecture (edge, APIM, ACR,
-  observability) for later waves. Parameters: `v6-dev` / `v6-prod`.
-- `parameters/v1-dev|prod.bicepparam` — V1 parameters for `main.bicep`.
-
 ## Layout
 
 ```text
