@@ -536,6 +536,8 @@ class AzureAISearchAdapter:
             )
             hits: list[SearchHit] = []
             for item in results:
+                if not isinstance(item, dict):
+                    raise AzureSearchUnavailable(f"Malformed search document: {item!r}")
                 score = float(item.get("@search.score") or 0.0)
                 # Post-ranking cutoff, NOT the pre-ranking cutoff Qdrant
                 # applies. See the class docstring: the kept set is correct,
@@ -839,6 +841,34 @@ class AzureAISearchAdapter:
             return COUNT_UNKNOWN
 
 
+def resolve_backend_name(backend: str | None = None) -> str:
+    """Normalise and validate a backend name, WITHOUT building anything.
+
+    Split out of `build_vector_store` so a probe can publish WHICH backend is
+    configured without paying for construction — and, more importantly, so
+    `/ready` cannot name a backend other than the one dispatch would choose.
+    An unresolvable name raises here, before any store is built, which is what
+    keeps a typo from turning into a probe that reports some other backend's
+    health.
+
+    Args:
+        backend: overrides `settings.VECTOR_STORE_BACKEND`. `None` reads
+            settings; the value is lower-cased and stripped so
+            `AZURE_AI_SEARCH` in an env file behaves like `azure_ai_search`.
+
+    Raises:
+        BackendConfigurationError: unknown backend name.
+    """
+    name = (backend if backend is not None else settings.VECTOR_STORE_BACKEND)
+    name = str(name).strip().lower()
+    if name not in SUPPORTED_BACKENDS:
+        raise BackendConfigurationError(
+            f"Unknown VECTOR_STORE_BACKEND {name!r}. "
+            f"Supported: {', '.join(SUPPORTED_BACKENDS)}."
+        )
+    return name
+
+
 def build_vector_store(
     *,
     dim: int,
@@ -866,8 +896,7 @@ def build_vector_store(
         AzureSearchUnavailable: backend is Azure AI Search but the SDK is not
             installed.
     """
-    name = (backend if backend is not None else settings.VECTOR_STORE_BACKEND)
-    name = str(name).strip().lower()
+    name = resolve_backend_name(backend)
     if name == BACKEND_MEMORY:
         # The ONE backend that does not structurally satisfy the port:
         # InMemoryVectorStore has no bulk `upsert`, only `upsert_one`. That is
@@ -902,6 +931,10 @@ def build_vector_store(
             api_key=settings.AZURE_AI_SEARCH_API_KEY,
         )
         return adapter
+    # Unreachable: `resolve_backend_name` validates the same value first. Kept
+    # because the dispatch is written as a chain of known names, and deleting the
+    # guard would let a future 4th backend added to SUPPORTED_BACKENDS fall
+    # through to returning None instead of raising.
     raise BackendConfigurationError(
         f"Unknown VECTOR_STORE_BACKEND {name!r}. "
         f"Supported: {', '.join(SUPPORTED_BACKENDS)}."
