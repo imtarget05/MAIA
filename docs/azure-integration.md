@@ -253,12 +253,14 @@ impossible rather than suppressed. Applied separately, either one leaves a
 `reportArgumentType` error; there is no `pyrightconfig.json` change in this
 plan at all, because none is needed once (1) and (2) are both in.
 
-Verification for that patch: `pyright src/` stays at exactly the 3
-`reportMissingImports` errors for optional deps (`docx`,
-`langgraph.checkpoint.postgres.aio`, `psycopg_pool`), and
-`tests/test_health_endpoints.py` + `tests/test_reranker_lifecycle.py` still pass
-— both protected tests patch `maia.pipeline_query.QdrantStore`, which is why the
-factory takes `qdrant_store_cls` rather than building a store internally.
+Verification for that patch: `pyright src/` stays at exactly the 4
+`reportMissingImports` errors for optional deps, unchanged by the patch —
+`torch` at `ner_tool.py:76` and `ner_tool.py:141`,
+`langgraph.checkpoint.postgres.aio` at `persistence.py:75`, and `psycopg_pool`
+at `persistence.py:100` — and `tests/test_health_endpoints.py` +
+`tests/test_reranker_lifecycle.py` still pass — both protected tests patch
+`maia.pipeline_query.QdrantStore`, which is why the factory takes
+`qdrant_store_cls` rather than building a store internally.
 
 ## 6. Open item: `AUTH_DB_URL` / `connect_args`
 
@@ -273,26 +275,54 @@ setting. No guard is added in `config.py` because that file has no validators
 by design — a validator there would be a style break, and a half-correct one
 would fail at an import-time assertion rather than at the connection.
 
-## 7. Live Azure Container App Deployment (Verified)
+## 7. Live Azure Container App Deployment (partially verified)
 
-MAIA API is deployed and verified live on Azure Container Apps:
+MAIA API is deployed on Azure Container Apps. Read the two deployment identities
+below as two separate claims, not one:
+
+| identity | revision / image | status |
+|---|---|---|
+| newest documented deployment | `ca-maia-api--0000012` / `b53aca4` | documented here; no retained artifact for its behaviour |
+| revision backing the streaming + test-count evidence | `ca-maia-api--0000006` / `a82f24b` | probes recorded in `docs/evidence/stream_closeout.md` §9 |
+
+**Which revision currently serves traffic is NOT VERIFIED.** Nothing committed
+establishes that either revision holds traffic, and no liveness claim is made
+here. `README.md` and `docs/evidence/stream_closeout.md` name the same two
+revisions; if one of them is wrong, that is a live-operations question to settle
+at the platform, not something this document can assert.
 
 - **Resource Group:** `rg-portfolio-evidence` (Region: East Asia)
 - **Container App:** `ca-maia-api`
 - **FQDN:** `https://ca-maia-api.wittysand-b748274c.eastasia.azurecontainerapps.io`
-- **Active Revision:** `ca-maia-api--0000012` (Image: `ghcr.io/imtarget05/maia-maia-api:b53aca4cad4a4f32498100236f6ad3a1aa31322b@sha256:9eaa013420b6caa1282f8365bc5617d456a8d2ca9f00f84f8eb26e1bf791fcd5`)
-- **Backend Infrastructure:**
-  - **Vector Store:** Live Qdrant Cloud Cluster (`https://81d6d1d0-0963-465a-a4eb-69aa82d5986a.sa-east-1-0.aws.cloud.qdrant.io`, collection: `maia_knowledge`, dim: 1024)
+- **Newest documented revision:** `ca-maia-api--0000012` (Image: `ghcr.io/imtarget05/maia-maia-api:b53aca4cad4a4f32498100236f6ad3a1aa31322b@sha256:9eaa013420b6caa1282f8365bc5617d456a8d2ca9f00f84f8eb26e1bf791fcd5`)
+- **Revision backing the streaming evidence:** `ca-maia-api--0000006` (Image: `a82f24b…@sha256:9be70ed1…`) — see `docs/evidence/stream_closeout.md` §9
+- **Configured backend infrastructure** (what the deployment is configured to use, not a probe result):
+  - **Vector Store:** Qdrant Cloud cluster (`https://81d6d1d0-0963-465a-a4eb-69aa82d5986a.sa-east-1-0.aws.cloud.qdrant.io`, collection: `maia_knowledge`, dim: 1024)
   - **Embeddings:** Cloudflare Workers AI (`@cf/baai/bge-m3`, 1024-dim dense vectors)
   - **LLM Inference:** Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct`)
   - **Auth & Session:** SQLite `/tmp/maia_auth.db` with 256-bit random production `JWT_SECRET_KEY`
 - **Scale:** `minReplicas=1`, `maxReplicas=1` (always warm)
-- **Live Verification Endpoints:**
-  - `GET /health` → `200 OK` (`status: "ok"`, `version: "0.4.0"`)
-  - `GET /metrics` → `200 OK` (Prometheus metrics: `maia_ingestion_throughput`, `maia_docs_per_minute`, etc.)
-  - `POST /auth/register` → `201 Created` (returns user profile with tenant and employee ID)
-  - `POST /auth/login` → `200 OK` (returns JWT `access_token` and `refresh_token`)
-  - `GET /auth/me` → `200 OK` (authenticated user session details)
-  - `POST /query` → `200 OK` (Full real RAG pipeline: retrieves from Qdrant Cloud, computes citations `[S1]`, `[S2]`, generates natural language response via Cloudflare Llama-3.1-8B)
+
+### Verification state of the endpoints below
+
+> HONEST STATUS: of the six endpoints listed, four have retained probe evidence
+> and two do not. An authenticated Azure SSE probe and the Qdrant Cloud cluster
+> behaviour have **no retained artifact**, so neither is claimed here.
+
+| endpoint | state | evidence |
+|---|---|---|
+| `GET /health` | VERIFIED (probe recorded, 2026-09-30) | `docs/evidence/stream_closeout.md` §9 — `200 OK`, `status: "ok"`, `version: "0.4.0"` |
+| `GET /metrics` | NOT VERIFIED — no retained artifact | route exists at `src/maia/api.py::metrics` |
+| `POST /auth/register` | NOT VERIFIED — no retained artifact | route exists at `src/maia/api.py::auth_register` (`201 Created`) |
+| `POST /auth/login` | NOT VERIFIED — no retained artifact | route exists at `src/maia/api.py::auth_login` |
+| `GET /auth/me` | NOT VERIFIED — no retained artifact | route exists at `src/maia/api.py::auth_me` |
+| `POST /query` real-RAG with `[S1]`/`[S2]` citations against Qdrant Cloud | **NOT VERIFIED** — no retained artifact | route exists at `src/maia/api.py::query`; no probe output is committed. The one retained live probe ran with the vector store unreachable and returned `citations([])` |
+| authenticated `POST /chat/stream` end-to-end | **NOT VERIFIED** — no retained artifact | the retained probe's citations frame was `citations([])`; see `docs/evidence/stream_closeout.md` §8 |
+
+Offline retrieval, citation projection and grounding checks **are** covered by
+CI against the real code path
+(`tests/test_agent_task_benchmark.py::test_task001_retrieval_citation_no_tool`,
+`tests/test_golden_eval.py`). Cloud-side behaviour is a separate claim and is
+not asserted by those tests.
 
 
