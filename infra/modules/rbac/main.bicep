@@ -111,3 +111,4 @@ output assignedRoleDefinitionIds array = [
 
 @description('Name of the resource group these assignments were created in, so a reviewer can diff the three invocations against the three groups.')
 output scopedResourceGroupName string = resourceGroup().name
+

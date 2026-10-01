@@ -1,13 +1,18 @@
-// MAIA on Azure — V1 security foundation + V6 IaC/DevSecOps.
+// MAIA on Azure — V6 TARGET ARCHITECTURE. NOT THE V1 DEPLOYMENT UNIT.
 //
-// Deployment order is not arbitrary. The identity has to exist before the
-// container app can bind it; the container app has to exist before APIM and
-// Front Door can be given a URL; APIM has to exist before its operations can
-// be registered; RBAC runs last so that a partial failure leaves a stack with
-// no privileges rather than a privileged stack with no workloads.
+// See main.bicep for what V1 actually deploys. This file is the full end-state
+// wiring (APIM, Front Door, edge, apps, observability) kept as the design
+// record for the waves that build it. It compiles clean and is linted in CI,
+// but nothing deploys it yet.
 //
-// This file holds parameters and wiring only. Every resource decision lives in
-// infra/modules/<concern>/, with the reason it is that way recorded next to it.
+// WHY identity, keyvault and rbac are shared with V1 rather than copied: those
+// three modules define the security boundary and are byte-identical in both
+// waves. A second copy would be a second definition, and only one of the two
+// would get reviewed.
+//
+// NO DEPLOYMENT HAS HAPPENED for either entrypoint. Both are validated by
+// `infra/validate.sh` (compile + linter + negative tests) and by the
+// `iac-validate` CI job, which never authenticates to Azure.
 
 targetScope = 'subscription'
 
