@@ -69,7 +69,8 @@ COPY data/ /app/data/
 # =============================================================================
 # Create runtime directories
 # =============================================================================
-# /tmp/storage: ephemeral caches (e.g., agent checkpoints on Render ephemeral disk)
+# /tmp/storage: ephemeral caches (e.g., agent checkpoints on the container's
+# ephemeral disk; first observed on the legacy Render free tier)
 RUN mkdir -p /tmp/storage \
     && chmod 777 /tmp/storage
 

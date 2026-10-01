@@ -162,8 +162,7 @@ The system provides 40+ endpoints. Here are the core services:
 ├── eval/                 # Golden benchmark datasets — 10 groups, 98 rows (`eval/golden/`)
 ├── tests/                # offline unit & integration suite
 ├── deploy/docker/        # Infrastructure orchestration
-├── alembic/              # Database schema migrations
-└── render.yaml           # Render Cloud Blueprint — SUPERSEDED legacy path (see Deployment status)
+└── alembic/              # Database schema migrations
 ```
 
 ## 🧪 Testing & Evaluation
@@ -288,9 +287,10 @@ README.
 **Render is SUPERSEDED legacy.** The Render free-tier links
 (`maia-api-irau.onrender.com`, `maia-ui.onrender.com`) returned **HTTP 503**
 when last checked (service stopped/asleep) — **không dùng link này làm demo**.
-`render.yaml`, `docs/deployment.md` and the `cd.yml` / `keepalive.yml`
-workflows still contain Render references and are kept for history; they are
-**not** the live path and nothing here depends on them.
+The executable Render deploy path — `render.yaml`, the Render `cd.yml` deploy
+hook and the Render `keepalive.yml` sleep-workaround — was **removed during
+repository cleanup**; no workflow in this repo deploys to Render.
+`docs/deployment.md` is retained only as **HISTORICAL** record.
 
 Cách dựng lại:
 
@@ -299,9 +299,8 @@ Cách dựng lại:
 - **Cloud (current):** Azure Container Apps — Bicep templates in `infra/`,
   secrets via Key Vault with user-assigned managed identity, per
   `docs/azure-integration.md`.
-- **Cloud (legacy, superseded):** `render.yaml` là Render Blueprint — fork repo
-  → New → Blueprint, set `JWT_SECRET_KEY`, embedding/model env theo
-  `src/maia/config.py`.
+- **Cloud (legacy, HISTORICAL):** the Render Blueprint path was **removed**
+  during repository cleanup — see the Deployment status section above.
 - **CI làm bằng chứng vận hành:** `.github/workflows/ci.yml` (ruff, pyright,
   pytest với Qdrant service container, push image GHCR). The job count and the
   measured suite figures are in the Testing section above.

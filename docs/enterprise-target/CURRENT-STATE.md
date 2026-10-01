@@ -32,7 +32,7 @@ rule        : no number appears below unless it was measured here, or is explici
 | parameters | `infra/parameters/{dev,prod,v1-dev,v1-prod,v6-dev,v6-prod}.bicepparam` |
 | invariant checker | `infra/check_invariants.py` (asserts on **compiled ARM JSON**, not `.bicep` source) |
 | validation | `infra/validate.sh`, `infra/bicepconfig.json` |
-| CI | `.github/workflows/iac-validate.yml` *(also: `ci.yml`, `ci-live.yml`, `build-container.yml`, `cd.yml`, `llm-gateway.yml`, `keepalive.yml`, `threshold-calibration.yml`)* |
+| CI | `.github/workflows/iac-validate.yml` *(also: `ci.yml`, `ci-live.yml`, `build-container.yml`, `llm-gateway.yml`, `threshold-calibration.yml`)* — Render `cd.yml`/`keepalive.yml` removed in repository cleanup |
 | edge / APIM | present as Bicep modules (`apim`, `edge`) |
 
 ## 3. Verified seams present in source

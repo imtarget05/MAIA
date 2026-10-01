@@ -2,9 +2,15 @@
 
 Regression: ``maia/api.py`` hardcoded ``SQLALCHEMY_DATABASE_URL =
 "sqlite:///./maia_auth.db"`` with no settings field and no env override, and
-``maia_auth.db`` appeared nowhere in ``render.yaml``. On a platform with an
-ephemeral filesystem every user, session, refresh token and approval was
-therefore discarded on each redeploy, with no error and no warning.
+``maia_auth.db`` appeared nowhere in the deployment config (historically
+``render.yaml``). On a platform with an ephemeral filesystem every user,
+session, refresh token and approval was therefore discarded on each redeploy,
+with no error and no warning.
+
+HISTORICAL: ``render.yaml`` was removed during the repository cleanup (Render
+is no longer a deployment target). The durability invariant is now asserted
+against the current deployment surface — the Key Vault secret-name registry in
+``src/maia/azure_identity.py``.
 """
 import os
 import subprocess
@@ -49,11 +55,22 @@ def test_api_derives_its_engine_url_from_settings():
     assert "sqlite:///./maia_auth.db" not in source
 
 
-def test_render_yaml_prompts_for_auth_db_url():
-    """Both services must surface the key so it is set in the dashboard."""
-    text = (REPO_ROOT / "render.yaml").read_text(encoding="utf-8")
-    assert text.count("key: AUTH_DB_URL") == 2
-    assert "maia_auth.db" in text  # documented in the comment
+def test_deployment_secret_registry_surfaces_auth_db_url():
+    """The deployment config must surface AUTH_DB_URL so it is provisioned.
+
+    Repointed from the deleted ``render.yaml`` to the current deployment
+    surface: MAIA resolves runtime secrets from Key Vault by name, so the
+    key has to appear in the secret-name registry. A missing entry would
+    reproduce the original bug (durability key never provisioned -> ephemeral
+    DB loses every user/session on redeploy).
+    """
+    from maia.azure_identity import KV_SECRET_NAMES
+
+    assert "AUTH_DB_URL" in KV_SECRET_NAMES
+    # Unique, non-empty names only: a duplicate or blank would silently
+    # resolve the wrong secret.
+    assert len(KV_SECRET_NAMES) == len(set(KV_SECRET_NAMES))
+    assert all(name for name in KV_SECRET_NAMES)
 
 
 def _import_config_in_subprocess(env_overrides: dict[str, str]):

@@ -93,8 +93,9 @@ def _me(token: str) -> dict | None:
 
 
 def _me_retry(token: str, attempts: int = 3, delay: float = 2.0) -> dict | None:
-    """GET /auth/me with retry — the API cold-starts on Render free tier,
-    and a timeout here silently bounces a just-logged-in user back to login."""
+    """GET /auth/me with retry — the API cold-starts on a 1GiB container (the
+    former Render free tier OOM'd/cold-started); a timeout here silently
+    bounces a just-logged-in user back to login."""
     for i in range(attempts):
         u = _me(token)
         if u:
@@ -245,7 +246,8 @@ def _auth_screen() -> None:
         last_err = ""
         for attempt in range(3):
             try:
-                # timeout 90s: the API cold-starts on Render free tier.
+                # timeout 90s: cold-start budget for the API container
+                # (kept from the Render-era cold-start workaround).
                 r = _api("POST", "/auth/google/callback", None, timeout=90,
                          json={"code": oauth_code.strip(), "redirect_uri": _G_REDIRECT_URI})
                 break
