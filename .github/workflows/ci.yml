@@ -389,15 +389,90 @@ jobs:
           if-no-files-found: warn
 
   gitleaks:
-    # Secret scanning — HARD GATE (default config). Fails the build on leaks.
+    # Secret scanning — HARD GATE. Fails the build on leaks.
+    #
+    # WHY THE CLI AND NOT gitleaks-action@v2. The action decides whether a
+    # license is required by asking the GitHub API who owns the repository. On a
+    # push that lookup succeeded ("[user] is an individual user. No license key is
+    # required") and the job was green. On a pull_request the same lookup hit an
+    # API rate limit, so the action could not classify the account, fell back to
+    # "License key validation will be enforced", and failed with "missing
+    # gitleaks license" — on a repository with no secret in it.
+    #
+    # Same repository, same revision, same config, opposite verdict, decided by a
+    # transient API response. That failure mode is the real problem: a scanner
+    # that goes red on a rate limit teaches people to re-run it, and re-running
+    # until green is how a genuine finding gets waved through. The pinned CLI has
+    # no license gate and makes no API call, so the same tree gives the same
+    # verdict on every event.
+    #
+    # The version is pinned, with the release's own SHA256, verified against the
+    # published asset. Unpinned, a gitleaks release that adds a rule turns a green
+    # main red on an unrelated PR.
     name: Secret scanning (gitleaks)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          # Full history, because the advisory scan below needs it. The gating
+          # scan runs on the working tree.
           fetch-depth: 0
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          version=8.28.0
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
+          curl -sSfL "$url" -o /tmp/gitleaks.tar.gz
+          # Pinned checksum, taken from gitleaks_8.28.0_checksums.txt on the
+          # release. Without it a "pinned version" is only pinned in the URL, and
+          # a substituted asset would run with the scanner's own privileges.
+          echo "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb  /tmp/gitleaks.tar.gz" \
+            | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      # THE GATE. The working tree only: this is what a new commit can break, and
+      # it is deterministic, so the same revision always gives the same verdict.
+      - name: Scan the working tree
+        run: |
+          set -euo pipefail
+          gitleaks dir . --config .gitleaks.toml --redact --exit-code 1
+
+      # WHY HISTORY IS REPORTED, NOT GATED. The scan below finds exactly one
+      # thing: a test canary in tests/test_tracing.py that named a fake value
+      # `SECRET-XYZ-123`, introduced in 54b87d8. It is not a credential, it is
+      # fixed in the current tree, and removing it from history would invalidate
+      # every SHA, CI run and audit reference this repository depends on.
+      #
+      # So the contract is explicit: the current-tree gate is deterministic and
+      # green; the history scan is an advisory finding about a historical TEST
+      # CANARY, which is NOT credential compromise. Do not read a clean working
+      # tree as "repository history is clean" — it is not, and this step is the
+      # reason that stays visible.
+      #
+      # If this step ever reports something that IS a real credential, the correct
+      # order is: rotate the credential FIRST, then consider rewriting history.
+      # Never the reverse, and never a blanket allowlist.
+      - name: Report historical findings (advisory)
+        if: always()
+        run: |
+          set -euo pipefail
+          gitleaks git . --config .gitleaks.toml --redact \
+            --report-path gitleaks-history.json --exit-code 0
+          count=$(python3 -c "import json;print(len(json.load(open('gitleaks-history.json'))))")
+          echo "historical findings: $count"
+          if [ "$count" -gt 0 ]; then
+            echo "::warning title=Secret scanning (advisory)::${count} finding(s) in git history. Current tree gate is green. Known: test canary in 54b87d8, not a credential. See gitleaks-history.json."
+          fi
+
+      - name: Upload the history report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-history-report
+          path: gitleaks-history.json
+          retention-days: 30
 
   bicep-validate:
     # IaC validation — HARD GATE, offline only (no Azure credentials, no
@@ -419,6 +494,22 @@ jobs:
           az bicep build-params --file infra/parameters/v6-prod.bicepparam
       - name: V1 deployment-scope invariant
         run: python3 infra/scripts/validate-v1-scope.py
+
+      # WHY A SECOND, SEPARATE INVARIANT CHECK. The scope check above proves V1
+      # does not deploy later-wave services. It says nothing about whether the
+      # security properties of what it DOES deploy are set correctly, and a
+      # compile cannot tell the difference either: `enablePurgeProtection: false`
+      # is a well-formed template.
+      #
+      # This step asserts those values on the compiled ARM artifact rather than
+      # the .bicep source, so it cannot be satisfied by a matching line in a
+      # comment, and it fails if the vault cannot be located at all rather than
+      # passing vacuously.
+      - name: V1 security-property invariant
+        run: |
+          set -euo pipefail
+          az bicep build --file infra/main.bicep --outfile /tmp/main.v1.json
+          python3 infra/check_invariants.py /tmp/main.v1.json
 
   pip-audit:
     # Dependency audit — ADVISORY (continue-on-error) until triaged.
