@@ -1,0 +1,92 @@
+name: IaC Validate
+
+# The IaC gate. It runs infra/validate.sh: compile every Bicep file, resolve
+# every committed parameter file, run the negative tests, and scan for committed
+# secrets and real environment identifiers.
+#
+# THIS JOB DEPLOYS NOTHING. There is no Azure login, no az deployment and no
+# federated credential in this workflow, and there is deliberately no
+# `environment:` protection on it. A green run means "the templates are
+# well-formed and the guards hold" — it is NOT evidence that any Azure resource
+# exists. Deployment is a separate, explicitly authorised step, and claiming
+# otherwise from a green check here is exactly the overclaim the evidence rules
+# forbid.
+#
+# It is a separate workflow from ci.yml rather than another job in it, for two
+# reasons: it needs no Python (so a Python dependency cannot break the IaC
+# signal), and it triggers on infra/** alone, so a template change is validated
+# in seconds instead of waiting behind the 1000-test suite.
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/iac-validate.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/iac-validate.yml'
+  workflow_dispatch:
+
+# Same rationale as ci.yml: a newer commit makes older IaC conclusions
+# irrelevant, so cancel rather than queue.
+concurrency:
+  group: iac-validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Compile, lint and negative-test the Bicep
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # WHY az bicep install and not a pinned download URL: it is the version
+      # the Azure CLI resolves, it authenticates nothing, and it puts the binary
+      # on PATH at ~/.azure/bin so validate.sh's `command -v bicep` check is
+      # satisfied. validate.sh refuses to run without a CLI rather than skipping
+      # its own checks, so this step is the only thing standing between a
+      # runner and a silently-green job.
+      - name: Install Bicep CLI
+        run: |
+          az bicep install
+          echo "$HOME/.azure/bin" >> "$GITHUB_PATH"
+          bicep --version
+
+      # A restore is needed for the Microsoft Graph extension declared in
+      # infra/modules/identity/main.bicep. Without it the compile fails on a
+      # missing type package, which looks like a template defect and is not one.
+      - name: Restore Bicep extension packages
+        run: az bicep restore --file infra/main.bicep
+
+      - name: Run IaC validation
+        run: ./infra/validate.sh
+
+      # WHY the artifact is uploaded: the compile output is the evidence that the
+      # templates built, and "the job was green" is not reviewable by anyone who
+      # is not reading the run log. It costs one file and makes the check
+      # auditable after the fact.
+      - name: Upload the compiled V1 template
+        if: always()
+        run: |
+          mkdir -p iac-artifact
+          bicep build infra/main.bicep --outfile iac-artifact/main.v1.json
+          bicep build infra/main.v6-target.bicep --outfile iac-artifact/main.v6-target.json
+
+      - name: Upload IaC artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iac-compiled-templates
+          path: iac-artifact/
+          retention-days: 30
