@@ -220,9 +220,13 @@ class CloudflareLLM:
                           timeout=60)
         r.raise_for_status()
         data = r.json()
-        # Workers AI returns {"result": {"response": "..."}} for instruct models
         res = data.get("result", {})
         if isinstance(res, dict):
+            choices = res.get("choices")
+            if isinstance(choices, list) and choices:
+                content = choices[0].get("message", {}).get("content")
+                if content is not None:
+                    return content
             return res.get("response") or res.get("text") or str(res)
         return str(res)
 
