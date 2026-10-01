@@ -8,7 +8,14 @@ using '../main.v6-target.bicep'
 
 param environmentName = 'prod'
 param location = 'eastasia'
-param tenantId = 'aa79a92c-ec09-4de1-baa9-151b8f9df886'
+// WHY a zero GUID and not the real tenant: a directory (tenant) id is not a
+// credential and grants no access on its own, but it IS real
+// environment-specific data that identifies one specific tenant indefinitely
+// once pushed, and this repository has a public remote. The real value is
+// supplied out of band with the rest of the parameter file. A zero GUID fails
+// the ARM tenant lookup loudly at what-if, which is the intended behaviour for
+// a placeholder: it cannot silently deploy against the wrong directory.
+param tenantId = '00000000-0000-0000-0000-000000000000'
 param entraLoginEndpoint = 'https://login.microsoftonline.com/'
 param ownerContact = 'platform-team@example.invalid'
 param identityResourceGroupName = 'rg-maia-identity'
