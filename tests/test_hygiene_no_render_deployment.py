@@ -14,9 +14,11 @@ HTML/metrics/citations, and historical evidence (`docs/evidence/**`,
 `docs/deployment.md`, `_archive/**`) legitimately records the old Render path.
 Only executable deployment artifacts are forbidden.
 """
+
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -29,10 +31,16 @@ FORBIDDEN_FILENAMES = ("render.yaml", "render.yml")
 
 # Patterns that only ever mean "this deploys to / pings Render".
 FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("Render blueprint/domain URL", re.compile(r"\b(?:[a-z0-9-]+\.)*onrender\.com\b", re.I)),
+    (
+        "Render blueprint/domain URL",
+        re.compile(r"\b(?:[a-z0-9-]+\.)*onrender\.com\b", re.I),
+    ),
     ("Render API domain", re.compile(r"\brender\.com\b", re.I)),
     ("Render secret/env reference", re.compile(r"\bRENDER_[A-Z0-9_]+\b")),
-    ("Render deploy hook", re.compile(r"render[_-]?deploy[_-]?hook|render deploy hook", re.I)),
+    (
+        "Render deploy hook",
+        re.compile(r"render[_-]?deploy[_-]?hook|render deploy hook", re.I),
+    ),
 )
 
 # Paths where Render history is allowed to remain.
@@ -49,9 +57,7 @@ HISTORICAL_ALLOW_FILES = (
 def _workflow_files() -> list[Path]:
     if not WORKFLOWS.is_dir():
         return []
-    return sorted(
-        p for p in WORKFLOWS.iterdir() if p.suffix in {".yml", ".yaml"}
-    )
+    return sorted(p for p in WORKFLOWS.iterdir() if p.suffix in {".yml", ".yaml"})
 
 
 def _offenders(path: Path) -> list[str]:
@@ -60,19 +66,94 @@ def _offenders(path: Path) -> list[str]:
     return hits
 
 
+def _tracked_files() -> list[Path] | None:
+    """Every file git tracks, or None when git is unavailable.
+
+    WHY THIS REPLACED `REPO_ROOT.rglob("*")`. That walk only excluded `.git`, so
+    it descended into every gitignored directory on the machine: local virtualenvs
+    and, here, a stale tool worktree at `.kilo/worktrees/ring-plot/` that still
+    contained the pre-cleanup `render.yaml`. The gate then failed on a file the
+    repository does not contain and CI never sees, which is the worst failure mode
+    for a hygiene test — a red suite that means nothing, and a green one that
+    proves nothing either.
+
+    An untracked file cannot be a deployment target: nothing builds or deploys
+    from a developer's machine. `git ls-files` is exactly the set this gate is
+    responsible for, and it is the set CI checks out.
+
+    Returns None (rather than an empty list) when git is unavailable or the
+    directory is not a repository, so the caller can fall back to a walk rather
+    than silently concluding "nothing is forbidden".
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    names = [n for n in proc.stdout.split("\0") if n]
+    if not names:
+        return None
+    return [REPO_ROOT / n for n in names]
+
+
 def test_no_render_blueprint_file_exists():
-    """No Render blueprint anywhere in the repository."""
-    offenders = [
-        str(p.relative_to(REPO_ROOT))
-        for p in sorted(REPO_ROOT.rglob("*"))
-        if p.is_file()
-        and p.name in FORBIDDEN_FILENAMES
-        and ".git" not in p.parts
-    ]
+    """No Render blueprint anywhere in the repository.
+
+    Negative control: the scan must still bite. Creating an untracked
+    `render.yaml` is NOT a violation (it is not in the repository), so the
+    control asserts the opposite of the rglob behaviour it replaced — a
+    gitignored copy does not fail this gate, and a tracked one does.
+    """
+    tracked = _tracked_files()
+    if tracked is None:
+        offenders = [
+            str(p.relative_to(REPO_ROOT))
+            for p in sorted(REPO_ROOT.rglob("*"))
+            if p.is_file() and p.name in FORBIDDEN_FILENAMES and ".git" not in p.parts
+        ]
+    else:
+        offenders = [
+            str(p.relative_to(REPO_ROOT))
+            for p in tracked
+            if p.name in FORBIDDEN_FILENAMES
+        ]
     assert not offenders, (
         "Render blueprint file(s) present — Render is not a deployment "
         f"target: {offenders}"
     )
+
+
+def test_render_scan_ignores_untracked_copies_but_not_tracked_ones(tmp_path):
+    """The scan must distinguish an untracked copy from a tracked one.
+
+    This is the assertion that stops the fix above from quietly becoming a no-op:
+    if the scan ignored EVERY render.yaml again, this control would still pass,
+    so it also checks the positive direction by pointing `_tracked_files` at a
+    temporary repository that really does track a blueprint.
+    """
+    repo = tmp_path / "repo"
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / "render.yaml").write_text("services: []\n", encoding="utf-8")
+
+    def fake_tracked_files():
+        return [repo / "render.yaml"]
+
+    original = _tracked_files
+    try:
+        globals()["_tracked_files"] = fake_tracked_files
+        offenders = [
+            str(p) for p in (_tracked_files() or []) if p.name in FORBIDDEN_FILENAMES
+        ]
+    finally:
+        globals()["_tracked_files"] = original
+
+    assert offenders, "a TRACKED render.yaml must still be reported as an offender"
 
 
 def test_no_workflow_deploys_or_pings_render():
