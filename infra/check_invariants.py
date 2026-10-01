@@ -89,25 +89,102 @@ def iter_resources(
         return
 
     resources = template.get("resources")
-    if not isinstance(resources, list):
+    if resources is None:
         return
 
+    if isinstance(resources, dict):
+        # Bicep languageVersion 2.0 emits a SYMBOLIC-NAME MAP here. Treating
+        # that as "no resources" skipped an entire nested deployment subtree --
+        # including any Key Vault inside it -- and still exited 0. The map is
+        # legal ARM, so it is traversed, not rejected.
+        for key in resources:
+            here = f"{path}.resources.{key}"
+            value = resources[key]
+            if not isinstance(value, dict):
+                raise Unsupported(here, "object", type(value).__name__)
+            yield value, here
+            yield from _descend(value, here, depth)
+        return
+
+    if not isinstance(resources, list):
+        # An unreadable required structure is a FAILURE carrying its path, not
+        # an empty result. Skipping it would mean claiming to have checked
+        # something that was never read.
+        raise Unsupported(
+            f"{path}.resources", "list or symbolic-name map",
+            type(resources).__name__)
+
+    declared = _declared_symbols(template)
     for index, resource in enumerate(resources):
         here = f"{path}.resources[{index}]"
+        if isinstance(resource, str):
+            # A bare string can legitimately be a symbolic reference to a
+            # variable, function or output of the enclosing module. It must be
+            # a DECLARED name; an undeclared one is malformed, not ignorable.
+            if resource in declared:
+                continue
+            raise Unsupported(
+                here, "object, or a declared symbolic name", f"str {resource!r}")
         if not isinstance(resource, dict):
-            # A bare string here is a symbolic name (a variable, function or
-            # output of the enclosing module), not a resource declaration.
-            continue
+            raise Unsupported(here, "object", type(resource).__name__)
 
         yield resource, here
+        yield from _descend(resource, here, depth)
 
-        properties = resource.get("properties")
-        if isinstance(properties, dict):
-            nested = properties.get("template")
-            if isinstance(nested, dict):
-                yield from iter_resources(
-                    nested, depth + 1, f"{here}.properties.template"
-                )
+
+def _descend(resource: dict, here: str, depth: int):
+    """Recurse into properties.template.
+
+    Shared by both container shapes so the two cannot drift apart. `yield from`
+    is required: calling this without iterating the returned generator would
+    create it, never advance it, and silently skip the nested subtree.
+    """
+    properties = resource.get("properties")
+    if isinstance(properties, dict):
+        nested = properties.get("template")
+        if isinstance(nested, dict):
+            yield from iter_resources(
+                nested, depth + 1, f"{here}.properties.template"
+            )
+
+
+class Unsupported(Exception):
+    """A resource shape the walk refuses to guess about.
+
+    Raised rather than skipped. A skipped shape means the checker did not read
+    everything the template contains, so it cannot claim to have confirmed a
+    security invariant. Carries the JSON path so the failure is actionable.
+    """
+
+    def __init__(self, path: str, expected: str, got: str):
+        super().__init__(
+            f"unsupported resource node at {path}: expected {expected}, got {got}")
+        self.path = path
+
+
+def _declared_symbols(template: Any) -> set:
+    """Names a bare string in `resources` may legitimately refer to.
+
+    Bicep serialises a module's variables, functions and outputs as symbolic
+    names, so a string there is not automatically corruption -- but it must be
+    a DECLARED name. An undeclared string is malformed.
+    """
+    names: set = set()
+    if not isinstance(template, dict):
+        return names
+    for key in ("functions", "variables", "outputs", "imports"):
+        value = template.get(key)
+        if isinstance(value, dict):
+            names.update(k for k in value if isinstance(k, str))
+        elif isinstance(value, list):
+            for entry in value:
+                if isinstance(entry, str):
+                    names.add(entry)
+                elif isinstance(entry, dict):
+                    for field in ("name", "symbolName"):
+                        if isinstance(entry.get(field), str):
+                            names.add(entry[field])
+    return names
 
 
 def find_vaults(template: Any) -> list[tuple[dict, str]]:
@@ -150,7 +227,14 @@ def main() -> int:
         )
         return 1
 
-    vaults = find_vaults(template)
+    try:
+        vaults = find_vaults(template)
+    except Unsupported as exc:
+        # Fail closed, with the JSON path. Never a traceback, never a skip.
+        print(f"{RED}{BOLD}  FAIL{OFF}  invariant discovery: {exc}")
+        print("        the walk refuses to guess about an unreadable structure,")
+        print("        so no security invariant can be confirmed here.")
+        return 1
 
     if not vaults:
         # Not a skip. An invariant that cannot be located is an unverified
