@@ -43,7 +43,7 @@ No required row may be closed with `PARTIAL` / `PLANNED_ONLY` / `NOT_VERIFIED`.
 | 14 | Multi-replica (2+) correctness | **UNMEASURED** | — | Phase 6 |
 | 15 | OTel + App Insights + Log Analytics + Prometheus + Grafana + SLO | **UNMEASURED** | `observability/`, `observability/slo.yaml` | Phase 7 |
 | 16 | Front Door Premium + WAF + APIM | **UNMEASURED** | `infra/modules/edge`, `apim`; `infra/apim-policies/` | Phase 8 |
-| 17 | OCI build + SBOM + digest-pinned rollout | **UNMEASURED** | `build-container.yml`, `cd.yml` | Phase 9 |
+| 17 | OCI build + SBOM + digest-pinned rollout | **UNMEASURED** | `build-container.yml` (Render `cd.yml` removed) | Phase 9 |
 
 > Deployed claims carried from audit docs (`998 passed`, rev `ca-maia-api--0000006`, two unresolved revision identities) are **CARRIED_FORWARD_NOT_REMEASURED** and must not be quoted as verified until re-measured.
 

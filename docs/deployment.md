@@ -12,9 +12,11 @@
 >
 > - Toàn bộ nội dung dưới đây được giữ **để đối chiếu lịch sử**, không phải
 >   hướng dẫn dùng được cho deploy mới.
-> - `render.yaml`, `.github/workflows/cd.yml` và `.github/workflows/keepalive.yml`
->   vẫn chứa tham chiếu Render. Chúng **được giữ nguyên** và chỉ là đường cũ.
->   Không có workflow nào bị xoá.
+> - **HISTORICAL UPDATE (Repository Cleanup):** `render.yaml`,
+>   `.github/workflows/cd.yml` và `.github/workflows/keepalive.yml` **đã bị
+>   xoá** khỏi repo — chúng là executable Render deploy config, không phải
+>   bằng chứng lịch sử. Tài liệu này chỉ còn giữ để đối chiếu lịch sử;
+>   **không còn workflow nào trong repo deploy Render.**
 > - Link Render free-tier cũ (`maia-api-irau.onrender.com`,
 >   `maia-ui.onrender.com`) trả **HTTP 503** khi kiểm chứng gần nhất.
 > - Không claim trạng thái live/traffic của bất kỳ revision nào ở đây. Revision

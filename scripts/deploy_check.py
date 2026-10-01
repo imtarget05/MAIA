@@ -2,7 +2,8 @@
 """Deployment verification script for MAIA.
 
 Usage:
-    python scripts/deploy_check.py https://maia-api.onrender.com
+    python scripts/deploy_check.py <BASE_URL>
+    e.g. python scripts/deploy_check.py https://<your-container-app>.azurecontainerapps.io
 
 Checks:
     1. GET  /health              – service health + qdrant + llm_mode
@@ -213,7 +214,7 @@ def check_ingest(base: str, token: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="MAIA deployment verification")
-    parser.add_argument("base_url", help="Base URL of the deployed MAIA API (e.g. https://maia-api.onrender.com)")
+    parser.add_argument("base_url", help="Base URL of the deployed MAIA API (e.g. https://<your-container-app>.azurecontainerapps.io)")
     parser.add_argument("--timeout", type=int, default=90, help="Overall timeout in seconds (default 90)")
     args = parser.parse_args()
 

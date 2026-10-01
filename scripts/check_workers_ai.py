@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Kiem tra Cloudflare Workers AI connectivity cho MAIA (KHONG R2 storage).
 
-Doc 2 env (KHONG hardcode secret — token chi tu env / Render Dashboard):
+Doc 2 env (KHONG hardcode secret — token chi tu env / secret manager / CI):
     CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, (optional) CLOUDFLARE_MODEL
 
 Che do:

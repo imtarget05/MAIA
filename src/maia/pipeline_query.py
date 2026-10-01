@@ -33,7 +33,8 @@ def _est_tokens(text: str) -> int:
 def build_stack(tenant_id: str | None = None):
     # Deploy fix 2026-09-11: reuse the process-wide Embedder singleton.
     # Constructing Embedder() per request re-loads the FastEmbed ONNX model
-    # (~hundreds of MB) and OOM-crashes Render free tier (512Mi).
+    # (~hundreds of MB) and OOM-crashes a small container (the 512Mi Render
+    # free tier was where this was first observed).
     # Initialise the embedder FIRST so its real dim (1024 for Cloudflare BGE-m3)
     # is known before QdrantStore creates the collection.
     embedder = get_embedder(model=settings.EMBED_MODEL, dim=settings.EMBED_DIM)
