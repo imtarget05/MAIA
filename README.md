@@ -1,6 +1,6 @@
 <div align="center">
   <h1>🧠 MAIA — Intelligent RAG Knowledge Platform</h1>
-  <p><strong>Enterprise-Grade Internal Knowledge Assistant & Autonomous Agent</strong></p>
+  <p><strong>Internal Knowledge Assistant & Autonomous Agent</strong></p>
 
   [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
   [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -16,15 +16,24 @@
 
 ---
 
-**MAIA** is an advanced Retrieval-Augmented Generation (RAG) platform and intelligent agent designed for enterprise internal operations. It securely answers HR, IT, and Security policy questions based on a designated company document corpus, with zero tolerance for hallucination. Beyond Q&A, MAIA acts as an autonomous agent that can execute side-effect actions (e.g., submitting leave requests, creating IT tickets) safely through a strict **Human-in-the-Loop (HITL)** approval workflow.
+**MAIA** is a Retrieval-Augmented Generation (RAG) platform and agent for
+enterprise internal operations. It answers HR, IT, and Security policy questions
+from a designated company document corpus, and it is built to refuse rather than
+guess: an evidence gate blocks answers whose retrieved evidence is below a
+similarity threshold. That refusal behaviour is **measured, not assumed** — see
+[Honest status of the answerability gate](#honest-status-of-the-answerability-gate),
+which reports a failing gate and why no threshold fixes it. Beyond Q&A, MAIA acts
+as an autonomous agent that can execute side-effect actions (e.g., submitting
+leave requests, creating IT tickets) safely through a strict **Human-in-the-Loop
+(HITL)** approval workflow.
 
 Core workflow: `Find → Understand → Cite → Act`
 
 ## ✨ Key Engineering Features
 
 - **Hybrid RAG Pipeline with RRF**: Combines Dense (Qdrant) and Sparse (BM25) retrieval, fused via Reciprocal Rank Fusion (RRF), ensuring high recall across semantic and keyword queries.
-- **Evidence Gate & Zero Hallucination**: Incorporates a strict similarity threshold (≥ 0.3). If no relevant documents are found, MAIA honestly refuses to answer instead of hallucinating.
-- **Verifiable Grounding & Citation**: Every factual response is explicitly backed by `[S1]`, `[S2]` citations, linking back to the exact source file, section, and snippet.
+- **Evidence Gate (measured, currently failing)**: A similarity threshold (`SIMILARITY_THRESHOLD`, ≥ 0.3) gates answers on retrieved evidence. The gate is implemented and tested, and the abstention gate that measures it **exits 1**: it authorised 8 of 9 labelled no-answer queries. This is a published defect, not a claim — see the gate section below and `eval/README.md:16`.
+- **Citation projection, not guaranteed grounding**: Answers carry `[S1]`, `[S2]` citations pointing at a source file, section and snippet, and there is a grounding/citation check in the pipeline. A `citations` frame or footer is **not** evidence that an answer is grounded: the frame is empty when retrieval returns nothing, and the one live probe recorded `citations([])`.
 - **Human-in-the-Loop (HITL) Action Execution (C1)**: Built with LangGraph StateGraphs and SQLite checkpointing. Any action causing a side-effect triggers an interrupt, pending explicit human approval via the `/actions/confirm` endpoint before resuming.
 - **Enterprise Security & PII Protection**: 2-layer Personal Identifiable Information (PII) scanning (ingestion-time + output guardrail) prevents data leakage. Role-specific emails (e.g., `hr@`, `security@`) are allowlisted.
 - **Multi-Tenant Isolation**: Complete isolation of queries, retrieval, and session memory by `tenant_id` at the Qdrant payload and database level.
