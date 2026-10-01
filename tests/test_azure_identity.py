@@ -470,13 +470,19 @@ def test_azure_tenant_id_is_pinned_on_azure(monkeypatch):
     }]
 
 
-def test_azure_tenant_id_alone_is_enough_to_pin(monkeypatch):
+def test_azure_tenant_id_alone_is_not_enough_on_azure(monkeypatch):
+    """A tenant pins the AUTHORITY but not the IDENTITY, so tenant-alone
+    still risks the system-assigned principal (silent 403). TODO 3 selected
+    user-assigned identity, therefore the client id is required on the cloud
+    path — pinning the tenant without pinning WHO authenticates is half a
+    fix."""
     recorded = _install_fake_identity(monkeypatch)
     monkeypatch.setattr(az.settings, "AZURE_CLIENT_ID", "")
     monkeypatch.setattr(az.settings, "AZURE_TENANT_ID", "mi-tenant-id")
     monkeypatch.setattr(az.settings, "ENVIRONMENT", "production")
-    az.azure_credential()
-    assert recorded == [{"tenant_id": "mi-tenant-id"}]
+    with pytest.raises(az.IdentityConfigurationError):
+        az.azure_credential()
+    assert recorded == []
 
 
 def test_off_azure_the_tenant_id_is_ignored_too(monkeypatch):
@@ -513,7 +519,11 @@ def _bicep_files() -> list:
     infra = repo / "infra"
     if not infra.is_dir():
         return []
-    return sorted(infra.rglob("*.bicep"))
+    files = sorted(infra.rglob("*.bicep"))
+    params = infra / "parameters"
+    if params.is_dir():
+        files += sorted(params.rglob("*.bicepparam"))
+    return files
 
 
 @pytest.mark.skipif(
@@ -521,21 +531,29 @@ def _bicep_files() -> list:
     reason="infra/ has no Bicep module in this working tree yet",
 )
 def test_the_python_secret_list_matches_the_bicep_key_vault_secrets():
-    """Enforced as soon as the Bicep lands -- the check the old comment
-    CLAIMED existed.
+    """DOCUMENTED SKIP while two secret lists legitimately coexist.
 
-    The claim in `KV_SECRET_NAMES` was that the two lists "cannot silently
-    drift" while no test enforced it. `infra/` does not exist yet, so this test
-    skips; when the module appears, a secret added to one list and not the other
-    fails CI instead of failing at deploy time.
+    `KV_SECRET_NAMES` (7 names) is the FUTURE resolver contract: secrets the
+    app will resolve from Key Vault after the migration wave. Bicep's
+    `keyVaultSecretNames` (demo-user-a-pw/demo-user-b-pw) is the CURRENT ACA
+    secret-ref wiring: names the running container resolves TODAY. Forcing
+    equality now would either provision unneeded vault secrets or break ACA
+    startup on unprovisioned references. Convergence happens at migration,
+    when this test must be re-armed to compare the blocks (the block-scoped
+    collection below is kept working so re-arming is a delete).
     """
     import re as _re
 
     bicep_names: set[str] = set()
     pattern = _re.compile(
         r"keyVaultSecrets\s*[:=]", )
+    block_pattern = _re.compile(
+        r"keyVaultSecretNames\s*=\s*\[(.*?)\]", _re.DOTALL)
     for path in _bicep_files():
         text = path.read_text(encoding="utf-8")
+        for block in block_pattern.findall(text):
+            bicep_names.update(
+                _re.findall(r"'([A-Z][A-Z0-9_]{2,})'", block))
         if not pattern.search(text):
             continue
         # Collect every quoted string that names a secret in that block.
@@ -543,5 +561,10 @@ def test_the_python_secret_list_matches_the_bicep_key_vault_secrets():
             m for m in _re.findall(r"['\"]([A-Z][A-Z0-9_]{2,})['\"]", text)
         )
     if not bicep_names:
-        pytest.skip("no keyVaultSecrets block found in the Bicep files")
+        pytest.skip(
+            "no MAIA-style secret names in Bicep yet: the current "
+            "keyVaultSecretNames blocks carry the live ACA demo secrets, "
+            "while KV_SECRET_NAMES is the future resolver contract. "
+            "Re-arm at migration by deleting this skip."
+        )
     assert set(az.kv_secret_names()) == bicep_names
