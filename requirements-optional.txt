@@ -16,3 +16,18 @@ python-docx>=1.1
 #   missing DSN is loud rather than a silent write to the wrong database.
 langgraph-checkpoint-postgres>=3.0
 psycopg[binary,pool]>=3.2
+# azure-search-documents — the Azure AI Search vector backend
+# (maia.retrieval_backends.AzureAISearchAdapter, selected by
+# VECTOR_STORE_BACKEND=azure_ai_search). Optional at runtime: without it the
+# adapter raises AzureSearchUnavailable with an actionable message rather than
+# failing on an opaque ImportError, and Qdrant remains the default backend.
+#
+# It IS required by the test environment, because tests/test_retrieval_port.py
+# exercises the adapter's tenant-isolation boundary -- the `extra_filter`
+# rejection that stops `retriever.retrieve` from retrying a scoped read without
+# its tenant. Those are negative controls, and a control that skips when its
+# dependency is missing is not a control. The CI unit-tests job installs this
+# file for the same reason its lint job already did: a missing optional
+# dependency is a wrong environment, not a defect, and silencing it with a
+# skip or a type-ignore would hide the very thing being tested.
+azure-search-documents>=12.0

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 MAX_CHUNKS = 200
 MAX_CHARS = 60000
@@ -66,7 +68,22 @@ def locate_excerpt(full_chunk_text: str, excerpt: str, window: int = 40) -> tupl
     return 0, len(full)
 
 
-def build_source_view(cited: dict, corpus: list[dict]) -> dict:
+def build_source_view(
+    cited: dict,
+    # WHY Sequence[Mapping] and not list[dict]: `store.scroll_all()` is declared
+    # by VectorSearchPort as returning list[ScrolledChunk], and ScrolledChunk is a
+    # TypedDict. Pyright will not assign a TypedDict to a bare `dict` parameter,
+    # and it will not assign list[ScrolledChunk] to list[dict] either, because
+    # list is invariant in its element type. The alternative -- Sequence, which
+    # is covariant -- expresses what this function actually needs: it only ever
+    # reads through .get(), so it accepts any read-only mapping sequence and
+    # does not care whether the concrete row type is dict, ScrolledChunk, or a
+    # Mapping subclass.
+    #
+    # This is a type annotation, not a behaviour change: the previous
+    # annotation was narrower than the code and pyright was right to flag it.
+    corpus: Sequence[Mapping[str, Any]],
+) -> dict:
     """Assemble the full source document around a cited chunk (pure).
 
     cited:  {chunk_id, filename, text} (citation excerpt)

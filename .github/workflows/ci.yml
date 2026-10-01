@@ -76,6 +76,23 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          # Optional extras are installed HERE, in the test job, for the same
+          # reason the lint job does it: maia imports redis / docx /
+          # psycopg_pool / langgraph.postgres / azure.search behind lazy,
+          # optional paths, and a test that exercises one of those paths fails
+          # on the missing module rather than on the behaviour under test.
+          #
+          # tests/test_retrieval_port.py is the concrete case. It drives the Azure
+          # AI Search adapter's tenant-isolation boundary -- the `extra_filter`
+          # rejection that stops `retriever.retrieve` from retrying a
+          # tenant-scoped read without its tenant. Those are negative controls,
+          # and a negative control that silently skips because its dependency is
+          # absent is not a control: marking them skip-if-missing would turn a
+          # real cross-tenant regression into a green build.
+          #
+          # This is an environment fix, not a suppression. No test is skipped,
+          # no type-ignore is added, no threshold moves.
+          pip install -r requirements-optional.txt
           pip install pytest
       - name: Run unit tests (fast only — live/infra run in ci-live.yml)
         env:
