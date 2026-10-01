@@ -47,11 +47,9 @@ rule        : no number appears below unless it was measured here, or is explici
 ## 4. Open defects (carried, with source)
 
 - **[maia-gate8-unmeasured]** P1 — abstention gate **exits 1** (authorised 8 of 9 labelled no-answer queries); refusal-accuracy is **UNMEASURED** (usable = 0 of 9). *source: `docs/PORTFOLIO-COMPLETION-AUDIT-v2.md`*
-- **[maia-iac-invariant-contract-drift]** P1 — `infra/check_invariants.py` **crashes** on the canonical ARM output; it cannot distinguish an invariant violation from an unsupported ARM node, so it **never reached a verdict**. *source: same.* → Terraform `check_plan_invariants.py` must fail closed with a JSON path, never a traceback.
-  - **Terraform side: CLOSED and measured** (`4303dd6d`, see §7). The plan-JSON
-    checker now fails closed with a JSON path on an unreadable, unparseable or
-    non-object plan, and on uninspectable change shapes. The Bicep checker was
-    **not** re-run in this pass, so the Bicep half of this defect stays open.
+- **[maia-iac-invariant-contract-drift]** P1 — *as originally recorded, this defect is now **CLOSED on both halves**; the entry is retained for traceability.* It read: `infra/check_invariants.py` **crashes** on the canonical ARM output and **never reached a verdict**, and the Terraform checker had to be built to fail closed.
+  - **Bicep half — CLOSED, measured 2026-10-02** (`docs/evidence/bicep-invariants/2026-10-02-bicep-validate.log`): `infra/validate.sh` exits 0 with `IaC validation: ALL CHECKS PASSED`, and the checker reaches a real verdict on the canonical ARM output — `2 invariant(s) held across 1 vault(s)`, not a skip. `infra/scripts/test_checker_traversal.py` holds **22/22** traversal contracts, including *malformed entry -> no traceback + JSON path shown*, *vault absent bites (never SKIP)* and *string false-string bites*. The stale record is explained by PR #10 (`fix(infra): fail closed on malformed ARM shapes, with traversal controls`), merged 2026-10-01 **after** the 2026-10-01 snapshot this section was written from.
+  - **Terraform half — CLOSED, measured 2026-10-02** (see §7): the plan-JSON checker fails closed with a JSON path on an unreadable, unparseable or non-object plan, and on uninspectable change shapes.
 - **[maia-runtime-image-deps]** — `requirements.api.txt` **deliberately excludes** `torch`, `sentence-transformers`, `fastembed`, `rank-bm25`, `onnxruntime` (Container Apps **Consumption = 1 GiB** → OOM). *source: `requirements.api.txt` (in-repo).* → "reranker in the runtime image" is an **ACA sizing decision**, not a config toggle.
 
 ## 5. NOT YET MEASURED (fail-closed)

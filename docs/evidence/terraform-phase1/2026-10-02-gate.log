@@ -1,8 +1,8 @@
 # MAIA Phase 1 Terraform gate — measured evidence
-measured_at : 2026-10-01T19:23:31Z
+measured_at : 2026-10-01T19:38:27Z
 host        : Darwin arm64
 branch      : migration/terraform-maia
-source_sha  : 4303dd6d000dcf25e309cc61336e3c3a08477d91
+source_sha  : fbad86702b3e91c516fe1da483b29be90c0afc32
 method      : every number below was printed by a command executed at source_sha
 scope       : offline only — no Azure login, no plan against a subscription, no apply
 rule        : nothing here is copied from another document
@@ -13,7 +13,7 @@ trivy     : Version: 0.74.0
 python    : Python 3.14.7
 
 ## Worktree state before the run
-tracked files changed (excluding untracked evidence/output): 0
+tracked files changed (excluding untracked evidence/output): 3
 ^^ 0 = the figures below describe a frozen SHA, not local edits
 
 ## Inventory (counted from disk, not read from a doc)
@@ -184,13 +184,13 @@ Summary: 15 passed, 0 failed
    -> ok: AZU-0016 reported
 
 == repo scan (documented exception only)
-2026-10-02T02:23:39+07:00	INFO	Loaded	file_path="/Users/mainguyenbinhtan/Downloads/Projects/MAIA/infra/terraform/policies/trivy.yaml"
-2026-10-02T02:23:39+07:00	INFO	[misconfig] Misconfiguration scanning is enabled
-2026-10-02T02:23:39+07:00	INFO	[checks-client] Using existing checks from cache	path="/Users/mainguyenbinhtan/Library/Caches/trivy/policy/content"
-2026-10-02T02:23:39+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
-2026-10-02T02:23:40+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
-2026-10-02T02:23:40+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
-2026-10-02T02:23:40+07:00	INFO	Detected config files	num=3
+2026-10-02T02:38:34+07:00	INFO	Loaded	file_path="/Users/mainguyenbinhtan/Downloads/Projects/MAIA/infra/terraform/policies/trivy.yaml"
+2026-10-02T02:38:34+07:00	INFO	[misconfig] Misconfiguration scanning is enabled
+2026-10-02T02:38:34+07:00	INFO	[checks-client] Using existing checks from cache	path="/Users/mainguyenbinhtan/Library/Caches/trivy/policy/content"
+2026-10-02T02:38:34+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
+2026-10-02T02:38:34+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
+2026-10-02T02:38:34+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
+2026-10-02T02:38:34+07:00	INFO	Detected config files	num=3
 
 Report Summary
 
@@ -320,7 +320,7 @@ exit code: 1
 ^^ a non-zero exit with no traceback on stdout/stderr is the intended contract
 
 ## Verdict
-Phase 1 offline gate: PASS at 4303dd6d000dcf25e309cc61336e3c3a08477d91
+Phase 1 offline gate: PASS at fbad86702b3e91c516fe1da483b29be90c0afc32
 Still NOT done for Phase 1 (stated so the pass is not over-read):
   - Bicep is still CURRENT_CANONICAL_IAC; nothing is merged, applied or imported
   - no Azure plan/apply ran here, so no resource existence is claimed
