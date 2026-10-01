@@ -17,7 +17,6 @@ from .loops.metrics import registry
 from .pipeline_wiring import PipelineTracer
 from .prompt import assemble, build_messages
 from .reranker import get_reranker
-from .retrieval_backends import build_vector_store
 from .retriever import HybridRetriever
 from .vector_store import QdrantStore
 
@@ -37,13 +36,8 @@ def build_stack(tenant_id: str | None = None):
     # Initialise the embedder FIRST so its real dim (1024 for Cloudflare BGE-m3)
     # is known before QdrantStore creates the collection.
     embedder = get_embedder(model=settings.EMBED_MODEL, dim=settings.EMBED_DIM)
-    # Backend dispatch lives in retrieval_backends.build_vector_store.
-    # qdrant_store_cls=QdrantStore reads this module's own symbol at call
-    # time, so patch("maia.pipeline_query.QdrantStore") keeps intercepting
-    # construction in tests (default backend wraps the real store in a
-    # behavior-preserving QdrantAdapter).
-    store = build_vector_store(dim=embedder.dim,
-                               qdrant_store_cls=QdrantStore)
+    store = QdrantStore(url=settings.QDRANT_URL, collection=settings.QDRANT_COLLECTION,
+                        dim=embedder.dim, api_key=settings.QDRANT_API_KEY)
     retriever = HybridRetriever(
         store, embedder, storage_dir=settings.STORAGE_DIR,
         top_k_dense=settings.TOP_K_DENSE, top_k_bm25=settings.TOP_K_BM25,

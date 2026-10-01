@@ -76,13 +76,6 @@ silent until a deploy fails at startup. With this convention
 `KV_SECRET_NAMES` in `src/maia/azure_identity.py` is the authoritative list, and
 `infra/` must match it:
 
-> HONEST STATUS (TODO 5): two secret lists legitimately coexist today, so
-> "must match" is the migration target, not the current state. Bicep's
-> `keyVaultSecretNames` carries the LIVE ACA secret-refs
-> (`demo-user-a-pw`/`demo-user-b-pw`); `KV_SECRET_NAMES` is the FUTURE
-> resolver contract. The Bicep-sync test documents this skip and is re-armed
-> at migration. Forcing equality now would break ACA startup.
-
 | secret | why it is a secret |
 | --- | --- |
 | `JWT_SECRET_KEY` | token signing key; rotating it invalidates sessions |
@@ -158,16 +151,11 @@ in `retrieval_backends.py`:
 
 Until then, `azure_ai_search` is a supported setting and an unproven one.
 
-## 5. The deferred `pipeline_query.py` patch (3 lines — LANDED in TODO 4)
+## 5. The deferred `pipeline_query.py` patch (3 lines, NOT applied)
 
-`pipeline_query.py` was dirty when the factory was designed, so the factory
-takes the store *class* as a parameter and `build_stack` passes its own
-module-level `QdrantStore` symbol — both protected patch sites
-(`test_health_endpoints.py:53`, `test_reranker_lifecycle.py:83`) keep
-intercepting construction, verified by the full suite plus
-`test_p10_factory_builds_exactly_one_store`. The inline replay test
-`test_deferred_pipeline_query_wiring_still_lets_the_protected_tests_patch_the_store`
-remains as the seam's living specification.
+`pipeline_query.py` is dirty in this working tree, so the factory is designed
+around a seam that keeps the two protected tests working rather than changing
+them. Both patch the symbol in `pipeline_query`'s **own** namespace:
 
 * `tests/test_health_endpoints.py:53` — `patch("maia.pipeline_query.QdrantStore")`
 * `tests/test_reranker_lifecycle.py:83` — `monkeypatch.setattr(pq, "QdrantStore", _FakeStore)`

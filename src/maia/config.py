@@ -38,6 +38,24 @@ class Settings(BaseSettings):
     # offline InMemoryVectorStore used by tests and demos.
     VECTOR_STORE_BACKEND: str = "qdrant"
 
+    # Azure hosting (managed identity + Key Vault). Every field defaults to
+    # "" so an absent Azure configuration is indistinguishable from a local
+    # run -- maia.azure_identity decides, at call time, between the ambient
+    # credential chain and a managed identity. No network call happens while
+    # this module is imported.
+    #
+    # AZURE_TENANT_ID / AZURE_CLIENT_ID: the user-assigned managed identity's
+    # client id. On Azure it pins WHICH identity DefaultAzureCredential uses
+    # (without it the system-assigned identity is picked, which is a different
+    # principal with different role assignments -- a silent 403, not a useful
+    # error). Off Azure they are left empty so the ambient chain (`az login`)
+    # is what a developer gets.
+    AZURE_TENANT_ID: str = ""
+    AZURE_CLIENT_ID: str = ""
+    # Vault URI (e.g. https://my-vault.vault.azure.net/). Non-empty turns on
+    # Key Vault secret resolution in maia.azure_identity; empty keeps the
+    # process environment as the only secret source.
+    AZURE_KEY_VAULT_URI: str = ""
     # Azure AI Search (S1 or higher -- the free tier has no vector search).
     AZURE_AI_SEARCH_ENDPOINT: str = ""
     AZURE_AI_SEARCH_INDEX: str = "maia_knowledge"
@@ -46,17 +64,6 @@ class Settings(BaseSettings):
     # this stays empty in Azure and the value is never a deployment secret.
     # It exists at all because a dev container has no identity to assume.
     AZURE_AI_SEARCH_API_KEY: str = ""
-
-    # Azure hosting identity (managed identity + Key Vault addressing).
-    # Every field defaults to "" so an absent Azure configuration is
-    # indistinguishable from a local run. AZURE_TENANT_ID / AZURE_CLIENT_ID
-    # pin WHICH user-assigned managed identity DefaultAzureCredential uses on
-    # the cloud path; off Azure they are ignored so `az login` keeps working.
-    # AZURE_KEY_VAULT_URI turns on Key Vault secret resolution; empty keeps
-    # the process environment as the only secret source.
-    AZURE_TENANT_ID: str = ""
-    AZURE_CLIENT_ID: str = ""
-    AZURE_KEY_VAULT_URI: str = ""
 
     # Embeddings (§9)
     #

@@ -67,14 +67,13 @@ _DEVELOPMENT_ENVIRONMENTS: Final[frozenset[str]] = frozenset(
 #: `persistence.ENV_DSN`, and that single name is asserted equal in
 #: tests/test_azure_identity.py.
 #:
-#: HONEST STATUS (TODO 5): two secret lists legitimately coexist today.
-#: Bicep's `keyVaultSecretNames` carries the LIVE ACA secret-refs
-#: (demo-user-a-pw/demo-user-b-pw) — names the running container resolves
-#: now. THIS tuple is the FUTURE resolver contract — names the app will
-#: resolve from Key Vault after the migration wave. Forcing equality today
-#: would break ACA startup on unprovisioned references. Convergence happens
-#: at migration, when the Bicep-sync test (currently a documented skip) is
-#: re-armed to compare the blocks.
+#: Drift status, stated precisely because an earlier version of this comment
+#: claimed the two lists "cannot silently drift" while NO test enforced it:
+#: `infra/` does not exist in this working tree, so the list-equality check is
+#: `skipif`-guarded on the Bicep file being present. It becomes a real check
+#: the day the module lands, and it does NOT run today. Until then the sync
+#: between this tuple and the Bicep is a review convention, not an enforced
+#: invariant.
 KV_SECRET_NAMES: Final[tuple[str, ...]] = (
     "JWT_SECRET_KEY",
     "AUTH_DB_URL",
@@ -99,15 +98,6 @@ class SecretUnavailable(RuntimeError):
 
     Nêu rõ secret nào và đã thử cả hai nguồn, vì "thiếu cấu hình" và "sai tên
     secret trong vault" là hai lỗi khác nhau cần hai cách sửa khác nhau.
-    """
-
-
-class IdentityConfigurationError(ValueError):
-    """Cấu hình identity trên Azure thiếu/không hợp lệ.
-
-    `ValueError` vì đây là giá trị cấu hình sai, không phải dependency thiếu.
-    Chỉ raise trên cloud path (`running_on_azure()`): local dev dùng ambient
-    chain và không bao giờ thấy lỗi này.
     """
 
 
@@ -155,19 +145,6 @@ def _default_azure_credential() -> Any:
 
     client_id = settings.AZURE_CLIENT_ID.strip()
     tenant_id = settings.AZURE_TENANT_ID.strip()
-    # On Azure the user-assigned managed identity is REQUIRED, not optional:
-    # without an explicit client id DefaultAzureCredential may resolve the
-    # SYSTEM-assigned identity (or fail at IMDS), which is a different
-    # principal with different role assignments -- a silent 403, not a useful
-    # error. TODO 3 selected user-assigned identity precisely so the workload
-    # authenticates as one explicit principal; failing here enforces that.
-    if running_on_azure() and not client_id:
-        raise IdentityConfigurationError(
-            "AZURE_CLIENT_ID is required on Azure: without it the credential "
-            "chain may resolve the system-assigned identity instead of the "
-            "user-assigned managed identity, which surfaces as a silent 403. "
-            "Set AZURE_CLIENT_ID to the user-assigned identity's client id."
-        )
     # On Azure, AZURE_CLIENT_ID is the user-assigned managed identity. Pin it
     # explicitly: without this, DefaultAzureCredential resolves the
     # SYSTEM-assigned identity, which is a different principal with different
@@ -210,29 +187,10 @@ def _key_vault_secret_client() -> Any:
             "Thiếu azure-keyvault-secrets. Cài: "
             "pip install 'azure-keyvault-secrets>=4.11'"
         ) from exc
-    return _cached_secret_client(
-        settings.AZURE_KEY_VAULT_URI.strip(), SecretClient)
-
-
-_secret_clients: dict[str, Any] = {}
-
-
-def _cached_secret_client(vault_url: str, client_cls: Any) -> Any:
-    """One SecretClient per vault URI, process-wide.
-
-    Clients (credential chains) are reusable; secret VALUES are never cached
-    here — every resolve_kv_secret() call still performs get_secret(), so a
-    rotated secret is visible on the next read without restart. Keyed by URI
-    so tests pointing at different fake vaults cannot share a client.
-    """
-    client = _secret_clients.get(vault_url)
-    if client is None:
-        client = client_cls(
-            vault_url=vault_url,
-            credential=azure_credential(),
-        )
-        _secret_clients[vault_url] = client
-    return client
+    return SecretClient(
+        vault_url=settings.AZURE_KEY_VAULT_URI.strip(),
+        credential=azure_credential(),
+    )
 
 
 def resolve_kv_secret(name: str) -> str:

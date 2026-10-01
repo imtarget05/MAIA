@@ -441,19 +441,8 @@ class AzureAISearchAdapter:
         if not credential:
             # Resolve the managed identity only when there is nothing else,
             # so tests and API-key deployments never touch azure.identity.
-            # Imported lazily AND guarded: maia.azure_identity lands in
-            # TODO 5, so its absence here is a configuration error, not a
-            # ModuleNotFoundError leaking to the caller.
-            try:
-                from .azure_identity import (  # pyright: ignore[reportMissingImports] - lands in TODO 5; ImportError guarded below
-                    azure_credential,
-                )
-            except ImportError as exc:
-                raise AzureSearchUnavailable(
-                    "No API key/credential configured and maia.azure_identity "
-                    "is unavailable: managed-identity auth is not wired yet "
-                    "(TODO 5)."
-                ) from exc
+            from .azure_identity import azure_credential
+
             credential = azure_credential()
         return SearchClient(
             endpoint=self._endpoint,
@@ -555,12 +544,10 @@ class AzureAISearchAdapter:
                     continue
                 hits.append(self._to_search_hit(item, score))
             return hits
-        except (TypeError, ValueError, AttributeError, KeyError) as exc:
+        except (TypeError, ValueError) as exc:
             # Fold every internal TypeError/ValueError into a domain error, so
             # the only TypeError a caller can observe is one from binding THIS
-            # method's signature. AttributeError/KeyError from mapping a
-            # malformed vendor document fold too: neither can come from
-            # argument binding, so neither risks the tenant-widening retry. Without this, an SDK signature drift in
+            # method's signature. Without this, an SDK signature drift in
             # `self._client.search` -- the same class of problem the
             # qdrant-client <1.10 branch exists for at vector_store.py:186 --
             # or a malformed vector would be read by `retriever.retrieve` as
@@ -610,7 +597,7 @@ class AzureAISearchAdapter:
                 skip += len(batch)
                 if len(batch) < page_size:
                     break
-        except (TypeError, ValueError, AttributeError, KeyError) as exc:
+        except (TypeError, ValueError) as exc:
             # Same invariant as search(): a TypeError here would be read by
             # `retriever.rebuild` as "this store takes no tenant_id" and
             # retried with NO tenant filter, putting every tenant's chunks

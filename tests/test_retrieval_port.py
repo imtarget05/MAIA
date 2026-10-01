@@ -46,40 +46,6 @@ from maia.test_utils import InMemoryVectorStore
 from maia.vector_store import QdrantStore
 
 
-@pytest.fixture(autouse=True)
-def _vectorized_query_without_sdk(monkeypatch):
-    """Let adapter.search() run without the optional azure SDK installed.
-
-    The adapter imports VectorizedQuery lazily inside search(); in CI the
-    package is deliberately absent (requirements keep the ACA image lean),
-    which used to fail every test that actually calls search() with
-    ModuleNotFoundError instead of exercising the tenant/filter logic.
-    The fake accepts the same constructor kwargs the adapter passes and is
-    invisible to the stub clients (they only inspect their own `search`
-    kwargs). When the real SDK IS installed this fixture does nothing, so
-    the tests still run against the real class there.
-    """
-    try:
-        import azure.search.documents.models  # noqa: F401
-        return
-    except ImportError:
-        pass
-    import types
-
-    models = types.ModuleType("azure.search.documents.models")
-
-    class VectorizedQuery:
-        def __init__(self, **kwargs: Any) -> None:
-            self.kwargs = kwargs
-
-    models.VectorizedQuery = VectorizedQuery
-    for name in ("azure", "azure.search", "azure.search.documents"):
-        pkg = types.ModuleType(name)
-        pkg.__path__ = []  # type: ignore[attr-defined]
-        monkeypatch.setitem(sys.modules, name, pkg)
-    monkeypatch.setitem(sys.modules, "azure.search.documents.models", models)
-
-
 # --------------------------------------------------------------------------- #
 # 1. structural conformance
 # --------------------------------------------------------------------------- #

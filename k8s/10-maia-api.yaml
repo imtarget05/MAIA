@@ -1,0 +1,116 @@
+# API tĩnh nhẹ, đóng vai trò API của MAIA cho mục đích kiểm chứng manifest.
+#
+# VÌ SAO KHÔNG PHẢI MAIA THẬT:
+#   Image MAIA thật cần Postgres + Qdrant + LLM gateway và cài hàng trăm
+#   package. Trong kind, việc đó biến bài toán "manifest có đúng không" thành
+#   bài toán "mọi dependency có chạy không" — và nếu nó fail, ta không biết
+#   lỗi nằm ở manifest hay ở hạ tầng.
+#
+#   Nên ở đây ta kiểm chứng ĐÚNG THỨ CẦN kiểm chứng: Deployment, Service,
+#   ConfigMap, Secret, probes, resource limit, rolling update, HPA. API thật
+#   đã được kiểm chứng bằng 831 test ở Phase 8.
+#
+#   Giới hạn này được ghi lại trong evidence, không giấu.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maia-api
+  namespace: portfolio
+  labels:
+    app: maia-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: maia-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable=0 nghĩa là luôn có tối thiểu số pod đang phục vụ
+      # trong lúc lên phiên bản mới. Nếu để mặc định (25%), một deployment
+      # 2 replica có thể mất cả hai cùng lúc và nhận traffic vào hư không.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: maia-api
+    spec:
+      serviceAccountName: portfolio-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: api
+        image: hashicorp/http-echo:1.0.0
+        # `-text=` trả về chính thân nó trên MỌI path, nên probe không phụ thuộc
+        # vào endpoint cụ thể. Điều này giữ manifest tập trung vào cơ chế K8s
+        # thay vì vào chi tiết API.
+        #
+        # Flag đúng của image này là `-listen`, KHÔNG phải `-port`. Sai tên cờ
+        # làm container exit code 2 ngay lập tức và CrashLoopBackOff — một
+        # lỗi rất dễ bỏ qua nếu chỉ nhìn trạng thái pod mà không đọc log.
+        args: ["-text=maia-api ok", "-listen=:8000"]
+        ports:
+        - name: http
+          containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: portfolio-config
+        env:
+        - name: API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: portfolio-secrets
+              key: API_TOKEN
+        # Readiness: pod sẵn sàng nhận traffic chưa. Số 3 là số lần thử.
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 2
+          periodSeconds: 3
+          failureThreshold: 3
+        # Liveness: pod còn sống không. Delay dài hơn readiness có chủ đích —
+        # container chậm khởi động không nên bị restart chỉ vì chưa sẵn sàng.
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "25m"
+            memory: "32Mi"
+          limits:
+            # Không set cpu limit: đặt cpu limit làm pod bị throttling khi
+            # node đang bận, và throttling CPU thường đáng giá hơn là chậm.
+            # Memory limit thì bắt buộc — không có nó thì một rò rỉ bộ nhớ
+            # sẽ giết cả node.
+            memory: "64Mi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maia-api
+  namespace: portfolio
+  labels:
+    app: maia-api
+spec:
+  type: ClusterIP
+  selector:
+    app: maia-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
