@@ -413,8 +413,12 @@ jobs:
         run: az bicep build --file infra/main.bicep
       - name: Build parameter files
         run: |
-          az bicep build-params --file infra/parameters/dev.bicepparam
-          az bicep build-params --file infra/parameters/prod.bicepparam
+          az bicep build-params --file infra/parameters/v1-dev.bicepparam
+          az bicep build-params --file infra/parameters/v1-prod.bicepparam
+          az bicep build-params --file infra/parameters/v6-dev.bicepparam
+          az bicep build-params --file infra/parameters/v6-prod.bicepparam
+      - name: V1 deployment-scope invariant
+        run: python3 infra/scripts/validate-v1-scope.py
 
   pip-audit:
     # Dependency audit — ADVISORY (continue-on-error) until triaged.
