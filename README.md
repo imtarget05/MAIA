@@ -87,7 +87,7 @@ graph TD
 - **Frontend UI**: Streamlit (Rich Chat UI, Dark/Light Mode, CSS Theming)
 - **Storage & State**: SQLite WAL (Auth, Workflow, Sessions, LTM, LangGraph Checkpoints)
 - **Authentication**: JWT + bcrypt + Google OAuth 2.0, RBAC (Admin/User)
-- **Infrastructure**: Docker, Docker Compose, Alembic Migrations, Render Blueprints
+- **Infrastructure**: Docker, Docker Compose, Alembic Migrations; Azure Container Apps (current) via Bicep in `infra/`; Render Blueprints retained as superseded legacy
 - **Web Scraping**: Trafilatura (with SSRF protection)
 
 ## 🚀 Quick Start
@@ -159,46 +159,96 @@ The system provides 40+ endpoints. Here are the core services:
 ├── data/market/          # Marketing fixtures: reviews (JSONL) + campaign metrics (CSV)
 ├── app_streamlit.py      # Streamlit conversational interface
 ├── data/enterprise/      # Sample company policy documents
-├── eval/                 # Benchmark datasets (73 golden test cases)
+├── eval/                 # Golden benchmark datasets — 10 groups, 98 rows (`eval/golden/`)
 ├── tests/                # offline unit & integration suite
 ├── deploy/docker/        # Infrastructure orchestration
 ├── alembic/              # Database schema migrations
-└── render.yaml           # Render Cloud Blueprint deployment
+└── render.yaml           # Render Cloud Blueprint — SUPERSEDED legacy path (see Deployment status)
 ```
 
 ## 🧪 Testing & Evaluation
 
-The platform is built with rigorous testing standards. The full suite runs
-entirely offline.
+The full suite runs entirely offline. The measured figures below are the source of
+truth for how much is verified; the per-feature evidence chain is in
+`docs/evidence/stream_closeout.md`.
 
-**Verified: CI GREEN 13/13 jobs on canonical `a82f24b` (run `36819947283`); unit-tests job 998 passed, 12 skipped, 2 deselected, 3 xfailed, 0 failed**
-**Reproduce (local):** `pytest tests/ -q -p no:cacheprovider`
-**Image:** `ghcr.io/imtarget05/maia-maia-api:a82f24b…@sha256:9be70ed1…` (build run `36819947364`, SLSA provenance attested)
-**Cloud:** revision `ca-maia-api--0000006` runs `a82f24b` at 100% traffic, Healthy. Live-probed: `/health` ok, unauth `/chat/stream` 401, authenticated stream `meta → 5×token → citations → done` exactly once with graceful degradation under total Qdrant outage (no traceback, no 500; `/chat` parity returns JSON error, not 500).
+**Measured on `main` at `8ced0695`**, with `MAIA_EMBED_FORCE_HASH=1` and
+`pytest tests/ -m "not live and not infra" --strict-markers`:
 
-> `2d2eaf9`, `dd39026`, the `967 @ 38189ca` figure, and the interim `997`
-> worktree figure are historical. The former single residual
-> (`test_format_checker_rejects_bad_datetime`) was fixed by registering a
+```text
+1163 passed, 14 skipped, 2 deselected, 3 xfailed, 0 failed
+```
+
+The 14 skips are environment-gated, **not failures**: 10 require a running
+Qdrant (`tests/test_tracing.py`, `tests/test_threshold_regression.py`,
+`tests/test_golden_eval.py` — each skips with "Qdrant not available - set
+`QDRANT_URL`"), 1 requires `azure-search-documents`, 2 require
+`MAIA_POSTGRES_DSN`, and 1 is a deliberate skip at
+`tests/test_azure_identity.py:564`. Docker was unavailable for that run, so a
+Qdrant-present figure was **NOT** re-measured and none is extrapolated here.
+`.github/workflows/ci.yml` defines **15** job keys.
+
+**Also measured at `8ced0695`:** `ruff check src/` clean; `pyright src/` = exactly
+**4** errors, all `reportMissingImports` for optional deps — `torch` at
+`ner_tool.py:76` and `:141`, `langgraph.checkpoint.postgres.aio` at
+`persistence.py:75`, `psycopg_pool` at `persistence.py:100`.
+
+**Reproduce (local):** `MAIA_EMBED_FORCE_HASH=1 pytest tests/ -m "not live and not infra" --strict-markers`
+
+### Deployment evidence — three states, not one
+
+| claim | state | evidence |
+|---|---|---|
+| SSE implementation and its regression tests | **VERIFIED** | `tests/test_chat_stream_sse.py` (16 tests), `tests/test_agent_chat_api.py`; contract in `docs/evidence/stream_closeout.md` |
+| The deployed revision that carries this code | **two identities, unresolved** | `ca-maia-api--0000006` / `a82f24b` backs the streaming + test-count evidence; `ca-maia-api--0000012` / `b53aca4` is the newest documented deployment (`docs/azure-integration.md` §7). **Which revision currently serves traffic is NOT VERIFIED.** |
+| Authenticated Azure SSE end-to-end, and `/query` real-RAG against Qdrant Cloud | **NOT VERIFIED** | no retained artifact. The one retained live probe ran with the vector store unreachable and returned `citations([])` — see `docs/evidence/stream_closeout.md` §8–9 |
+
+No liveness or traffic-split claim is made here, because nothing committed
+re-establishes one.
+
+> Historical figures, retained because the streaming evidence was produced there:
+> CI run `36819947283` at `a82f24b` was GREEN with `998 passed, 12 skipped, 2
+> deselected, 3 xfailed`; run `36768831367` at `2d2eaf9` was GREEN with `987
+> passed, 12 skipped, 2 deselected, 3 xfailed`. The `967 @ 38189ca`, `981 @ 20ec528`
+> and dirty-worktree `997` figures are likewise historical. The former single
+> residual (`test_format_checker_rejects_bad_datetime`) was fixed by registering a
 > stdlib RFC-3339 date-time check; the live-probe error-path defect
 > (`llm.mode` on None) was fixed by degrading to `"unknown"`. Proof chain in
 > `docs/evidence/stream_closeout.md`.
 
 ### Honest status of the answerability gate
 
-`eval/audit_eval_rows.py --only no_answer` reports:
+**MEASURED DEFECT.** The abstention gate **fails, and the failure is published
+rather than tuned away**. Gate 8B-C reports `status: "FAIL"` and exits `1`: 9 of
+11 checks pass, `B8B1` and `B8B3` fail.
 
+```text
+abstention_rate        0.1111   (1 of 9 labelled no-answer queries refused, n = 9)
+separable              false
+max no-answer top_dense  0.6957
+min answerable top_dense 0.3140
 ```
-no_answer   rows=9   usable=0   unusable=8   rejected=1   conflict=0
-```
 
-**Zero no-answer rows are currently usable in metrics.** The suite is green,
-but the abstention metric is *unmeasured*, not *passing*. One row (`NOANS-009`)
-was retired after corpus verification contradicted its label — the audit CLI
-keeps retired rows in place and excludes them from metrics, so the record that
-a label was ever corrected is not lost.
+Because `max(no-answer) >= min(answerable)`, the two classes **overlap**, so no
+value of `SIMILARITY_THRESHOLD` separates them: any threshold low enough to
+refuse all 9 no-answer queries also refuses the weakest genuine answer. A cosine
+score on the top chunk measures topical similarity, not answerability.
 
-No refusal-accuracy number is published here, because producing one over 0
-usable rows would be reporting a metric of nothing.
+The corpus is labelled, so this is a measurement and not a blind spot:
+`eval/audit_eval_rows.py --only no_answer` reports
+`rows=9 usable=7 unusable=1 rejected=1`, i.e. **7 usable of 9**. `NOANS-009` was
+rejected after corpus verification contradicted its label; the audit CLI keeps
+retired rows in place, so the record that a label was corrected is not lost.
+
+**Closing this needs a different decision signal, not a threshold change** —
+answer-span verification or an NLI entailment check. No threshold was tuned and
+no golden row was relabelled to reach a target number; see `eval/README.md:16`.
+
+Source of truth: `eval/README.md:16-40` and the artifact
+`../docs/evidence/e2e/gate8b-abstention.json` — **that artifact lives in the
+sibling `Projects/docs` repository, so a clone of MAIA alone does not contain
+it.** Environment-dependent numbers in this section are stated from the artifact,
+not hardcoded here.
 
 ```bash
 # Run the test suite in full offline mock mode
@@ -228,18 +278,33 @@ curl -sX POST localhost:8000/api/v1/market/scenarios/run \
 python -m maia.mcp.bridge --server market_insight --list-tools | jq '.tools[].name'
 ```
 
-## 🌐 Deployment status (cập nhật 2026-09-28)
+## 🌐 Deployment status
 
-Các link Render free-tier cũ (`maia-api-irau.onrender.com`, `maia-ui.onrender.com`)
-hiện trả về **HTTP 503** khi kiểm chứng (service dừng/sleep) — **không dùng link
-này làm demo**. Cách dựng lại:
+**Current platform: Azure Container Apps.** See `docs/azure-integration.md` §7.
+What is and is not verified about that deployment is stated there and in the
+deployment-evidence table above; no liveness or traffic claim is made from this
+README.
+
+**Render is SUPERSEDED legacy.** The Render free-tier links
+(`maia-api-irau.onrender.com`, `maia-ui.onrender.com`) returned **HTTP 503**
+when last checked (service stopped/asleep) — **không dùng link này làm demo**.
+`render.yaml`, `docs/deployment.md` and the `cd.yml` / `keepalive.yml`
+workflows still contain Render references and are kept for history; they are
+**not** the live path and nothing here depends on them.
+
+Cách dựng lại:
 
 - **Local (khuyến nghị, hoạt động offline):** `docker compose up -d` → API
   `http://localhost:8000/docs`, UI `http://localhost:8501` (xem Quick Start).
-- **Cloud:** `render.yaml` là Render Blueprint — fork repo → New → Blueprint,
-  set `JWT_SECRET_KEY`, embedding/model env theo `src/maia/config.py`.
-- **CI làm bằng chứng vận hành:** `.github/workflows/{ci,cd}.yml` (ruff, pyright,
-  pytest với Qdrant service container, push image GHCR).
+- **Cloud (current):** Azure Container Apps — Bicep templates in `infra/`,
+  secrets via Key Vault with user-assigned managed identity, per
+  `docs/azure-integration.md`.
+- **Cloud (legacy, superseded):** `render.yaml` là Render Blueprint — fork repo
+  → New → Blueprint, set `JWT_SECRET_KEY`, embedding/model env theo
+  `src/maia/config.py`.
+- **CI làm bằng chứng vận hành:** `.github/workflows/ci.yml` (ruff, pyright,
+  pytest với Qdrant service container, push image GHCR). The job count and the
+  measured suite figures are in the Testing section above.
 
 ---
 *Developed by [imtarget05](https://github.com/imtarget05)*
