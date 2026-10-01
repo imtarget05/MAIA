@@ -12,7 +12,14 @@
 # hosted model có thể đổi bất cứ lúc nào -> CI flaky không kiểm soát được.
 #
 # Quan trọng: eval/README.md nói rõ canonical dataset là eval/golden/
-# (95 rows, 10 groups). eval/retrieval_dataset.jsonl và eval/dataset.jsonl
+# (98 rows, 10 groups).
+#
+# GATE 8B-C (abstention) - DO NOT add a similarity threshold here to make it
+# pass. Measured: max no-answer top_dense 0.6957 >= min answerable top_dense
+# 0.3140, so the classes OVERLAP and no scalar threshold can separate them.
+# Closing this needs a different decision signal (answer-span verification or an
+# NLI entailment check), not a new number on this file. See eval/README.md.
+# eval/retrieval_dataset.jsonl và eval/dataset.jsonl
 # là LEGACY, dùng để claim quality là sai dataset.
 GATE_VERSION: "1.0"
 

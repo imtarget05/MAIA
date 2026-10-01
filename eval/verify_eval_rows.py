@@ -42,6 +42,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CORPUS_DIR = ROOT / "data/enterprise"
 GOLDEN_DIR = ROOT / "eval/golden"
 
+# maia.textnorm is stdlib-only (re + unicodedata) and is the SAME tokenizer the
+# production retriever and gate8b_abstention.py use. Reusing it here is the point:
+# a second home-grown tokenizer here would drift and silently disagree with the
+# matcher the gate trusts.
+sys.path.insert(0, str(ROOT / "src"))
+from maia.textnorm import norm_tokens  # noqa: E402
+
 SOURCE_ALIASES = {
     "leave_policy": "Leave_Policy.md",
     "hr_policy": "HR_Policy.md",
@@ -69,16 +76,59 @@ def load_corpus() -> dict[str, str]:
             for p in sorted(CORPUS_DIR.glob("*.md"))}
 
 
+# Longest probe phrase the absence matcher indexes. "cong thuc nau" is 3 tokens,
+# "vay mua nha" is 3; 5 leaves headroom for the compound probes without turning
+# the index into an unbounded memory cost on an 8-document corpus.
+_MAX_NGRAM = 5
+
+
+def build_token_index(corpus: dict[str, str]) -> dict[str, set[tuple[str, ...]]]:
+    """filename -> set of contiguous token n-grams occurring in that document."""
+    return {
+        name: {tuple(toks[i:i + n])
+               for n in range(1, _MAX_NGRAM + 1)
+               for i in range(len(toks) - n + 1)}
+        for name, body in corpus.items()
+        for toks in (norm_tokens(body),)
+    }
+
+
+def term_present(term: str, index: dict[str, set[tuple[str, ...]]]) -> list[str]:
+    """Documents in which `term` occurs as a contiguous TOKEN SEQUENCE.
+
+    NOT a substring test. `"cat" in "Authentication"` is true, and substring
+    matching reported that as `the fact exists, this row is mislabelled` for
+    NOANS-006 - a correct row contradicted by a broken oracle.
+    gate8b_abstention.py already carries the same finding at length: "A false
+    INVALID_GOLDEN_ROW is worse than a false pass here: it would send someone to
+    edit a correct dataset to satisfy a broken oracle."
+
+    The fix belongs in the matcher, never in the data. Deleting the probe term
+    "cat" would have made the check green by weakening the question.
+    """
+    toks = tuple(norm_tokens(term))
+    if not toks:
+        return []
+    return [name for name, grams in index.items() if toks in grams]
+
+
 def corpus_files() -> dict[str, str]:
     """Alias -> filename, plus the raw filename as its own key."""
     return {**SOURCE_ALIASES, **{v: k for k, v in SOURCE_ALIASES.items()}}
 
 
-def verify_row(row: dict, corpus: dict[str, str], names: dict[str, str]) -> dict:
-    """Return a verification result dict for one row. Never raises."""
+def verify_row(row: dict, corpus: dict[str, str], names: dict[str, str],
+               index: dict[str, set[tuple[str, ...]]] | None = None) -> dict:
+    """Return a verification result dict for one row. Never raises.
+
+    `index` is the token n-gram index used by the NO_ANSWER absence check. It is
+    optional so existing callers keep working; built from `corpus` when omitted.
+    """
     rid = row.get("id", "<no-id>")
     status = row.get("review_status")
     label = row.get("answerability")
+    if index is None:
+        index = build_token_index(corpus)
 
     result = {"id": rid, "file_status": status, "answerability": label,
               "verdict": "UNKNOWN", "problems": []}
@@ -130,8 +180,7 @@ def verify_row(row: dict, corpus: dict[str, str], names: dict[str, str]) -> dict
         problems.append("NO_ANSWER row has no absence_probe_terms "
                         "(absence cannot be proven)")
     for term in absent:
-        needle = norm(term)
-        hits = [name for name, body in corpus.items() if needle in body]
+        hits = term_present(term, index)
         if hits:
             problems.append(
                 f"absence_probe_term {term!r} IS PRESENT in {hits} "
