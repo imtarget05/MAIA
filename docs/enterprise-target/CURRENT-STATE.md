@@ -13,13 +13,14 @@ rule        : no number appears below unless it was measured here, or is explici
 | Field | Value |
 |---|---|
 | remote | `https://github.com/imtarget05/MAIA.git` |
-| **canonical ref (`origin/main`)** | `ee3064967f9e829254d56a467de51b06b6d39c18` |
-| local `HEAD` | `4d39aeb7ba9771af52323c9e4375bb3fb6f91743` (branch `main`) |
-| drift vs origin | **+13 ahead / 0 behind** — all 13 are `docs(...)` commits; no code/test/workflow change |
+| **canonical ref (`origin/main`)** | `c9e356bb8cd8316f1d84980f4b7da5440f29c90e` (Render-cleanup merge, PR #13) |
+| local `HEAD` | not canonical — see drift row |
+| drift vs origin | local branches are stale/unpushed (the Phase 1A Terraform port lives on `migration/terraform-maia`); `origin/main` is the only quotable revision |
+| Render purge | **DONE** — `render.yaml`, `.github/workflows/cd.yml`, `.github/workflows/keepalive.yml` and the `ci.yml` `deploy-production` job removed in PR #13 (merge `c9e356bb`); anti-Render gate `tests/test_hygiene_no_render_deployment.py` (4 tests) merged; `origin/main` tree has **zero** `render.yaml`/`keepalive*` artifacts |
 | worktree | **CLEAN** |
 | latest tag | `maia-closeout-verified` |
 
-**Canonical SHA is `ee306496`, not `4d39aeb7`.** `4d39aeb7` is unpushed local docs drift and must not be quoted as the deployed/verified revision.
+**Canonical SHA is `c9e356bb`.** The previously recorded `ee306496` is superseded by the Render-cleanup merge; unpushed local drift must never be quoted as the deployed/verified revision.
 
 ## 2. Infrastructure as deployed today
 
@@ -52,14 +53,18 @@ rule        : no number appears below unless it was measured here, or is explici
 
 ## 5. NOT YET MEASURED (fail-closed)
 
-- test suite @ `origin/main` ............ **UNMEASURED**
-- CI status @ `origin/main` ............. **UNMEASURED**
 - Azure live revision / image digest .... **UNMEASURED**
 - cost exposure ......................... **UNMEASURED**
+
+MEASURED (CI, `@ c9e356bb`, run `36914855138`, 20m33s — all jobs green):
+
+- test suite @ `origin/main` ............ **1167 passed / 14 skipped / 3 xfailed** (2 deselected)
+  — the pre-cleanup baseline was 1163 passed; the +4 are the anti-Render hygiene gate.
+- CI status @ `origin/main` ............. **GREEN**, 13 jobs (SonarCloud advisory skipped)
 
 CARRIED_FORWARD_NOT_REMEASURED (from audit docs only — do NOT quote as verified): `998 passed`; live revision `ca-maia-api--0000006`; unresolved two-revision identities.
 
 ## 6. Hazards
 
 - `$HOME` (`/Users/mainguyenbinhtan`) is a **DIRTY worktree** of `FlashSale-Backend` (branch `interview-release/auth`). `Projects/.git` is an **empty stub** → any git run from `Projects/` resolves to `$HOME`. **All git MUST use `git -C <abs repo path>`.**
-- Local `main` is 13 commits ahead of `origin/main` → never treat local `HEAD` as canonical.
+- Local branches are stale/unpushed (the Phase 1A Terraform port lives on `migration/terraform-maia`) → never treat local `HEAD` as canonical; always `git fetch` and quote `origin/main`.
