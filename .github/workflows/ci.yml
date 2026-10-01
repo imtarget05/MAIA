@@ -511,23 +511,6 @@ jobs:
           az bicep build --file infra/main.bicep --outfile /tmp/main.v1.json
           python3 infra/check_invariants.py /tmp/main.v1.json
 
-  bicep-validate:
-    # IaC validation — HARD GATE, offline only (no Azure credentials, no
-    # deployment). Catches invalid Bicep before any wave is allowed to run
-    # what-if/deploy. See infra/README.md.
-    name: Bicep validate (offline)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Bicep CLI
-        run: az bicep install
-      - name: Build main template
-        run: az bicep build --file infra/main.bicep
-      - name: Build parameter files
-        run: |
-          az bicep build-params --file infra/parameters/dev.bicepparam
-          az bicep build-params --file infra/parameters/prod.bicepparam
-
   pip-audit:
     # Dependency audit — ADVISORY (continue-on-error) until triaged.
     # The offline dev env means advisories cannot be pre-triaged here, so a
