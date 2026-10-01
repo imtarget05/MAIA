@@ -255,6 +255,19 @@ else
   fail "invariants" "could not compile main.bicep to JSON; see step 1"
 fi
 
+# --- 7b. traversal contract -----------------------------------------------
+# WHY this is a separate, required step. check_invariants.py running without
+# error proves only that it did not crash on THIS template. It does not prove
+# the walk observed what it claims to check: a list-only walk skips Bicep's
+# languageVersion 2.0 symbolic-name map entirely and still exits 0. The
+# traversal suite asserts the nested resource was actually DISCOVERED, by name
+# and path, and that malformed shapes fail closed with a JSON path.
+if python3 scripts/test_checker_traversal.py check_invariants.py; then
+  pass "traversal contracts  symbolic-name map and malformed shapes"
+else
+  fail "traversal contracts" "see the failing contract above"
+fi
+
 # The V6 target is compiled by step 1 but has no invariant assertions: it
 # deploys no Key Vault, so there is nothing to claim. Stated here so the absence
 # reads as a decision rather than an oversight.
