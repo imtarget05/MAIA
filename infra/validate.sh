@@ -273,6 +273,20 @@ fi
 # reads as a decision rather than an oversight.
 printf '        main.v6-target.bicep: no invariant assertions (deploys no vault in this wave)\n'
 
+# ------------------------------------------------------- checker traversal
+# The checker above only exercises the real, compiled template. Its OWN
+# traversal logic -- symbolic-name maps, path propagation, malformed shapes --
+# is what silently stopped reporting vault invariants, so it needs its own
+# controls. A non-zero exit must reach $failures; `|| true` here would turn the
+# control into decoration while still printing reassuring PASS lines.
+printf '\n-- checker traversal contracts --\n'
+if python3 scripts/test_checker_traversal.py check_invariants.py; then
+  :
+else
+  printf '%s  FAIL%s  checker traversal contracts failed\n' "$RED" "$OFF"
+  failures=$((failures + 1))
+fi
+
 # ------------------------------------------------------------------ verdict
 printf '\n'
 if [[ $failures -eq 0 ]]; then
