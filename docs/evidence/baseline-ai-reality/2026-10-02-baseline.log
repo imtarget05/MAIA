@@ -1,0 +1,91 @@
+# MAIA — WAVE 0 baseline AI reality check
+measured_at : 2026-10-01T19:32:34Z
+source_sha  : c43eea3c2292d07aa6ecd0b49cd31ea94bb8cca1
+dependency set : requirements.api.txt (the exact file Dockerfile.api installs)
+question    : what does the shipped image EXECUTE, not what does the source contain?
+
+## Why this venv exists
+Dockerfile.api line 24: RUN pip install --no-cache-dir -r requirements.api.txt
+The repository's own .venv additionally installs fastembed, rank-bm25,
+sentence-transformers and redis. Measuring there would report capabilities
+the production image does not have.
+
+Building a clean venv from requirements.api.txt ...
+venv ready: /private/tmp/maia_apicheck/bin/python
+packages installed: 76
+
+## Measurement
+[reranker] CrossEncoder unavailable (No module named 'sentence_transformers'), using score fallback
+========================================================================
+WAVE 0 — BASELINE AI REALITY CHECK (production dependency set)
+========================================================================
+python  : /private/tmp/maia_apicheck/bin/python
+
+[1] Is each RAG dependency importable in the shipped image?
+------------------------------------------------------------------------
+    ABSENT   rank_bm25                          (BM25 sparse leg of hybrid retrieval)
+    ABSENT   sentence_transformers              (cross-encoder reranker)
+    ABSENT   torch                              (reranker backend)
+    ABSENT   fastembed                          (real embeddings)
+    ABSENT   redis                              (distributed rate limit / cache)
+    ABSENT   psycopg                            (PostgreSQL durable state)
+    ABSENT   langgraph.checkpoint.postgres      (PostgreSQL checkpoints)
+    ABSENT   langgraph.checkpoint.sqlite        (SQLite checkpoints (current durable path))
+    PRESENT  qdrant_client                      (vector store)
+[2] Does the sparse leg actually execute? (HybridRetriever, real code)
+------------------------------------------------------------------------
+    retriever built.  _bm25 index is None (sparse leg dead)
+    corpus chunks: 5
+    retrieve() -> 3 fused results
+      with dense_score > 0 : 3   <- dense leg
+      with bm25_score  > 0 : 0   <- sparse leg
+    VERDICT: HYBRID IS NOT RUNNING. RRF received ONE ranking list.
+             'Hybrid retrieval (dense + BM25, RRF)' is a source-only claim.
+
+[3] Does the reranker execute a real model, or pass through?
+------------------------------------------------------------------------
+    Reranker.mode = 'fallback'
+    input order   : ['c1', 'c2', 'c3']
+    output order  : ['c1', 'c2', 'c3']
+    VERDICT: NO MODEL RAN. Reranker returned the RRF order unchanged.
+             Do not call this 'reranker active' — it is a no-op sort.
+
+[4] Is the rate limiter distributed?
+------------------------------------------------------------------------
+    REDIS_URL = '<unset>'
+    redis package importable: False
+    VERDICT: with no REDIS_URL and no redis package, api.py falls back to
+             the process-local `_rl_hits` dict -> every replica has its own
+             counter, so a multi-replica deployment has no global limit.
+
+[5] What owns durable conversation/checkpoint state?
+------------------------------------------------------------------------
+    MAIA_POSTGRES_DSN = '<unset>'
+    psycopg importable: False
+    VERDICT: langgraph_agent builds the API graph on SqliteSaver (and a
+             module-level MemorySaver for streaming). AsyncPostgresSaver
+             exists in persistence.py but psycopg is absent from the image,
+             so Postgres cannot own state here. A HITL pending action is
+             therefore only visible to the replica holding that SQLite file.
+
+========================================================================
+SUMMARY — capability vs runtime
+========================================================================
+    BM25 sparse leg          DORMANT in runtime
+    Cross-encoder reranker   DORMANT in runtime
+    Real embeddings          DORMANT in runtime
+    Distributed rate limit   DORMANT in runtime
+    Postgres durable state   DORMANT in runtime
+    SQLite durable state     ACTIVE (single replica only)
+
+A DORMANT capability is a source claim, not a product capability.
+
+## How to keep this honest
+A finding here is a statement about requirements.api.txt, so the durable
+control is a dependency contract test, not this script. The next step of
+WAVE 3 is a test that asserts each capability the product claims is either
+importable from requirements.api.txt or explicitly declared dormant, so a
+capability cannot silently disappear from the image.
+
+Re-run after ANY change to requirements.api.txt, Dockerfile.api, or the
+import sites named in the report.
