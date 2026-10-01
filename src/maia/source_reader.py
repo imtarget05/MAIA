@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 MAX_CHUNKS = 200
 MAX_CHARS = 60000
@@ -66,13 +68,15 @@ def locate_excerpt(full_chunk_text: str, excerpt: str, window: int = 40) -> tupl
     return 0, len(full)
 
 
-def build_source_view(cited: dict, corpus: list[dict]) -> dict:
+def build_source_view(cited: dict, corpus: Sequence[Mapping[str, Any]]) -> dict:
     """Assemble the full source document around a cited chunk (pure).
 
     cited:  {chunk_id, filename, text} (citation excerpt)
     corpus: [{chunk_id, text, metadata}] (e.g. store.scroll_all())
-    Returns {filename, doc_id, chunks:[{chunk_id, text, cited}],
-             cited_text, full_text, total_chunks, truncated}.
+    Read-only over corpus rows, so both plain dicts and the port's
+    ScrolledChunk TypedDicts are accepted. Returns {filename, doc_id,
+    chunks:[{chunk_id, text, cited}], cited_text, full_text, total_chunks,
+    truncated}.
     """
     chunk_id = cited.get("chunk_id", "")
     filename = cited.get("filename", "")
