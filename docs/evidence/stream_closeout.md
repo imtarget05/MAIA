@@ -15,7 +15,7 @@ Parent: `20ec528`. Scope: MAIA only. No WebSocket, no Redis/Kafka, no new servic
 
 Verdict: no working token-stream path existed → hardened `/chat/stream` in place on the existing agent/auth/retrieval stack.
 
-## 2. Implementation (`dd39026`: 4 files, +786/−17)
+## 2. Implementation (`dd39026`: 4 files, +786/−17 — historical; canonical is `a82f24b` per §9)
 
 - NEW `src/maia/streaming.py` — typed frames, `split_tokens()`,
   `citations_to_sources()`, refcounted `defer_session_persist()` (per
@@ -29,7 +29,7 @@ Verdict: no working token-stream path existed → hardened `/chat/stream` in pla
   action path, pending proposal survives (separate store), execution stays in
   `/actions/confirm` (C1).
 
-## 3. Targeted suites on the final code commit (worktree @ `dd39026`)
+## 3. Targeted suites (historical worktree runs at `dd39026`; CI re-verified everything on `a82f24b`, §9)
 
 - `tests/test_chat_stream_sse.py` → **16 passed** (STREAM-001…015 + no-orphan-threads)
 - Adjacent (`test_p1a_stream_ratelimit`, `test_session_registry`, `test_approval`) → **47 passed** (same files, one command)
@@ -109,9 +109,32 @@ Mutation controls           VERIFIED
 Mock TTFT evidence          VERIFIED (orchestration only)
 Real provider token stream  PARTIAL / provider-dependent (fallback documented)
 Compute cancellation        PARTIAL (delivery stops, in-flight sync call drops result)
-Full suite                  CI GREEN 14/14 @ 2d2eaf9 (run 36768831367); unit-tests 987/12/2-deselected/3, 0 failed
-Canonical SHA               2d2eaf9 (code, CI-backed) + docs commit below
+Full suite                  CI GREEN 13/13 @ a82f24b (run 36819947283); unit-tests 998/12/2-deselected/3, 0 failed
+Canonical SHA               a82f24b (code, CI-backed) + docs commit below
 ```
+
+## 9. Cloud closeout (Azure, exact canonical SHA)
+
+```text
+source    a82f24b2123b5abceeeb5264677aa81bbc437df7
+CI        run 36819947283 — success 13/13
+image     ghcr.io/imtarget05/maia-maia-api:a82f24b2123b5abceeeb5264677aa81bbc437df7@sha256:9be70ed14aaa849c17b8e9544dca284f853163895f039ed804e664f13c091514 (run 36819947364, provenance attested)
+revision  ca-maia-api--0000006, 100% traffic, Healthy
+```
+
+Live probes against the revision (fresh container FS, Qdrant unreachable):
+
+- `/health` → `{"status":"ok","version":"0.4.0"}`
+- unauthenticated `/chat/stream` → 401
+- authenticated `/chat/stream` → `meta → 5×token (seq 1-5) → citations([]) → done` exactly once, `finish_reason: stop`, no traceback
+- `/chat` parity → JSON `status: error` (`error:ConnectionError`), no 500
+
+The error-path defect found by the first probe (`AttributeError` on
+`llm.mode` when the stack is down) was fixed in `a82f24b` (degrade to
+`"unknown"`, regression test `tests/test_agent_error_path.py`); the re-probe
+above is against the fixed build. Grounded-answer delivery is not verifiable
+in this environment (no vector store); retrieval mechanics are covered by CI.
+`2d2eaf9` and its digest are historical.
 
 ## 8. Approved CV wording (do not strengthen)
 

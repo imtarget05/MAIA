@@ -162,17 +162,16 @@ The system provides 40+ endpoints. Here are the core services:
 The platform is built with rigorous testing standards. The full suite runs
 entirely offline.
 
-**Verified: CI GREEN 14/14 jobs on canonical `2d2eaf9` (run `36768831367`); unit-tests job 987 passed, 12 skipped, 2 deselected, 3 xfailed, 0 failed**
+**Verified: CI GREEN 13/13 jobs on canonical `a82f24b` (run `36819947283`); unit-tests job 998 passed, 12 skipped, 2 deselected, 3 xfailed, 0 failed**
 **Reproduce (local):** `pytest tests/ -q -p no:cacheprovider`
-**Image:** `ghcr.io/imtarget05/maia-maia-api:2d2eaf9…@sha256:4398f981…` (build run `36768831564`, SLSA provenance attested)
-**Cloud scope:** CI-backed code is newer than the running Azure revision (`47110b8` era) — remote CI verified, cloud runtime predates streaming. No claim beyond that.
+**Image:** `ghcr.io/imtarget05/maia-maia-api:a82f24b…@sha256:9be70ed1…` (build run `36819947364`, SLSA provenance attested)
+**Cloud:** revision `ca-maia-api--0000006` runs `a82f24b` at 100% traffic, Healthy. Live-probed: `/health` ok, unauth `/chat/stream` 401, authenticated stream `meta → 5×token → citations → done` exactly once with graceful degradation under total Qdrant outage (no traceback, no 500; `/chat` parity returns JSON error, not 500).
 
-> `dd39026` (streaming feature), the `967 @ 38189ca` figure, and the interim
-> `997` worktree figure are historical. (`997` was measured in a dirty
-> worktree containing two untracked foreign test files; clean trees collect
-> 992 nodes.) The former single residual
+> `2d2eaf9`, `dd39026`, the `967 @ 38189ca` figure, and the interim `997`
+> worktree figure are historical. The former single residual
 > (`test_format_checker_rejects_bad_datetime`) was fixed by registering a
-> stdlib RFC-3339 date-time check. Proof chain in
+> stdlib RFC-3339 date-time check; the live-probe error-path defect
+> (`llm.mode` on None) was fixed by degrading to `"unknown"`. Proof chain in
 > `docs/evidence/stream_closeout.md`.
 
 ### Honest status of the answerability gate
