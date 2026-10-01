@@ -1,9 +1,15 @@
 # Business Impact — MAIA (Intelligent RAG Knowledge Platform)
 
-Domain facts: enterprise internal Q&A over HR/IT/Security policy corpus with
-zero-hallucination evidence gate (≥0.3), hybrid Dense+BM25→RRF retrieval,
-citation grounding ([S1]…), and HITL approval for side-effect actions.
+Domain facts: enterprise internal Q&A over HR/IT/Security policy corpus with an
+evidence gate (≥0.3) whose abstention behaviour is **measured and currently
+failing**, hybrid Dense+BM25→RRF retrieval, citation projection ([S1]…), and
+HITL approval for side-effect actions.
 See `README.md`, `docs/spec.md`.
+
+> The gate is not a guarantee. Gate 8B-C reports `status: "FAIL"` and exits 1:
+> it authorised 8 of 9 labelled no-answer queries, and the two classes are not
+> separable by similarity. Details in the README gate section and
+> `eval/README.md:16`.
 
 ## Problem (cost of status quo)
 
@@ -22,7 +28,7 @@ citation check → PII redaction → HITL interrupt for actions (`/actions/confi
 
 | Metric | Before | After | How measured |
 |---|---|---|---|
-| MTTR policy lookup | 15 min | 30 s | ESTIMATE — plan target; pending eval gate (`eval/dataset.jsonl`, 73 golden cases). Not a production measurement. |
+| MTTR policy lookup | 15 min | 30 s | ESTIMATE — plan target; pending the eval gate over `eval/golden/` (10 files, 98 rows). Not a production measurement. |
 | Grounded-answer rate (CRAG-style) | 64% baseline | 92% | ESTIMATE — pending `python -m maia.eval` gate; not measured here. |
 | Chunking micro-op (200 iters, local) | — | mean 6.91 ms, p95 12.68 ms | MEASURED by `scripts/bench_maia.py` (mode `maia.chunking.split_documents`, PYTHONPATH=src), this machine 2026-09-27. Machine-dependent; re-run before quoting. |
 
@@ -40,5 +46,5 @@ No other number in this file is a production measurement.
 cd MAIA
 PYTHONPATH=src python3 scripts/bench_maia.py
 MAIA_EMBED_FORCE_HASH=1 python -m pytest tests/ -q
-PYTHONPATH=src python -m maia.eval eval/dataset.jsonl   # eval gate (ESTIMATE source)
+PYTHONPATH=src python -m maia.eval --all   # eval gate (ESTIMATE source) over eval/golden/
 ```

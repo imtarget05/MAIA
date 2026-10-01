@@ -12,13 +12,13 @@ Bảng ánh xạ yêu cầu JD (ML/LLM Engineer) ↔ minh chứng trong repo. D�
 | SSE streaming (stable `stream_mode="updates"`) | `src/maia/api.py::_agent_chat_stream` | `tests/test_agent_chat_api.py::test_agent_chat_stream_sse` |
 | Security: tenant isolation, prompt-injection defense, PII redaction | `src/maia/loops/guardrails.py`, `src/maia/vector_store.py` (tenant filter) | `pytest tests/test_security_audit.py tests/test_guardrails.py` |
 | Guardrails (input sanitize + output secret/PII + approval-claim) | `src/maia/loops/guardrails.py` (merged `OutputGuardrail`) | `tests/test_output_validation.py` |
-| Evaluation harness (recall@k, MRR, faithfulness, contact-usability gate) | `src/maia/eval.py`, `eval/golden/*.jsonl` (81+ rows) | `pytest tests/test_golden_eval.py` (cần Qdrant) |
+| Evaluation harness (recall@k, MRR, faithfulness, contact-usability gate) | `src/maia/eval.py`, `eval/golden/*.jsonl` (10 files, 98 rows) | `pytest tests/test_golden_eval.py` (cần Qdrant — skips without it) |
 | MLOps: run manifest, Prometheus metrics, Kafka streaming | `src/maia/eval_manifest.py`, `src/maia/stream/metrics.py`, `src/maia/stream/worker.py` | `pytest tests/test_eval_manifest.py tests/test_stream.py`; CI job `eval-manifest` upload artifact |
 | Model efficiency (cross-encoder rerank opt-in, embedding fallback) | `src/maia/reranker.py`, `requirements-rerank.txt` | CI job `reranker` |
 | Iterative retrieval / CRAG (opt-in) | `src/maia/agent/agentic.py`, `src/maia/loops/corrective_rag.py` | `pytest tests/test_corrective_rag.py` |
 | LLM integration (Cloudflare Workers AI, adapter pattern) | `src/maia/llm.py`, `src/maia/agent/langchain_adapter.py` | `tests/test_agent_chat_api.py` (mock LLM offline) |
 
-## AI Engineer Intern — Game Publishing / Marketing & Product Tech (2026-09-28)
+## AI Application Engineer — Game Publishing / Marketing & Product Tech (2026-09-28)
 
 | JD requirement | Evidence (file) | Test/verify |
 |---|---|---|
