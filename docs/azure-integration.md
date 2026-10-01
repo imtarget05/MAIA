@@ -280,7 +280,12 @@ MAIA API is deployed and verified live on Azure Container Apps:
 - **Resource Group:** `rg-portfolio-evidence` (Region: East Asia)
 - **Container App:** `ca-maia-api`
 - **FQDN:** `https://ca-maia-api.wittysand-b748274c.eastasia.azurecontainerapps.io`
-- **Active Revision:** `ca-maia-api--0000010` (Image: `ghcr.io/imtarget05/maia-maia-api:4fa6a86993ac8296f914b316fb9f63a213342196@sha256:e5925b6503a1688534d926f95bc9d5b7cd80cb89c4708bc2701782cf739e08ee`)
+- **Active Revision:** `ca-maia-api--0000012` (Image: `ghcr.io/imtarget05/maia-maia-api:b53aca4cad4a4f32498100236f6ad3a1aa31322b@sha256:9eaa013420b6caa1282f8365bc5617d456a8d2ca9f00f84f8eb26e1bf791fcd5`)
+- **Backend Infrastructure:**
+  - **Vector Store:** Live Qdrant Cloud Cluster (`https://81d6d1d0-0963-465a-a4eb-69aa82d5986a.sa-east-1-0.aws.cloud.qdrant.io`, collection: `maia_knowledge`, dim: 1024)
+  - **Embeddings:** Cloudflare Workers AI (`@cf/baai/bge-m3`, 1024-dim dense vectors)
+  - **LLM Inference:** Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct`)
+  - **Auth & Session:** SQLite `/tmp/maia_auth.db` with 256-bit random production `JWT_SECRET_KEY`
 - **Scale:** `minReplicas=1`, `maxReplicas=1` (always warm)
 - **Live Verification Endpoints:**
   - `GET /health` → `200 OK` (`status: "ok"`, `version: "0.4.0"`)
@@ -288,5 +293,6 @@ MAIA API is deployed and verified live on Azure Container Apps:
   - `POST /auth/register` → `201 Created` (returns user profile with tenant and employee ID)
   - `POST /auth/login` → `200 OK` (returns JWT `access_token` and `refresh_token`)
   - `GET /auth/me` → `200 OK` (authenticated user session details)
-  - `POST /query` → `200 OK` (RAG pipeline query with evidence gate, citations, and LLM response)
+  - `POST /query` → `200 OK` (Full real RAG pipeline: retrieves from Qdrant Cloud, computes citations `[S1]`, `[S2]`, generates natural language response via Cloudflare Llama-3.1-8B)
+
 
