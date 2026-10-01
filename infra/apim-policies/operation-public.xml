@@ -1,0 +1,31 @@
+<!--
+  Operation policy for the unauthenticated operational routes: /health and
+  /ready.
+
+  These are public on purpose: an external uptime monitor and the GitHub
+  verify job have no Entra token, and a probe that needs a credential is a
+  probe that fails open when the credential expires. The bucket is 20x the
+  authenticated limit because a probe is cheap and frequent, while /query and
+  /chat/* are the operations that cost money.
+
+  /metrics is NOT in this file and is not registered as an operation in
+  main.parameters.json. Unregistered means unreachable through APIM — a 404 at
+  the edge, not a policy someone can be tempted to relax. See
+  docs/deployment-azure.md §4 for the reasoning and the way to expose it
+  deliberately.
+-->
+<policies>
+  <inbound>
+    <base />
+    <rate-limit calls="{{RATE_LIMIT_CALLS}}" renewal-period="{{RATE_LIMIT_WINDOW_SECONDS}}" counter-key="probe-rate-by-ip" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

@@ -1,0 +1,48 @@
+<!--
+  Operation policy for every authenticated MAIA route (/query, /chat/*,
+  /api/v1/*). Tokens are substituted by infra/modules/apim/api-surface.bicep:
+    {{JWT_ISSUER}}    -> https://login.microsoftonline.com/<tenantId>/v2.0
+    {{JWT_AUDIENCE}}  -> the client id of the Entra app registration
+
+  MAIA's own /auth/login and /auth/refresh already mint and validate their own
+  JWTs with JWT_SECRET_KEY. This policy validates the SAME tokens a second
+  time, at the edge, against the tenant's signing keys — so an app token cannot
+  be replayed at a host the application itself never sees, and the token
+  lifetime stops being something only the application enforces.
+
+  Issuer and signing-key validation is inherited from the OpenID Connect
+  metadata URL rather than restated with an <issuers> block: the discovery
+  document is the source of truth for the tenant's keys, and duplicating the
+  issuer string here would be a second thing to forget to update.
+-->
+<policies>
+  <inbound>
+    <base />
+    <validate-jwt header="Authorization" failed-policy-response-status-code="401" failed-policy-response-body="Unauthorized" token-validation="true">
+      <openid-connect url="{{JWT_ISSUER}}/.well-known/openid-configuration" />
+      <audiences>
+        <audience>{{JWT_AUDIENCE}}</audience>
+      </audiences>
+      <required-claims>
+        <!-- A v2 token issued by a different tenant is structurally valid and
+             would otherwise pass; pinning tid is what makes the audience
+             check unambiguous. -->
+        <claim name="tid">{{TENANT_ID}}</claim>
+      </required-claims>
+    </validate-jwt>
+    <!-- Per-key counter: this is the quota that actually bounds spend, because
+         the counter is keyed on the token subject rather than the source IP.
+         {{RATE_LIMIT_CALLS}} / {{RATE_LIMIT_WINDOW_SECONDS}} come from the
+         per-operation entry in the apiOperations parameter. -->
+    <rate-limit calls="{{RATE_LIMIT_CALLS}}" renewal-period="{{RATE_LIMIT_WINDOW_SECONDS}}" counter-key="call-rate-by-key" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

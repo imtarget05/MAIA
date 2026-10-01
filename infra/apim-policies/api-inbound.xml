@@ -1,0 +1,44 @@
+<!--
+  API-level inbound policy for the MAIA API at API Management.
+
+  Substituted by infra/modules/apim/api-surface.bicep before upload: the token
+  {{ALLOWED_ORIGINS}} is replaced with one <origin> element per entry in the
+  CORS_ORIGINS parameter. It is left as a token here so the file stays a
+  reviewable XML document instead of a Bicep string, and so a change to the
+  allowed-origin list is a parameters-file diff rather than a template edit.
+
+  AFD sits in front of APIM, so the only Origin a browser will present is the
+  Front Door endpoint. Anything not on this list is refused by the edge, not by
+  the app.
+-->
+<policies>
+  <inbound>
+    <base />
+    <cors>
+      <allowed-origins>
+        {{ALLOWED_ORIGINS}}
+      </allowed-origins>
+      <!-- Credentials are allowed because MAIA's front end sends the bearer
+           token in the Authorization header on every call. Without
+           allow-credentials the browser drops the response. -->
+      <allow-credentials>true</allow-credentials>
+      <!-- Negative value: do not cache preflight, so a revoked origin takes
+           effect immediately instead of after a browser cache lifetime. -->
+      <max-age>-1</max-age>
+    </cors>
+    <rate-limit calls="{{API_CALLS_PER_MINUTE}}" renewal-period="60" />
+  </inbound>
+  <backend>
+    <!-- The serviceUrl of the API already points at the Container Apps origin.
+         set-backend-service is intentionally absent: declaring the base once on
+         the API keeps the backend definition and the routed URL from drifting
+         into two different backends. -->
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
