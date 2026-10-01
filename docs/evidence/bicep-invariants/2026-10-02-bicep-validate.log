@@ -1,0 +1,98 @@
+[1m-- 1. compile every template (errors AND warnings are fatal)[0m
+[32m  PASS[0m  compile  ./main.bicep
+[32m  PASS[0m  compile  ./main.v6-target.bicep
+[32m  PASS[0m  compile  ./modules/apim/api-surface.bicep
+[32m  PASS[0m  compile  ./modules/apim/main.bicep
+[32m  PASS[0m  compile  ./modules/apim/operation.bicep
+[32m  PASS[0m  compile  ./modules/apim/service.bicep
+[32m  PASS[0m  compile  ./modules/apps/main.bicep
+[32m  PASS[0m  compile  ./modules/edge/main.bicep
+[32m  PASS[0m  compile  ./modules/identity/main.bicep
+[32m  PASS[0m  compile  ./modules/keyvault/main.bicep
+[32m  PASS[0m  compile  ./modules/observability/main.bicep
+[32m  PASS[0m  compile  ./modules/rbac/main.bicep
+[32m  PASS[0m  compile  ./resourceGroups.bicep
+
+[1m-- 2. committed parameter files resolve[0m
+[32m  PASS[0m  params   ./parameters/dev.bicepparam
+[32m  PASS[0m  params   ./parameters/prod.bicepparam
+[32m  PASS[0m  params   ./parameters/v1-dev.bicepparam
+[32m  PASS[0m  params   ./parameters/v1-prod.bicepparam
+[32m  PASS[0m  params   ./parameters/v6-dev.bicepparam
+[32m  PASS[0m  params   ./parameters/v6-prod.bicepparam
+[32m  PASS[0m  params   ./params/v1.dev.bicepparam
+[1m-- 3. negative tests (each MUST fail, with the expected code)[0m
+[32m  PASS[0m  negative validate/negative/missing-deploy-identity.bicepparam [BCP258] a required security parameter cannot be omitted
+[32m  PASS[0m  negative validate/negative/principal-id-wrong-type.bicepparam [BCP033] a role-assignment principal id cannot be a non-string
+[1m-- 4. known-weak pins (each MUST still compile)[0m
+[32m  PASS[0m  weak-pin validate/known-weak/keyvault-name-constraint-provider-enforced.bicepparam
+[1m-- 5. no secret values in templates or params[0m
+[32m  PASS[0m  secret scan  no literal secret values
+[1m-- 5b. secret scanner negative control (must CATCH)[0m
+[32m  PASS[0m  secret scanner bites  uppercase secret fixture is detected
+[1m-- 6. no real environment identifiers in parameter files[0m
+[32m  PASS[0m  tenant id  every tenantId is the zero-GUID placeholder
+[32m  PASS[0m  principal id  every deployIdentityPrincipalId is the zero-GUID placeholder
+        committed parameter files: parameters/dev.bicepparam parameters/prod.bicepparam parameters/v1-dev.bicepparam parameters/v1-prod.bicepparam parameters/v6-dev.bicepparam parameters/v6-prod.bicepparam params/v1.dev.bicepparam 
+
+[1m-- 7. V1 security invariants on the compiled template[0m
+        /var/folders/3s/h7_vfnxn1lx_mgrd4jqty2400000gn/T/tmp.VAWeRGIBrG/main.v1.json
+[32m  PASS[0m  $.resources[2].properties.template.resources[0]: [parameters('keyVaultName')]: enablePurgeProtection == True
+[32m  PASS[0m  $.resources[2].properties.template.resources[0]: [parameters('keyVaultName')]: enableRbacAuthorization == True
+[32m  2 invariant(s) held across 1 vault(s)[0m
+  PASS  A1 LIST -> vault discovered (exit 0)
+  PASS  A2 LIST -> JSON path propagated and rooted
+  PASS  B1 MAP -> vault discovered (exit 0)
+  PASS  B2 MAP -> vault path shown in output
+  PASS  C1 nested MAP -> exit 0, no traceback
+  PASS  C2 nested MAP -> vault ACTUALLY observed
+  PASS  C3 nested MAP -> full nested path propagated
+  PASS  C4 nested LIST -> exit 0, no traceback
+  PASS  C5 nested LIST -> full nested index path propagated
+  PASS  D1 malformed entry -> non-zero exit
+  PASS  D2 malformed entry -> no traceback
+  PASS  D3 malformed entry -> JSON path shown
+  PASS  D4 malformed entry -> path rooted at the document
+  PASS  E1 malformed container -> non-zero exit
+  PASS  E2 malformed container -> no traceback
+  PASS  E3 malformed container -> JSON path shown
+  PASS  E4 malformed container -> path rooted at the document
+  PASS  F1 purgeProtection=false bites
+  PASS  F2 rbacAuthorization=false bites
+  PASS  F3 vault absent bites (never SKIP)
+  PASS  F4 absent property bites
+  PASS  F5 string false-string bites
+
+22/22 traversal contracts hold
+[32m  PASS[0m  traversal contracts  symbolic-name map and malformed shapes
+        main.v6-target.bicep: no invariant assertions (deploys no vault in this wave)
+
+-- checker traversal contracts --
+  PASS  A1 LIST -> vault discovered (exit 0)
+  PASS  A2 LIST -> JSON path propagated and rooted
+  PASS  B1 MAP -> vault discovered (exit 0)
+  PASS  B2 MAP -> vault path shown in output
+  PASS  C1 nested MAP -> exit 0, no traceback
+  PASS  C2 nested MAP -> vault ACTUALLY observed
+  PASS  C3 nested MAP -> full nested path propagated
+  PASS  C4 nested LIST -> exit 0, no traceback
+  PASS  C5 nested LIST -> full nested index path propagated
+  PASS  D1 malformed entry -> non-zero exit
+  PASS  D2 malformed entry -> no traceback
+  PASS  D3 malformed entry -> JSON path shown
+  PASS  D4 malformed entry -> path rooted at the document
+  PASS  E1 malformed container -> non-zero exit
+  PASS  E2 malformed container -> no traceback
+  PASS  E3 malformed container -> JSON path shown
+  PASS  E4 malformed container -> path rooted at the document
+  PASS  F1 purgeProtection=false bites
+  PASS  F2 rbacAuthorization=false bites
+  PASS  F3 vault absent bites (never SKIP)
+  PASS  F4 absent property bites
+  PASS  F5 string false-string bites
+
+22/22 traversal contracts hold
+
+[32m== IaC validation: ALL CHECKS PASSED ==[0m
+No Azure resource was created, updated or deleted by this run.
+VALIDATE_EXIT=0

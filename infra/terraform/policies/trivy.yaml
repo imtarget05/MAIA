@@ -1,0 +1,19 @@
+# Trivy configuration for the Terraform sources under infra/terraform.
+#
+# WHY a config file exists at all: Trivy's Terraform scanner will happily walk
+# .terraform/ and report findings inside downloaded provider modules — findings
+# nobody in this repository can fix, attributed to files that are not source.
+# `exclude-downloaded-modules` is the Terraform-specific switch that keeps the
+# scan pointed at code this repository owns.
+#
+# Severity, exit code and the ignore file are passed as explicit CLI flags in
+# policies/scan.sh rather than configured here: they decide whether the gate
+# fails, and a reader of the pipeline should see that decision at the call site
+# instead of having to open another file.
+
+misconfiguration:
+  # Terraform-specific: do not report misconfigurations from modules fetched
+  # from the registry. A finding in a provider's own example code is noise, and
+  # noise in a security gate is how a real finding gets ignored.
+  terraform:
+    exclude-downloaded-modules: true

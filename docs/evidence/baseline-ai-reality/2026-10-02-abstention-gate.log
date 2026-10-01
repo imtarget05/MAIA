@@ -1,0 +1,35 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+[B8A] ANSWERABILITY ORACLE — is the dataset actually correct?
+  corpus: 8 files sha256=e5129c82d6a333bd
+  no_answer rows: 9 sha256=7f4f1ce44d077f22
+  [PASS] B8A1 every no-answer row declares a valid abstention reason: 9/9 rows declare one of ['AMBIGUOUS_EVIDENCE', 'INSUFFICIENT_EVIDENCE', 'NO_SUPPORTING_DOCUMENT', 'OUT_OF_SCOPE', 'WRONG_TENANT_ONLY']
+  [PASS] B8A2 NO_SUPPORTING_DOCUMENT rows have no supporting concept in corpus: 7 NO_SUPPORTING_DOCUMENT / OUT_OF_SCOPE rows verified absent; 2 INSUFFICIENT_EVIDENCE rows intentionally have concept hits
+
+[setup] real embeddings + in-memory store (no Qdrant, no LLM)
+  corpus_dir:  /Users/mainguyenbinhtan/Downloads/Projects/MAIA/data/enterprise
+  golden_dir:  /Users/mainguyenbinhtan/Downloads/Projects/MAIA/eval/golden
+  evidence:    /Users/mainguyenbinhtan/Downloads/Projects/docs/evidence/e2e/gate8b-abstention.json
+  embedder mode=fastembed  chunks=45  evidence threshold=0.3
+
+[B8B] EVIDENCE-GATE ROUTING — does the production path abstain?
+  [FAIL] B8B1 evidence gate abstains on labeled no-answer queries: 1/9 abstained (rate=0.111); authorized: ['Chính sách cho vay mua nhà của công ty n', 'Lương của CEO công ty là bao nhiêu?', 'Chính sách nghỉ hưu sớm tuổi 50 như thế ', 'Công ty có chương trình stock option cho', 'Chính sách nhận nuôi thú cưng tại văn ph', 'Mỗi nhân viên được cấp bao nhiêu chỗ đỗ ', 'Ngày cụ thể Leave Policy chính thức có h', 'How many days of annual leave carry over']
+  [PASS] B8B2 gate is discriminating, not refusing everything: answerable authorized=30/30 (rate=1.000, need>=0.6); no-answer abstained=1/9. Both are required: abstention alone is indistinguishable from a broken retriever.
+Loading weights:   0%|          | 0/105 [00:00<?, ?it/s]Loading weights: 100%|██████████| 105/105 [00:00<00:00, 6504.72it/s]
+  [PASS] B8B2b production query() agrees with the mirrored evidence gate: drove the real maia.pipeline_query.query() over all 9 no-answer queries: 1 abstained, generation stage entered 8 time(s). The mirror agrees with production on 9/9 rows. A mirror that disagreed with production would make B8B1 a claim about a function nobody ships.
+  [PASS] B8B4 zero-denominator policy enforced: no-answer rows=9, no-answer decisions=9, answerable controls=30. All denominators non-zero; an empty set is reported as INVALID_DATASET and never scored.
+  [PASS] B8B5 cross-tenant retrieval is refused for the wrong tenant: tenant A asked for tenant B's compensation; retrieved 0 tenant-B chunks, decision=AUTHORIZE (top_dense=0.3363). A correct answer from another tenant's data is a security failure, not an answer.
+  [FAIL] B8B3 a single scalar threshold can separate no-answer from answerable: CLASSES OVERLAP: max no-answer top_dense=0.6957 >= min answerable top_dense=0.3139. 8 no-answer queries score above the weakest genuine answer, so NO setting of SIMILARITY_THRESHOLD can separate them. Raising it until B8B1 passes would also refuse correct answers, which is why B8B2 is required. A cosine similarity on the top chunk measures topical similarity, not answerability; no-answer questions about retirement or stock options are topically close to HR_Policy and Benefits, so they retrieve a confident-looking chunk that does not contain the answer.
+
+[B8C] NEGATIVE CONTROLS — prove the gate and the oracle are not no-ops
+  [PASS] B8C1 gate rejects a candidate with a lowered evidence threshold: threshold 0.3 -> 0.01: 9/9 no-answer queries became AUTHORIZED. A gate that cannot fail on this proves nothing.
+  [PASS] B8C2 answerability oracle rejects a mislabelled golden row: relabelled 'How many annual leave days do I get per year?' as refusal; oracle found supporting corpus concepts ['12 ngày', 'annual leave', 'phép năm']. Proves the dataset check reads the corpus instead of trusting the label.
+  [PASS] B8C3 abstention decisions are sensitive to the retriever configuration: BM25 off changed the candidate set for 9/9 queries (sensitivity, non-blocking)
+
+9/11 checks PASS — GATE 8B-C FAIL
+failing: B8B1, B8B3
+abstention: 1/9 refused (rate=0.1111, n=9)
+separable_by_similarity: False (max no-answer 0.6957 vs min answerable 0.3139)
+conclusion: MEASURED DEFECT — Closing this gap requires a DIFFERENT DECISION SIGNAL, not threshold tuning: answer-span verification (does the retrieved chunk contain a value of the type the question asks for) or an NLI entailment check (does this passage support this claim). docs/eval/proto_answerability_signals.py reached the same conclusion before this gate was run.
+evidence: /Users/mainguyenbinhtan/Downloads/Projects/docs/evidence/e2e/gate8b-abstention.json
+GATE_EXIT=1

@@ -1,0 +1,327 @@
+# MAIA Phase 1 Terraform gate — measured evidence
+measured_at : 2026-10-01T19:38:27Z
+host        : Darwin arm64
+branch      : migration/terraform-maia
+source_sha  : fbad86702b3e91c516fe1da483b29be90c0afc32
+method      : every number below was printed by a command executed at source_sha
+scope       : offline only — no Azure login, no plan against a subscription, no apply
+rule        : nothing here is copied from another document
+
+## Tool versions
+terraform : Terraform v1.16.3
+trivy     : Version: 0.74.0
+python    : Python 3.14.7
+
+## Worktree state before the run
+tracked files changed (excluding untracked evidence/output): 3
+^^ 0 = the figures below describe a frozen SHA, not local edits
+
+## Inventory (counted from disk, not read from a doc)
+terraform files     : 19
+tftest files        : 4
+module versions.tf  : 3
+module lock files   : 3
+python test files   : 2
+plan fixture        : 1
+
+## Bicep frozen?
+Bicep files changed vs origin/main : 0
+^^ 0 = the Terraform port did not touch Bicep
+
+## Module sources (cross-repo check)
+distinct module source expressions:
+  - source = "./modules/identity"
+  - source = "./modules/keyvault"
+  - source = "./modules/rbac"
+^^ every entry must start with ./ (repo-local). A git:: URL, a registry
+   module name or a path outside this repo is a Phase 1 failure.
+
+## Provider sources (required_providers — not module sources)
+  - source  = "hashicorp/azuread"
+  - source  = "hashicorp/azurerm"
+^^ pinned by versions.tf and frozen in .terraform.lock.hcl / modules/*/.terraform.lock.hcl
+
+## Gate run: infra/terraform/scripts/phase1_check.sh (offline)
+
+== terraform version
+Terraform v1.16.3
+on darwin_arm64
++ provider registry.terraform.io/hashicorp/azuread v3.10.0
++ provider registry.terraform.io/hashicorp/azurerm v4.81.0
+
+Your version of Terraform is out of date! The latest version
+is 1.16.4. You can update by downloading from https://developer.hashicorp.com/terraform/install
+
+== fmt -check -recursive
+
+== init -backend=false (.)
+Initializing modules...
+
+Initializing provider plugins...
+- Reusing previous version of hashicorp/azurerm from the dependency lock file
+- Reusing previous version of hashicorp/azuread from the dependency lock file
+- Using previously-installed hashicorp/azurerm v4.81.0
+- Using previously-installed hashicorp/azuread v3.10.0
+
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
+
+== init -backend=false (modules/identity)
+Initializing provider plugins...
+- Reusing previous version of hashicorp/azurerm from the dependency lock file
+- Reusing previous version of hashicorp/azuread from the dependency lock file
+- Using previously-installed hashicorp/azuread v3.10.0
+- Using previously-installed hashicorp/azurerm v4.81.0
+
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
+
+== init -backend=false (modules/keyvault)
+Initializing provider plugins...
+- Reusing previous version of hashicorp/azurerm from the dependency lock file
+- Using previously-installed hashicorp/azurerm v4.81.0
+
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
+
+== init -backend=false (modules/rbac)
+Initializing provider plugins...
+- Reusing previous version of hashicorp/azurerm from the dependency lock file
+- Using previously-installed hashicorp/azurerm v4.81.0
+
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
+
+== validate
+Success! The configuration is valid.
+
+
+== terraform test (.)
+tests/composition.tftest.hcl... in progress
+  run "identity_group_is_created_with_the_tag_contract"... pass
+  run "rbac_role_ids_are_wired_from_root_locals"... pass
+tests/composition.tftest.hcl... tearing down
+tests/composition.tftest.hcl... pass
+
+Success! 2 passed, 0 failed.
+
+== terraform test (modules/identity)
+tests/contract.tftest.hcl... in progress
+  run "uami_is_user_assigned_and_named"... pass
+  run "entra_app_is_v2_no_implicit_no_consent"... pass
+tests/contract.tftest.hcl... tearing down
+tests/contract.tftest.hcl... pass
+
+Success! 2 passed, 0 failed.
+
+== terraform test (modules/keyvault)
+tests/contract.tftest.hcl... in progress
+  run "vault_security_posture"... pass
+tests/contract.tftest.hcl... tearing down
+tests/contract.tftest.hcl... pass
+
+Success! 1 passed, 0 failed.
+
+== terraform test (modules/rbac)
+tests/contract.tftest.hcl... in progress
+  run "v1_grants_emitted"... pass
+  run "empty_scope_grants_suppressed"... pass
+tests/contract.tftest.hcl... tearing down
+tests/contract.tftest.hcl... pass
+
+Success! 2 passed, 0 failed.
+
+== plan-JSON negative controls
+PASS C0 baseline fixture passes                         exit=0 tail=Summary: 7 passed, 0 failed
+PASS C1 purge protection off -> KV1                     exit=1 expected='FAIL KV1' got=['FAIL KV1: rbac=True purge_protection=False retention_days=90']
+PASS C2 RBAC-only off -> KV1                            exit=1 expected='FAIL KV1' got=['FAIL KV1: rbac=False purge_protection=True retention_days=90']
+PASS C3 retention changed -> KV1                        exit=1 expected='FAIL KV1' got=['FAIL KV1: rbac=True purge_protection=True retention_days=7']
+PASS C4 public endpoint closed in V1 -> KV2             exit=1 expected='FAIL KV2' got=['FAIL KV2: public_network_access_enabled=False']
+PASS C5 a destroy appears -> DRIFT0                     exit=1 expected='FAIL DRIFT0' got=['FAIL DRIFT0: 1 planned change(s) are not create-only allowlisted types']
+PASS C6 type outside the allowlist -> DRIFT0            exit=1 expected='FAIL DRIFT0' got=['FAIL DRIFT0: 1 planned change(s) are not create-only allowlisted types']
+PASS C7 Secrets User grant removed -> RBAC1             exit=1 expected='FAIL RBAC1' got=['FAIL RBAC1: expected exactly 1 Secrets User grant, found 0']
+PASS C8 Contributor grant removed -> RBAC2              exit=1 expected='FAIL RBAC2' got=['FAIL RBAC2: expected exactly 1 deploy Contributor grant, found 0']
+PASS C12 UAMI removed -> ID1                            exit=1 expected='FAIL ID1' got=['FAIL ID1: expected exactly 1 UAMI, plan has 0']
+PASS C13 audience widened -> ENT1                       exit=1 expected='FAIL ENT1' got=['FAIL ENT1: audience=AzureADMultipleOrgs access_token_version=2']
+PASS C14 token version downgraded -> ENT1               exit=1 expected='FAIL ENT1' got=['FAIL ENT1: audience=AzureADMyOrg access_token_version=1']
+PASS C9 unparseable JSON -> verdict, no traceback       exit=1 traceback=False verdict=True
+PASS C10 non-object plan root -> verdict, no traceback  exit=1 traceback=False verdict=True
+PASS C11 missing plan file -> verdict, no traceback     exit=1 traceback=False
+
+Summary: 15 passed, 0 failed
+
+== policy scan (trivy)
+
+== positive control: a weakened vault must be reported
+   -> ok: AZU-0016 reported
+
+== repo scan (documented exception only)
+2026-10-02T02:38:34+07:00	INFO	Loaded	file_path="/Users/mainguyenbinhtan/Downloads/Projects/MAIA/infra/terraform/policies/trivy.yaml"
+2026-10-02T02:38:34+07:00	INFO	[misconfig] Misconfiguration scanning is enabled
+2026-10-02T02:38:34+07:00	INFO	[checks-client] Using existing checks from cache	path="/Users/mainguyenbinhtan/Library/Caches/trivy/policy/content"
+2026-10-02T02:38:34+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
+2026-10-02T02:38:34+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
+2026-10-02T02:38:34+07:00	INFO	[terraform scanner] Scanning root module	file_path="."
+2026-10-02T02:38:34+07:00	INFO	Detected config files	num=3
+
+Report Summary
+
+┌──────────────────────────┬───────────────┬───────────────────┐
+│          Target          │     Type      │ Misconfigurations │
+├──────────────────────────┼───────────────┼───────────────────┤
+│ .                        │ terraformplan │         0         │
+├──────────────────────────┼───────────────┼───────────────────┤
+│ main.tf                  │ terraformplan │         0         │
+├──────────────────────────┼───────────────┼───────────────────┤
+│ modules/keyvault/main.tf │   terraform   │         0         │
+└──────────────────────────┴───────────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+   -> ok
+
+== ignore set is exactly the documented exception
+   -> ok: AZU-0013 
+
+Policy scan: PASS
+
+== terraform version
+   -> ok
+
+== fmt -check -recursive
+   -> ok
+
+== init -backend=false (.)
+   -> ok
+
+== init -backend=false (modules/identity)
+   -> ok
+
+== init -backend=false (modules/keyvault)
+   -> ok
+
+== init -backend=false (modules/rbac)
+   -> ok
+
+== validate
+   -> ok
+
+== terraform test (.)
+   -> ok: Success! 2 passed, 0 failed
+
+== terraform test (modules/identity)
+   -> ok: Success! 2 passed, 0 failed
+
+== terraform test (modules/keyvault)
+   -> ok: Success! 1 passed, 0 failed
+
+== terraform test (modules/rbac)
+   -> ok: Success! 2 passed, 0 failed
+
+== plan-JSON negative controls
+   -> ok
+
+== policy scan (trivy)
+   -> ok
+
+Phase 1 gate: PASS (mode=offline)
+
+gate exit code: 0  (0 = PASS)
+
+## check_plan_invariants.py against the committed fixture
+PASS DRIFT0: all planned changes are create-only of allowlisted types
+PASS ID1: exactly one user-assigned managed identity
+PASS ENT1: MyOrg audience + v2 tokens
+PASS KV1: RBAC-only, purge protection, retention 90d
+PASS KV2: V1 public profile preserved (Disabled arrives in V5)
+PASS RBAC1: Secrets User grant present (conditional emission intact)
+PASS RBAC2: Contributor grant present; scope is RG-derived by construction (main.tf)
+
+Summary: 7 passed, 0 failed
+exit code: 0
+
+## check_plan_invariants.py against a live-captured plan.json (gitignored)
+PASS DRIFT0: all planned changes are create-only of allowlisted types
+PASS ID1: exactly one user-assigned managed identity
+PASS ENT1: MyOrg audience + v2 tokens
+PASS KV1: RBAC-only, purge protection, retention 90d
+PASS KV2: V1 public profile preserved (Disabled arrives in V5)
+PASS RBAC1: Secrets User grant present (conditional emission intact)
+PASS RBAC2: Contributor grant present; scope is RG-derived by construction (main.tf)
+
+Summary: 7 passed, 0 failed
+exit code: 0
+(plan.json exists only on this machine; it holds placeholder values, no secrets)
+
+## probe_plan_controls.py — does EACH control bite, for its own reason?
+PASS C0 baseline fixture passes                         exit=0 tail=Summary: 7 passed, 0 failed
+PASS C1 purge protection off -> KV1                     exit=1 expected='FAIL KV1' got=['FAIL KV1: rbac=True purge_protection=False retention_days=90']
+PASS C2 RBAC-only off -> KV1                            exit=1 expected='FAIL KV1' got=['FAIL KV1: rbac=False purge_protection=True retention_days=90']
+PASS C3 retention changed -> KV1                        exit=1 expected='FAIL KV1' got=['FAIL KV1: rbac=True purge_protection=True retention_days=7']
+PASS C4 public endpoint closed in V1 -> KV2             exit=1 expected='FAIL KV2' got=['FAIL KV2: public_network_access_enabled=False']
+PASS C5 a destroy appears -> DRIFT0                     exit=1 expected='FAIL DRIFT0' got=['FAIL DRIFT0: 1 planned change(s) are not create-only allowlisted types']
+PASS C6 type outside the allowlist -> DRIFT0            exit=1 expected='FAIL DRIFT0' got=['FAIL DRIFT0: 1 planned change(s) are not create-only allowlisted types']
+PASS C7 Secrets User grant removed -> RBAC1             exit=1 expected='FAIL RBAC1' got=['FAIL RBAC1: expected exactly 1 Secrets User grant, found 0']
+PASS C8 Contributor grant removed -> RBAC2              exit=1 expected='FAIL RBAC2' got=['FAIL RBAC2: expected exactly 1 deploy Contributor grant, found 0']
+PASS C12 UAMI removed -> ID1                            exit=1 expected='FAIL ID1' got=['FAIL ID1: expected exactly 1 UAMI, plan has 0']
+PASS C13 audience widened -> ENT1                       exit=1 expected='FAIL ENT1' got=['FAIL ENT1: audience=AzureADMultipleOrgs access_token_version=2']
+PASS C14 token version downgraded -> ENT1               exit=1 expected='FAIL ENT1' got=['FAIL ENT1: audience=AzureADMyOrg access_token_version=1']
+PASS C9 unparseable JSON -> verdict, no traceback       exit=1 traceback=False verdict=True
+PASS C10 non-object plan root -> verdict, no traceback  exit=1 traceback=False verdict=True
+PASS C11 missing plan file -> verdict, no traceback     exit=1 traceback=False
+
+Summary: 15 passed, 0 failed
+exit code: 0
+
+## policies/scan.sh — positive control, repo scan, ignore-set guard
+== positive control: a weakened vault must be reported
+   -> ok: AZU-0016 reported
+== repo scan (documented exception only)
+   -> ok
+== ignore set is exactly the documented exception
+   -> ok: AZU-0013 
+Policy scan: PASS
+exit code: 0
+
+## Fail-closed: an unreadable plan must be a verdict, never a traceback
+FAIL $.plan: plan file is not readable: No such file or directory (/tmp/no-such-plan.json)
+
+Summary: 0 passed, 1 failed
+exit code: 1
+^^ a non-zero exit with no traceback on stdout/stderr is the intended contract
+
+## Verdict
+Phase 1 offline gate: PASS at fbad86702b3e91c516fe1da483b29be90c0afc32
+Still NOT done for Phase 1 (stated so the pass is not over-read):
+  - Bicep is still CURRENT_CANONICAL_IAC; nothing is merged, applied or imported
+  - no Azure plan/apply ran here, so no resource existence is claimed
+  - remote state / OIDC / import are Phase 2 and Phase 3, out of scope for Phase 1
