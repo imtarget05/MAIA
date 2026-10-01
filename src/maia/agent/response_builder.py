@@ -128,8 +128,11 @@ class ResponseBuilder:
             "flags": flags,
             "plan": plan,
             "rewritten_query": rewritten_query,
-            "llm_mode": self._llm.mode,
-            "rerank_mode": self._reranker.mode,
+            # Live-probe find (Azure, Qdrant unreachable): when build_stack()
+            # fails, _llm/_reranker stay None and the error path itself
+            # crashed on .mode. Degrade to "unknown", never crash the handler.
+            "llm_mode": getattr(self._llm, "mode", None) or "unknown",
+            "rerank_mode": getattr(self._reranker, "mode", None) or "unknown",
             "tenant_id": tenant_id,
         })
         crag = self.crag_block(iter_res)
