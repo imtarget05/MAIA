@@ -213,24 +213,49 @@ def _key_vault_secret_client() -> Any:
         settings.AZURE_KEY_VAULT_URI.strip(), SecretClient)
 
 
-_secret_clients: dict[str, Any] = {}
+_secret_clients: dict[tuple[str, str], Any] = {}
+
+
+def _secret_client_cache_key(vault_url: str) -> tuple[str, str]:
+    """Cache key for a SecretClient: the vault AND the identity it will use.
+
+    WHY THE IDENTITY IS PART OF THE KEY, and not just a nicety. A SecretClient
+    holds a credential, and on Azure that credential is pinned to the
+    user-assigned managed identity in `AZURE_CLIENT_ID`. Keying the cache on the
+    vault URL alone means a caller that changes the configured identity within
+    one process keeps receiving a client built with the PREVIOUS identity. That
+    client authenticates as a principal the current configuration did not select
+    — a privilege confusion, not a stale cache. It is reachable by a redeploy
+    that rotates the identity without restarting the process, and by any worker
+    serving more than one identity.
+
+    Keyed on the pair, so a different identity builds its own client and the
+    same identity still reuses. The tenant id is deliberately NOT part of the
+    key: it selects an authority, not a principal, and a SecretClient is already
+    bound to one vault URL, so a vault change alone cannot move a cached client
+    onto a different tenant's data.
+    """
+    return vault_url, settings.AZURE_CLIENT_ID.strip()
 
 
 def _cached_secret_client(vault_url: str, client_cls: Any) -> Any:
-    """One SecretClient per vault URI, process-wide.
+    """One SecretClient per (vault URI, identity), process-wide.
 
     Clients (credential chains) are reusable; secret VALUES are never cached
-    here — every resolve_kv_secret() still performs get_secret(), so a
-    rotated secret is visible on the next read without restart. Keyed by URI
-    so different vaults cannot share a client.
+    here — every resolve_kv_secret() still performs get_secret(), so a rotated
+    secret is visible on the next read without restart.
+
+    Keyed by the pair so neither a different vault nor a different managed
+    identity can be handed a client built for another.
     """
-    client = _secret_clients.get(vault_url)
+    key = _secret_client_cache_key(vault_url)
+    client = _secret_clients.get(key)
     if client is None:
         client = client_cls(
             vault_url=vault_url,
             credential=azure_credential(),
         )
-        _secret_clients[vault_url] = client
+        _secret_clients[key] = client
     return client
 
 
