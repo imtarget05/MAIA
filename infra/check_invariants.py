@@ -108,7 +108,14 @@ def iter_resources(template: dict[str, Any], depth: int = 0, path: str = "$"):
     The path is first-class traversal data, not decoration: a PASS line has to
     be able to name the exact object it observed.
     """
-    if depth > 4:
+    # WHY THE TEMPLATE ITSELF IS TYPE-CHECKED. A compiled ARM template is always
+    # an object, so a non-dict here is a malformed or truncated artifact, not a
+    # shape Bicep can produce. Calling .get() on it raised AttributeError, which
+    # is the exact failure mode this checker exists to prevent: an invariant
+    # that crashes reads as an infrastructure problem, gets treated as noise, and
+    # stops being run. Returning un-walked makes the caller report "no vault
+    # found" -- a controlled FAIL naming the path, not a traceback.
+    if depth > 4 or not isinstance(template, dict):
         return
     resources = template.get("resources")
     if resources is None:
@@ -216,9 +223,27 @@ def main() -> int:
         label = (f"{vault_path}: {name}" if index == 0
                  else f"{vault_path}: {name} (resource {index})")
 
+        # WHY THE PROPERTIES GUARD. A resource whose properties are COMPUTED
+        # rather than literal serialises the whole bag as an ARM expression
+        # string ("[variables('x')]"). That is a shape the compiler can produce,
+        # unlike a non-dict template, so it must be handled rather than assumed
+        # away. Calling .get() on the string raised AttributeError; the correct
+        # verdict is that the security values are not statically visible, so the
+        # invariant is UNVERIFIED. Reported as a FAIL carrying the JSON path.
+        if not isinstance(props, dict):
+            failures += 1
+            print(
+                f"{RED}  FAIL{OFF}  {vault_path}: properties is "
+                f"{type(props).__name__}, not an object; the security values are "
+                f"not statically visible and the invariant is unverified"
+            )
+            continue
+
         for prop, expected, why in INVARIANTS:
             actual = props.get(prop, "<absent>")
-            if actual is expected or actual == expected:
+            # Value AND type, so a mis-serialised truthy "false" string cannot
+            # satisfy a boolean True.
+            if type(actual) is type(expected) and actual == expected:
                 print(f"{GREEN}  PASS{OFF}  {label}: {prop} == {expected}")
             else:
                 failures += 1
