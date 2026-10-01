@@ -112,10 +112,9 @@ curl -s http://localhost:8000/actions/confirm -H 'Content-Type: application/json
   -d '{"session_id":"demo","approved":true}'
 ```
 
-Field names are `ChatReq.question` / `AgentChatReq.question` and
-`ConfirmReq.session_id` — the earlier draft's `question`-under-`/ask` and
-`thread_id` were both wrong. `tenant_id` is accepted on `ChatReq` but the stream
-path derives the tenant from the authenticated user, not from the body.
+The two things that were wrong: the **routes** (`/ask`, `/actions` do not
+exist) and the **confirm field** — `ConfirmReq` takes `session_id`, not
+`thread_id`. The `question` field name was correct and is kept.
 
 | Step | Route (`src/maia/api.py`) | Expected |
 |---|---|---|
@@ -126,4 +125,5 @@ path derives the tenant from the authenticated user, not from the body.
 
 Auth note: `/chat`, `/agent/chat`, `/actions/*` are behind
 `get_current_active_user` (`POST /auth/login` first). `GET /health`,
-`GET /ready` and `GET /metrics` are not.
+`GET /ready` and `GET /metrics` are not. `tenant_id` is accepted on `ChatReq`
+but the stream path derives the tenant from the authenticated user, not the body.
