@@ -1,6 +1,7 @@
 # MAIA — WAVE 0 baseline AI reality check
-measured_at : 2026-10-01T19:32:34Z
-source_sha  : c43eea3c2292d07aa6ecd0b49cd31ea94bb8cca1
+measured_at : 2026-10-01T19:33:56Z
+source_sha  : fa5e893cc5097dbfc86371b2e27f2ebc194b0ccf   (the product source under measurement;
+              this log is committed on top of that commit, so the two SHAs differ)
 dependency set : requirements.api.txt (the exact file Dockerfile.api installs)
 question    : what does the shipped image EXECUTE, not what does the source contain?
 

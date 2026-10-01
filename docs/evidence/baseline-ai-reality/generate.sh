@@ -33,7 +33,8 @@ p() { printf '%s\n' "$*" >>"$OUT"; }
 {
   echo "# MAIA — WAVE 0 baseline AI reality check"
   echo "measured_at : $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "source_sha  : $(git rev-parse HEAD)"
+  echo "source_sha  : $(git rev-parse HEAD)   (the product source under measurement;"
+  echo "              this log is committed on top of that commit, so the two SHAs differ)"
   echo "dependency set : requirements.api.txt (the exact file Dockerfile.api installs)"
   echo "question    : what does the shipped image EXECUTE, not what does the source contain?"
 } >"$OUT"

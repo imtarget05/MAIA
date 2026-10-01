@@ -80,7 +80,7 @@ class _Embedder:
         return [0.0] * 384
 
 
-from maia.retriever import HybridRetriever  # noqa: E402
+from maia.retriever import HybridRetriever
 
 r = HybridRetriever(
     _Store(), _Embedder(), storage_dir="/tmp/maia_baseline_corpus", tenant_id="t1"
@@ -106,7 +106,7 @@ print()
 # ----------------------------------------------- 3. does the reranker rerank?
 print("[3] Does the reranker execute a real model, or pass through?")
 print("-" * 72)
-from maia.reranker import Reranker  # noqa: E402
+from maia.reranker import Reranker
 
 rr = Reranker()
 print(f"    Reranker.mode = {rr.mode!r}")
