@@ -16,7 +16,8 @@ Levers to reduce cost (all implemented or documented):
 1. Retrieval tuning: `TOP_K_FINAL=3` default; rerank only top-8 fused.
 2. Prompt reduction: concise answer style, citations as IDs not full text.
 3. Cache: BM25 index + embedding reuse per process; no per-request model reload
-   (`embeddings.get_embedder` singleton — also the Render OOM fix).
+   (`embeddings.get_embedder` singleton — originally the Render OOM fix; the
+   Render platform itself is now superseded legacy, see `docs/deployment.md`).
 4. Routing: mock/offline mode for tests (`MAIA_EMBED_FORCE_HASH=1`), local LLM
    for dev, commercial only when creds are set.
 5. Rate limiting: 60 req/min per user on `/chat` (in-memory; Redis needed for

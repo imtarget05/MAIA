@@ -14,7 +14,7 @@ MAIA là trợ lý nội bộ doanh nghiệp, trả lời câu hỏi chính sác
 - **Thanh chất lượng:**
   - `recall@k` không giảm so với baseline (baseline FastEmbed: `hit@k=1.0`, `recall@k=1.0`, `ctx_prec=0.764`, intent `10/10` — `eval/baseline_bge-small-en-v1.5.json`).
   - `contact_usability_rate` ~1.0 ở split `contact_usability` (sau redact PII, câu trả lời "liên hệ ai" vẫn chứa email bộ phận dùng được — G-04-FU2).
-  - 128 tests offline xanh (`MAIA_EMBED_FORCE_HASH=1`, không cần Qdrant/Kafka).
+  - Suite offline xanh: `MAIA_EMBED_FORCE_HASH=1`, không cần Qdrant/Kafka. Số đo hiện tại (main @ `8ced0695`): **1163 passed, 14 skipped, 2 deselected, 3 xfailed, 0 failed** (14 skip là env-gated, không phải failure) — xem README mục Testing.
 - **Ngoài phạm vi:**
   - Không tự phát hiện role email bằng LLM (chỉ allowlist tĩnh).
   - Không phát hiện SSN Mỹ (chỉ email, SĐT VN, CCCD/CMND, thẻ tín dụng).

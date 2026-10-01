@@ -104,9 +104,9 @@ Full suite, no `--ignore`, no test file excluded:
 
 Phase A baseline was `3 failed, 911 passed, 6 skipped` + 2 collection errors.
 
-## GATE 8 STATUS: PARTIAL — not VERIFIED
+## GATE 8 STATUS (as measured in this run, base `9f65912`): PARTIAL — not VERIFIED
 
-`eval/audit_eval_rows.py --only no_answer`:
+`eval/audit_eval_rows.py --only no_answer`, **at the time of this run**:
 
 ```
 no_answer   rows=9   usable=0   unusable=8   rejected=1   conflict=0
@@ -115,15 +115,39 @@ unusable (not yet evidence): 8
 rejected (expected):         1
 ```
 
-**Zero no-answer rows are currently usable in metrics.** The eight remaining
-rows carry no `review_status`, so they are treated as PENDING at the audit
-layer and are excluded from scored metrics. The 1 rejected row is the
+**Zero no-answer rows were usable in metrics when this ran.** The eight remaining
+rows carried no `review_status`, so they were treated as PENDING at the audit
+layer and were excluded from scored metrics. The 1 rejected row is the
 `NOANS-009` retirement above.
 
-Green tests therefore do NOT mean the abstention claim is demonstrated. The
-suite is green; the no-answer metric is unmeasured. Repairing the reader
-restored the ability to measure, and the measurement itself is the open
+Green tests therefore did NOT mean the abstention claim was demonstrated. The
+suite was green; the no-answer metric was unmeasured. Repairing the reader
+restored the ability to measure, and the measurement itself became the open
 work.
 
-No refusal-accuracy or abstention number is reported here, because
-producing one over 0 usable rows would be reporting a metric of nothing.
+No refusal-accuracy or abstention number was reported here, because producing
+one over 0 usable rows would have been reporting a metric of nothing.
+
+### SUPERSEDED — the corpus has since been labelled, and the gate has since run
+
+> The two paragraphs above are **this run's record and are left as written**. The
+> open item they describe is now closed: the corpus was labelled by review, the
+> gate was executed, and it **failed**. Do not read `usable=0` as the current
+> state.
+
+Current state, measured on `main` at `8ced0695`:
+
+```
+eval/audit_eval_rows.py --only no_answer
+  rows=9  usable=7  unusable=1  rejected=1
+Gate 8B-C: status "FAIL", exit 1 — 9 of 11 checks pass, B8B1 and B8B3 fail
+  abstention_rate 0.1111 (1 of 9, n=9), separable false
+  max no-answer top_dense 0.6957  vs  min answerable top_dense 0.3140
+```
+
+So the metric that was unmeasurable here is now measured **and failing**, over 7
+usable rows of 9. The classes overlap, so no `SIMILARITY_THRESHOLD` separates
+them; closing this needs a different decision signal (answer-span verification or
+NLI entailment), not a threshold change. Sources: `eval/README.md:16-40` and the
+artifact `../docs/evidence/e2e/gate8b-abstention.json`, which lives in the
+sibling `Projects/docs` repo and is absent from a MAIA-only clone.

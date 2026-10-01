@@ -4,6 +4,24 @@
 > **Cập nhật**: 2026-09-11  
 > **Đối tượng**: Ops / DevOps / Team MAIA
 
+> ## ⚠️ SUPERSEDED — LEGACY (Render path)
+>
+> **Tài liệu này mô tả đường deploy Render và đã bị thay thế.** Nền tảng
+> hiện tại là **Azure Container Apps** (Bicep trong `infra/`, secret qua Key
+> Vault với user-assigned managed identity) — xem `docs/azure-integration.md`.
+>
+> - Toàn bộ nội dung dưới đây được giữ **để đối chiếu lịch sử**, không phải
+>   hướng dẫn dùng được cho deploy mới.
+> - `render.yaml`, `.github/workflows/cd.yml` và `.github/workflows/keepalive.yml`
+>   vẫn chứa tham chiếu Render. Chúng **được giữ nguyên** và chỉ là đường cũ.
+>   Không có workflow nào bị xoá.
+> - Link Render free-tier cũ (`maia-api-irau.onrender.com`,
+>   `maia-ui.onrender.com`) trả **HTTP 503** khi kiểm chứng gần nhất.
+> - Không claim trạng thái live/traffic của bất kỳ revision nào ở đây. Revision
+>   nào đang phục vụ traffic là **NOT VERIFIED** — xem `docs/azure-integration.md` §7.
+> - Các số liệu trong checklist/troubleshooting dưới đây là của thời điểm
+>   2026-09-11 và không phải số đo hiện tại.
+
 ---
 
 ## Mục lục
