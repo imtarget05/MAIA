@@ -39,6 +39,40 @@ def _overlap(a: str, b: str) -> float:
     return len(sa & sb) / max(1, len(sa))
 
 
+def _canonical_texts(res: dict) -> list[str]:
+    """Canonical retrieved evidence, one entry per citation, in citation order.
+
+    ``citations[].text`` is a 600-char PRESENTATION excerpt built in
+    pipeline_query.py for the UI. Measuring evidence metrics against it is a
+    correctness defect: the EAP contact ``eap@company.com`` sits at character
+    offset 919 of its chunk (and the benefits chunk contact sits exactly at
+    offset 600), so a correctly retrieved chunk is scored as if the contact
+    were never present -- and the same truncation silently understates
+    context_precision, faithfulness_proxy and faithfulness_embed.
+
+    ``res["candidates"]`` carries the untouched chunk dicts, so prefer those,
+    keyed by ``chunk_id``. Fall back to the citation text only when candidates
+    are missing or lack that chunk_id (e.g. a hand-built response dict in a
+    unit test). Citation order and count are preserved, so the row population
+    each metric scores is unchanged -- only the text being measured changes.
+    """
+    by_id: dict[str, str] = {}
+    for c in res.get("candidates") or []:
+        if not isinstance(c, dict):
+            continue
+        cid, text = c.get("chunk_id"), c.get("text")
+        if cid and isinstance(text, str):
+            by_id[cid] = text
+    out: list[str] = []
+    for c in res.get("citations") or []:
+        if not isinstance(c, dict):
+            out.append("")
+            continue
+        cid = c.get("chunk_id")
+        out.append(by_id[cid] if cid in by_id else (c.get("text") or ""))
+    return out
+
+
 def faithfulness_embed(answer: str, ctx_chunks: list[str]) -> float | None:
     """Embedding-grounded faithfulness (offline-capable).
 
@@ -92,20 +126,21 @@ def _eval_row(r: dict, res: dict, top_k: int) -> dict:
             if cid in gold:
                 mrr = 1.0 / rank
                 break
-    ctx = " ".join([c.get("text", "") for c in res.get("citations", [])])
+    # Evaluate against the canonical retrieved chunk text, NOT the 600-char
+    # presentation excerpt in citations[].text.
+    ctx_texts = _canonical_texts(res)
+    ctx = " ".join(ctx_texts)
     kw = r.get("gold_keywords", [])
     prec = sum(1 for k in kw if k.lower() in ctx.lower()) / max(1, len(kw)) if kw else 1.0
     faith = _overlap(res.get("answer", ""), ctx)
     rel = _overlap(res.get("answer", ""), r["question"])
-    faith_emb = faithfulness_embed(res.get("answer", ""),
-                                   [c.get("text", "") for c in res.get("citations", [])])
+    faith_emb = faithfulness_embed(res.get("answer", ""), ctx_texts)
     faith_judge = None
     try:
         from maia.eval_judge import judge_enabled, judge_faithfulness
 
         if judge_enabled():
-            j = judge_faithfulness(res.get("answer", ""),
-                                   [c.get("text", "") for c in res.get("citations", [])])
+            j = judge_faithfulness(res.get("answer", ""), ctx_texts)
             faith_judge = (j or {}).get("faith_judge")
     except Exception:
         faith_judge = None
@@ -253,7 +288,8 @@ def evaluate(dataset_path: str, top_k: int = 3) -> dict:
         else:
             hit = 1 if gold & set(got_ids) else 0
             rec = len(gold & set(got_ids)) / max(1, len(gold))
-        ctx = " ".join([c.get("text", "") for c in res.get("citations", [])])
+        # canonical evidence, not the presentation excerpt (see _canonical_texts)
+        ctx = " ".join(_canonical_texts(res))
         kw = r.get("gold_keywords", [])
         prec = sum(1 for k in kw if k.lower() in ctx.lower()) / max(1, len(kw))
         faith = _overlap(res.get("answer", ""), ctx)

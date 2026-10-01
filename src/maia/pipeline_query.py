@@ -16,7 +16,7 @@ from .llm import (  # noqa: F401 - test seam: patched by name in test_health_end
 from .loops.metrics import registry
 from .pipeline_wiring import PipelineTracer
 from .prompt import assemble, build_messages
-from .reranker import Reranker
+from .reranker import get_reranker
 from .retriever import HybridRetriever
 from .vector_store import QdrantStore
 
@@ -44,7 +44,11 @@ def build_stack(tenant_id: str | None = None):
         top_k_fused=settings.TOP_K_FUSED, rrf_k=settings.RRF_K,
         tenant_id=tenant_id or settings.TENANT_ID,
     )
-    reranker = Reranker()
+    # Lifecycle fix: the cross-encoder is ~90MB and Reranker() re-loads it.
+    # Constructing it per query() made every request pay a full model load
+    # (~30s here) before any retrieval happened. get_reranker() caches per
+    # model name, so a warm process constructs it at most once.
+    reranker = get_reranker()
     # LLM backend from settings.LLM_PROVIDER: local (LAN LM Studio, default),
     # cloudflare, or mock. See maia.llm.build_llm.
     llm = build_llm()
@@ -194,6 +198,9 @@ def _query_impl(question: str, top_k_final: int | None = None, tenant_id: str | 
         _span.set_attribute("answer_len", len(answer or ""))
     tracer.log("generation", llm_mode=llm.mode, latency_ms=round((time.time() - t0) * 1000, 1))
 
+    # Presentation layer: citations[].text is a 600-char excerpt for the UI.
+    # It is deliberately NOT the evaluation evidence -- maia.eval._canonical_texts
+    # measures metrics against the full chunk text in res["candidates"].
     citations = [
         {"tag": c.get("cite_tag", f"[S{i+1}]"), "chunk_id": c["chunk_id"],
          "filename": c["metadata"].get("filename", ""), "page": c["metadata"].get("page", ""),

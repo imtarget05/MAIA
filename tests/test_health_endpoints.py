@@ -17,6 +17,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from maia import api
+from maia import reranker as reranker_mod
 
 
 def _client() -> TestClient:
@@ -51,12 +52,20 @@ def test_embedder_singleton_reused():
         with (
             patch("maia.pipeline_query.QdrantStore"),
             patch("maia.pipeline_query.HybridRetriever"),
-            patch("maia.pipeline_query.Reranker"),
+            # build_stack now goes through the process-wide reranker accessor,
+            # so the accessor is what must be stubbed to keep this unit test
+            # from loading the real cross-encoder weights.
+            patch("maia.pipeline_query.get_reranker") as mock_reranker,
             patch("maia.pipeline_query.CloudflareLLM"),
         ):
             bs()
             bs()
     assert mock_cls.call_count == 1
+    # the reranker accessor is itself cached -- the pipeline must not rebuild
+    # the model on the second build_stack() either
+    assert mock_reranker.call_count == 2  # build_stack asks the cache every time
+    # ...and the cache was not populated by this unit test (no model loaded).
+    assert reranker_mod.resident_reranker_mode() == "not-loaded"
 
 
 def test_get_embedder_returns_same_instance():

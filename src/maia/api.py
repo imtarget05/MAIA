@@ -141,7 +141,7 @@ def _rl_redis_client():
     if not url:
         return None
     try:
-        import redis
+        import redis  # pyright: ignore[reportMissingImports] - optional dep; absence degrades to memory limiter
 
         _rl_redis = redis.Redis.from_url(url, socket_connect_timeout=2,
                                          socket_timeout=2, decode_responses=True)
@@ -1002,16 +1002,19 @@ def ready():
     """
     try:
         from maia.llm import build_llm
-        from maia.reranker import Reranker
+        from maia.reranker import resident_reranker_mode
         from maia.vector_store import QdrantStore
 
         store = QdrantStore(url=settings.QDRANT_URL, collection=settings.QDRANT_COLLECTION,
                             dim=settings.EMBED_DIM, api_key=settings.QDRANT_API_KEY)
         llm = build_llm()
-        reranker = Reranker()
+        # Deliberately NOT get_reranker(): a probe must not trigger a ~30s
+        # cross-encoder load, and must not be the thing that populates the
+        # process-wide cache and pins ~90MB. Reports the mode of an already
+        # resident reranker, or "not-loaded" if no query has run yet.
         return {"status": "ok", "qdrant_points": store.count(),
                 "collection": settings.QDRANT_COLLECTION,
-                "llm_mode": llm.mode, "rerank_mode": reranker.mode,
+                "llm_mode": llm.mode, "rerank_mode": resident_reranker_mode(),
                 "embed_model": settings.EMBED_MODEL}
     except Exception as e:
         return {"status": "degraded", "error": f"{type(e).__name__}: {e}"}
