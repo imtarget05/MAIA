@@ -47,6 +47,17 @@ class Settings(BaseSettings):
     # It exists at all because a dev container has no identity to assume.
     AZURE_AI_SEARCH_API_KEY: str = ""
 
+    # Azure hosting identity (managed identity + Key Vault addressing).
+    # Every field defaults to "" so an absent Azure configuration is
+    # indistinguishable from a local run. AZURE_TENANT_ID / AZURE_CLIENT_ID
+    # pin WHICH user-assigned managed identity DefaultAzureCredential uses on
+    # the cloud path; off Azure they are ignored so `az login` keeps working.
+    # AZURE_KEY_VAULT_URI turns on Key Vault secret resolution; empty keeps
+    # the process environment as the only secret source.
+    AZURE_TENANT_ID: str = ""
+    AZURE_CLIENT_ID: str = ""
+    AZURE_KEY_VAULT_URI: str = ""
+
     # Embeddings (§9)
     #
     # Two different dimensions are in play and conflating them is a bug:
