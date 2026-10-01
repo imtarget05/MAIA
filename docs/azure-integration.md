@@ -266,3 +266,21 @@ file is next touched, confirm whether the Azure Postgres needs
 setting. No guard is added in `config.py` because that file has no validators
 by design — a validator there would be a style break, and a half-correct one
 would fail at an import-time assertion rather than at the connection.
+
+## 7. Live Azure Container App Deployment (Verified)
+
+MAIA API is deployed and verified live on Azure Container Apps:
+
+- **Resource Group:** `rg-portfolio-evidence` (Region: East Asia)
+- **Container App:** `ca-maia-api`
+- **FQDN:** `https://ca-maia-api.wittysand-b748274c.eastasia.azurecontainerapps.io`
+- **Active Revision:** `ca-maia-api--0000010` (Image: `ghcr.io/imtarget05/maia-maia-api:4fa6a86993ac8296f914b316fb9f63a213342196@sha256:e5925b6503a1688534d926f95bc9d5b7cd80cb89c4708bc2701782cf739e08ee`)
+- **Scale:** `minReplicas=1`, `maxReplicas=1` (always warm)
+- **Live Verification Endpoints:**
+  - `GET /health` → `200 OK` (`status: "ok"`, `version: "0.4.0"`)
+  - `GET /metrics` → `200 OK` (Prometheus metrics: `maia_ingestion_throughput`, `maia_docs_per_minute`, etc.)
+  - `POST /auth/register` → `201 Created` (returns user profile with tenant and employee ID)
+  - `POST /auth/login` → `200 OK` (returns JWT `access_token` and `refresh_token`)
+  - `GET /auth/me` → `200 OK` (authenticated user session details)
+  - `POST /query` → `200 OK` (RAG pipeline query with evidence gate, citations, and LLM response)
+
