@@ -15,6 +15,7 @@ what it leaves open:
 - P8: SecretClient objects are reused per vault URI; secret VALUES are
   re-read on every resolve (rotation visible without restart).
 """
+import builtins
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,6 +43,40 @@ def _production(monkeypatch, **overrides):
 def test_nc2_missing_client_id_fails_explicitly_on_azure(monkeypatch):
     _production(monkeypatch, AZURE_CLIENT_ID="", AZURE_TENANT_ID="",
                 AZURE_KEY_VAULT_URI="")
+    with pytest.raises(az.IdentityConfigurationError) as exc:
+        az.azure_credential()
+    assert "AZURE_CLIENT_ID" in str(exc.value)
+
+
+def test_nc2b_config_error_wins_over_missing_azure_sdk(monkeypatch):
+    """Both problems at once: no UAMI client id AND no azure-identity installed.
+
+    WHY this case exists separately. Every other missing-client-id test leaves
+    the SDK importable, so the ordering between configuration validation and
+    dependency resolution is never actually exercised: resolving the SDK first
+    would still succeed, and the guard would still fire. That made a real
+    regression invisible to the suite.
+
+    A live probe found it: moving the SDK import ahead of the guard turned this
+    exact scenario from IdentityConfigurationError into
+    AzureIdentityUnavailable, and the suite stayed green.
+
+    The operator-visible difference matters. A missing client id is a
+    misconfiguration the caller can fix; an ImportError reads like a broken
+    package and sends them down the wrong path.
+    """
+    _production(monkeypatch, AZURE_CLIENT_ID="", AZURE_TENANT_ID="",
+                AZURE_KEY_VAULT_URI="https://probe.vault.azure.net/")
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name.startswith("azure.identity"):
+            raise ImportError("No module named 'azure.identity'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
     with pytest.raises(az.IdentityConfigurationError) as exc:
         az.azure_credential()
     assert "AZURE_CLIENT_ID" in str(exc.value)
