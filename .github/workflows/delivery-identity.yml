@@ -1,29 +1,29 @@
 name: Delivery Identity
 
 # The delivery identity contract. This workflow exists to make one claim
-# checkable: when a deployment runs, GitHub asserts an identity, and the
-# Entra federated credential we intend to create will accept exactly that
-# identity and nothing else.
+# checkable: when a deployment runs, GitHub asserts an identity, and the Entra
+# federated credential we intend to create will accept exactly that identity
+# and nothing else.
 #
 # WHY OIDC AND NOT A SECRET. A service principal password is a bearer token
 # that never expires, is readable by anyone who can read the workflow, and
-# cannot be scoped to one repository or one environment. An OIDC token is
-# minted per run, is short-lived, and carries who is running -- so the trust
-# decision is a string comparison in Azure rather than a secret comparison
-# anywhere. The static control in infra/scripts/test_oidc_contract.py fails
-# this build if a client secret reappears anywhere in .github/workflows/.
+# cannot be scoped to one repository or one environment. An OIDC token is minted
+# per run, is short-lived, and carries who is running -- so the trust decision is
+# a string comparison in Azure rather than a secret comparison anywhere. The
+# control in infra/scripts/test_oidc_contract.py fails the build if a client
+# secret reappears anywhere in .github/workflows/.
 #
-# WHAT THIS DOES NOT PROVE. Nothing in this workflow authenticates to Azure.
-# The federated identity credential that would accept these tokens does not
-# exist yet -- creating it is a privileged tenant mutation tracked as
-# BLOCKED_ON_PRIVILEGED_AZURE_MUTATION. A green run here means "the contract
-# is internally consistent", not "GitHub can deploy to Azure".
+# WHAT THIS DOES NOT PROVE. Nothing here authenticates to Azure. The federated
+# identity credential that would accept these tokens does not exist -- creating
+# it is a privileged tenant mutation tracked as
+# BLOCKED_ON_PRIVILEGED_AZURE_MUTATION. A green run means "the contract is
+# internally consistent", not "GitHub can deploy to Azure".
 #
-# WHY THE DEPLOY JOB IS NOT ON PULL REQUEST. The job that would actually call
-# az is gated on the azure-prod environment, which carries required reviewers.
-# Turning it on before the credential exists would make every run fail for a
-# reason that has nothing to do with the change under test, which is how a
-# real regression gets learned to ignore a red build.
+# WHY THE DEPLOY JOB IS NOT ON PULL REQUEST. The job that would call az is gated
+# on the azure-prod environment, which carries required reviewers. Turning it on
+# before the credential exists would make every run fail for a reason unrelated
+# to the change under test, which is how a real regression gets taught to ignore
+# a red build.
 
 on:
   push:
@@ -40,9 +40,9 @@ on:
   workflow_dispatch:
 
 # id-token: write is the whole point of this file. Without it GitHub will not
-# mint an OIDC token at all, and azure/login would fail with a confusing
-# "no subscription found" rather than "you did not request a token" -- so the
-# contract test asserts this key is present rather than trusting review.
+# mint an OIDC token at all, and azure/login would fail with a confusing "no
+# subscription found" rather than "you did not request a token" -- so the contract
+# test asserts this key is present rather than trusting review.
 permissions:
   contents: read
   id-token: write
@@ -52,8 +52,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The checkable half. Runs everywhere, needs no Azure, and is what CI is
-  # actually asserting.
+  # The checkable half. Runs everywhere, needs no Azure, touches no injected
+  # runtime state, and is what CI is actually asserting.
   verify-contract:
     name: Verify OIDC delivery contract
     runs-on: ubuntu-latest
@@ -63,58 +63,68 @@ jobs:
       - name: Verify the OIDC contract
         run: python3 infra/scripts/test_oidc_contract.py
 
-      - name: Probe the GitHub OIDC mechanism
-        # Proves the id-token permission produced a token with the claims we
-        # expect. It does NOT claim Azure accepted it -- nothing here talks to
-        # Azure.
-        #
-        # WHY THIS STEP MAY SKIP RATHER THAN FAIL. The token endpoint variables
-        # are injected per job and are not guaranteed on every event: a pull
-        # request from a fork cannot mint one, because a fork is untrusted
-        # input. Failing there would mean the contract is only checkable on
-        # trusted events, which is worse than useless -- it trains reviewers to
-        # expect a red delivery job and learn to ignore it.
-        #
-        # So an absent mechanism is reported as absent. What is NOT tolerated is
-        # a token that IS available and carries the wrong claims: that is a real
-        # regression and it fails.
+  # The runtime half, deliberately a separate job. The token endpoint is injected
+  # per job and is not available for a pull request from a fork, because a fork is
+  # untrusted input. Probing inside verify-contract therefore made that job fail
+  # for a reason that had nothing to do with the contract -- and a delivery job
+  # that is red for uninteresting reasons is a job reviewers learn to ignore.
+  #
+  # It proves nothing about Azure either. It shows GitHub minted a token with the
+  # expected issuer; exchanging that token with Entra needs the federated
+  # credential that does not exist yet.
+  probe-oidc:
+    name: Probe GitHub OIDC mechanism
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request and inspect the OIDC token
         run: |
-          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || \
-             [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
-            echo "::notice::GitHub provided no OIDC token endpoint for this event."
-            echo "::notice::The id-token permission is still asserted statically by"
-            echo "::notice::infra/scripts/test_oidc_contract.py, which runs above and"
-            echo "::notice::cannot be satisfied by removing it. Runtime token probing is"
-            echo "::notice::additionally available on push and workflow_dispatch."
+          url="${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+          token="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}"
+          if [ -z "$url" ] || [ -z "$token" ]; then
+            echo "::notice::no OIDC token endpoint on this event; nothing to probe"
             exit 0
           fi
 
           response="$(curl -sS --fail-with-body \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            -H "Authorization: bearer $token" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange")"
+            "${url}&audience=api://AzureADTokenExchange")" || {
+              echo "::error::could not reach the token endpoint"
+              exit 1
+            }
 
-          claims="$(printf '%s' "$response" | jq -r .value | cut -d. -f2 \
-            | tr '_-' '/+' | base64 -d 2>/dev/null)"
-
-          if [ -z "$claims" ]; then
-            echo "::error::OIDC response carried no decodable payload"
+          jwt="$(printf '%s' "$response" | jq -r '.value // empty')"
+          if [ -z "$jwt" ]; then
+            echo "::error::token endpoint returned no value"
             exit 1
           fi
 
-          for claim in iss aud sub repo; do
-            value="$(printf '%s' "$claims" | jq -r --arg c "$claim" \
-              'if $c == "iss" then .iss elif $c == "aud" then (.aud | if type=="array" then .[0] else . end) else .[$c] end')"
-            if [ -z "$value" ] || [ "$value" = "null" ]; then
-              echo "::error::OIDC token is missing the $claim claim"
-              exit 1
-            fi
-            echo "$claim=$value"
-          done
+          # base64url is unpadded, so the payload has to be re-padded before
+          # base64 -d will accept it. GNU and BSD base64 disagree about missing
+          # padding, which is why this is done explicitly rather than hoped for.
+          payload="$(printf '%s' "$jwt" | cut -d. -f2)"
+          pad=$(( ${#payload} % 4 ))
+          if [ "$pad" -ne 0 ]; then
+            payload="$(printf '%s===' "$payload" | cut -c1-$(( ${#payload} + 3 - pad )))"
+          fi
+          claims="$(printf '%s' "$payload" | tr '_-' '/+' | base64 -d 2>/dev/null)"
+          if [ -z "$claims" ]; then
+            echo "::error::token payload was not decodable base64url"
+            exit 1
+          fi
 
-          issuer="$(printf '%s' "$claims" | jq -r .iss)"
+          issuer="$(printf '%s' "$claims" | jq -r '.iss // empty')"
+          subject="$(printf '%s' "$claims" | jq -r '.sub // empty')"
+          echo "issuer=$issuer"
+          echo "subject=$subject"
+
           if [ "$issuer" != "https://token.actions.githubusercontent.com" ]; then
-            echo "::error::issuer was $issuer, not the GitHub Actions issuer"
+            echo "::error::issuer was '$issuer', not the GitHub Actions issuer"
+            exit 1
+          fi
+          if [ -z "$subject" ]; then
+            echo "::error::token carried no subject"
             exit 1
           fi
 
@@ -123,9 +133,11 @@ jobs:
           echo "::notice::exchanged with Entra, which needs the federated"
           echo "::notice::credential that does not exist yet."
 
-  # The half that needs Azure. Deliberately not run on pull_request, and
-  # deliberately not wired to a real az login yet -- both happen in the wave
-  # that is allowed to mutate the tenant.
+  # The half that needs Azure. Gated on a protected environment and an explicit
+  # dispatch, and not wired to a real what-if yet -- that waits for the wave
+  # allowed to mutate the tenant. A what-if that cannot authenticate proves
+  # nothing, and printing a saved what-if file would be evidence of a deployment
+  # that never ran.
   azure-deploy:
     name: Deploy via OIDC (requires federated credential)
     if: github.event_name == 'workflow_dispatch'
@@ -135,9 +147,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Request Azure token using OIDC federation
-        # The client id is PUBLIC -- it identifies the registration, it does
-        # not authenticate. Authentication is the token. No secret is read
-        # here, and the static control fails the build if one is ever added.
+        # The client id is PUBLIC -- it identifies the registration, it does not
+        # authenticate. Authentication is the token. No secret is read here, and
+        # the static control fails the build if one is ever added.
         uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
@@ -148,7 +160,4 @@ jobs:
         run: az account show --output json
 
       - name: Validate the Bicep entrypoints
-        # what-if and deploy stay out until the credential is verified live.
-        # A what-if that cannot authenticate proves nothing, and printing a
-        # saved what-if file would be evidence of a deployment that never ran.
         run: az bicep build --file infra/main.bicep --outfile /tmp/main.json
