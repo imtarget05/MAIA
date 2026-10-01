@@ -73,7 +73,7 @@ def _load_bundle():
         return _bundle
 
     try:
-        import torch  # lazy: main venv has no torch  # pyright: ignore[reportMissingImports] - optional dep; ImportError becomes bundle error below
+        import torch  # lazy: main venv has no torch
     except Exception as e:
         _bundle = {"error": f"torch not available: {e}"}
         raise RuntimeError(_bundle["error"])
@@ -90,9 +90,7 @@ def _load_bundle():
 
         sys.path.insert(0, str(ckpt.parent))
         try:
-            from bilstm import (
-                BiLSTMTagger,  # pyright: ignore[reportMissingImports] - resolved via sys.path hack above; optional NER dep
-            )
+            from bilstm import BiLSTMTagger
 
             model = BiLSTMTagger(len(vocab), c=len(labels))
             model.load_state_dict(torch.load(str(ckpt / "model.pt"), map_location="cpu"))
@@ -140,7 +138,7 @@ def extract_entities(text: str, max_tokens: int = 64) -> dict:
         return {"ok": True, "entities": [], "model": MODEL_NAME}
     try:
         vocab, labels, model = _load_bundle()
-        import torch  # pyright: ignore[reportMissingImports] - optional dep; guarded by _load_bundle above
+        import torch
 
         words = text.split()[:max(1, max_tokens)]
         ids = torch.tensor(

@@ -39,6 +39,13 @@ jobs:
           # silencing them: no pyright ignore, no exclude, no relaxed
           # strictness. If a real type error exists, it is still reported.
           pip install -r requirements-optional.txt
+          # ...and the rerank extra, for the same reason. sentence_transformers
+          # and torch are imported lazily in src/maia/reranker.py and
+          # src/maia/ner_tool.py. Without this, those imports are unresolvable
+          # here too, and the tempting fix is a pyright:ignore on each one.
+          # Installing the extra is the honest fix: a package that the code
+          # imports should exist in the environment that type-checks it.
+          pip install -r requirements-rerank.txt
           # Pinned: unpinned `ruff`/`pyright` drifted (0.16.x flags 200+
           # pre-existing intentional patterns) && broke this job on every
           # push. Versions below are verified green against pyproject policy.
@@ -46,6 +53,16 @@ jobs:
       - name: Run ruff
         run: ruff check src/
       - name: Run pyright
+        # pyrightconfig.json deliberately does NOT pin venvPath/venv.
+        #
+        # It used to pin {"venvPath": ".", "venv": ".venv"}. That directory
+        # exists on a developer machine but NOT on a GitHub runner, and pyright
+        # does not fall back when the configured venv is missing -- it simply
+        # reports every third-party import as unresolved. That alone accounted
+        # for 6 errors here that do not exist in the code. Verified both ways in
+        # a Python 3.11 env with the full requirement set installed:
+        #   with "venv": ".venv"  -> 6 errors (all reportMissingImports)
+        #   with no venv key       -> 0 errors
         run: pyright src/
 
   unit-tests:

@@ -11,7 +11,7 @@ class Reranker:
         self.model_name = model
         self._model = None
         try:
-            from sentence_transformers import (  # pyright: ignore[reportMissingImports] - optional dep (requirements-rerank.txt)
+            from sentence_transformers import (
                 CrossEncoder,
             )
 

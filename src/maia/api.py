@@ -141,7 +141,7 @@ def _rl_redis_client():
     if not url:
         return None
     try:
-        import redis  # pyright: ignore[reportMissingImports] - optional dep; absence degrades to memory limiter
+        import redis
 
         _rl_redis = redis.Redis.from_url(url, socket_connect_timeout=2,
                                          socket_timeout=2, decode_responses=True)

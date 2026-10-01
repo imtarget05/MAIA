@@ -351,9 +351,7 @@ def validate_upload_bytes(blob: bytes, suffix: str) -> str | None:
 
 def _read_docx_text(fpath) -> str:
     """Read .docx via python-docx (optional dep). Raises ImportError if missing."""
-    from docx import (
-        Document as _Docx,  # pyright: ignore[reportMissingImports] - optional dep; ImportError propagates by design
-    )
+    from docx import Document as _Docx
 
     doc = _Docx(str(fpath))
     return "\n\n".join([(p.text or "") for p in doc.paragraphs])

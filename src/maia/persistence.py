@@ -72,9 +72,7 @@ async def open_saver(conn: Any):
 
     Tách riêng khỏi vòng đời connection để test có thể tự quản lý.
     """
-    from langgraph.checkpoint.postgres.aio import (
-        AsyncPostgresSaver,  # pyright: ignore[reportMissingImports] - optional durable-checkpoint dep
-    )
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
     saver = AsyncPostgresSaver(conn)
     await saver.setup()
@@ -99,9 +97,7 @@ async def durable_checkpointer(conn: Any = None):
         return
 
     try:
-        from psycopg_pool import (
-            AsyncConnectionPool,  # pyright: ignore[reportMissingImports] - optional dep; ImportError becomes PersistenceUnavailable below
-        )
+        from psycopg_pool import AsyncConnectionPool
     except ImportError as exc:  # pragma: no cover
         raise PersistenceUnavailable(
             "Thiếu psycopg_pool. Cài: pip install 'psycopg[pool]'") from exc
