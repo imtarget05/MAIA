@@ -11,6 +11,7 @@ behaviour, not on the presence of an import.
 import importlib.util
 import os
 import sys
+import tempfile
 
 os.environ.setdefault("MAIA_EMBED_FORCE_HASH", "1")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -82,9 +83,15 @@ class _Embedder:
 
 from maia.retriever import HybridRetriever
 
-r = HybridRetriever(
-    _Store(), _Embedder(), storage_dir="/tmp/maia_baseline_corpus", tenant_id="t1"
-)
+# WHY a private temp dir and not "/tmp/<name>": /tmp is world-writable, so a
+# predictable path there can be pre-created by another user as a symlink, and the
+# BM25 corpus cache would then be written wherever that symlink points. mkdtemp
+# creates the directory 0700, which closes that path. SonarCloud's security gate
+# flagged the fixed path as CRITICAL on new code, and it was right.
+_STORAGE = tempfile.mkdtemp(prefix="maia-baseline-")
+print(f"    corpus cache dir: {_STORAGE} (mode 0700)")
+
+r = HybridRetriever(_Store(), _Embedder(), storage_dir=_STORAGE, tenant_id="t1")
 print(
     f"    retriever built.  _bm25 index is {'BUILT' if r._bm25 is not None else 'None (sparse leg dead)'}"
 )

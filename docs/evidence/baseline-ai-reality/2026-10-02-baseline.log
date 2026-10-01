@@ -1,6 +1,6 @@
 # MAIA — WAVE 0 baseline AI reality check
-measured_at : 2026-10-01T19:38:36Z
-source_sha  : fbad86702b3e91c516fe1da483b29be90c0afc32   (the product source under measurement;
+measured_at : 2026-10-01T19:45:22Z
+source_sha  : ddc7b189b61691fab6ff9352f6710fab8179e174   (the product source under measurement;
               this log is committed on top of that commit, so the two SHAs differ)
 dependency set : requirements.api.txt (the exact file Dockerfile.api installs)
 question    : what does the shipped image EXECUTE, not what does the source contain?
@@ -35,6 +35,7 @@ python  : /private/tmp/maia_apicheck/bin/python
     PRESENT  qdrant_client                      (vector store)
 [2] Does the sparse leg actually execute? (HybridRetriever, real code)
 ------------------------------------------------------------------------
+    corpus cache dir: /var/folders/3s/h7_vfnxn1lx_mgrd4jqty2400000gn/T/maia-baseline-emimm8hl (mode 0700)
     retriever built.  _bm25 index is None (sparse leg dead)
     corpus chunks: 5
     retrieve() -> 3 fused results
