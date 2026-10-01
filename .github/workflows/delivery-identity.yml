@@ -63,19 +63,44 @@ jobs:
       - name: Verify the OIDC contract
         run: python3 infra/scripts/test_oidc_contract.py
 
-      - name: Prove this job can request a GitHub OIDC token
-        # This asserts the *mechanism* is available -- that the id-token
-        # permission produced a token with the claims we expect. It does not
-        # assert Azure accepted it, because nothing here talks to Azure.
+      - name: Probe the GitHub OIDC mechanism
+        # Proves the id-token permission produced a token with the claims we
+        # expect. It does NOT claim Azure accepted it -- nothing here talks to
+        # Azure.
+        #
+        # WHY THIS STEP MAY SKIP RATHER THAN FAIL. The token endpoint variables
+        # are injected per job and are not guaranteed on every event: a pull
+        # request from a fork cannot mint one, because a fork is untrusted
+        # input. Failing there would mean the contract is only checkable on
+        # trusted events, which is worse than useless -- it trains reviewers to
+        # expect a red delivery job and learn to ignore it.
+        #
+        # So an absent mechanism is reported as absent. What is NOT tolerated is
+        # a token that IS available and carries the wrong claims: that is a real
+        # regression and it fails.
         run: |
-          set -euo pipefail
-          response="$(curl -sS \
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || \
+             [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::notice::GitHub provided no OIDC token endpoint for this event."
+            echo "::notice::The id-token permission is still asserted statically by"
+            echo "::notice::infra/scripts/test_oidc_contract.py, which runs above and"
+            echo "::notice::cannot be satisfied by removing it. Runtime token probing is"
+            echo "::notice::additionally available on push and workflow_dispatch."
+            exit 0
+          fi
+
+          response="$(curl -sS --fail-with-body \
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange")"
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange")"
 
           claims="$(printf '%s' "$response" | jq -r .value | cut -d. -f2 \
             | tr '_-' '/+' | base64 -d 2>/dev/null)"
+
+          if [ -z "$claims" ]; then
+            echo "::error::OIDC response carried no decodable payload"
+            exit 1
+          fi
 
           for claim in iss aud sub repo; do
             value="$(printf '%s' "$claims" | jq -r --arg c "$claim" \
@@ -86,6 +111,17 @@ jobs:
             fi
             echo "$claim=$value"
           done
+
+          issuer="$(printf '%s' "$claims" | jq -r .iss)"
+          if [ "$issuer" != "https://token.actions.githubusercontent.com" ]; then
+            echo "::error::issuer was $issuer, not the GitHub Actions issuer"
+            exit 1
+          fi
+
+          echo "::notice::GitHub minted an OIDC token with the expected issuer."
+          echo "::notice::This is NOT Azure authentication. No token has been"
+          echo "::notice::exchanged with Entra, which needs the federated"
+          echo "::notice::credential that does not exist yet."
 
   # The half that needs Azure. Deliberately not run on pull_request, and
   # deliberately not wired to a real az login yet -- both happen in the wave
