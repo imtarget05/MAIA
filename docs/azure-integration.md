@@ -76,6 +76,13 @@ silent until a deploy fails at startup. With this convention
 `KV_SECRET_NAMES` in `src/maia/azure_identity.py` is the authoritative list, and
 `infra/` must match it:
 
+> HONEST STATUS (TODO 5): two secret lists legitimately coexist today, so
+> "must match" is the migration target, not the current state. Bicep's
+> `keyVaultSecretNames` carries the LIVE ACA secret-refs
+> (`demo-user-a-pw`/`demo-user-b-pw`); `KV_SECRET_NAMES` is the FUTURE
+> resolver contract. The Bicep-sync test documents this skip and is re-armed
+> at migration. Forcing equality now would break ACA startup.
+
 | secret | why it is a secret |
 | --- | --- |
 | `JWT_SECRET_KEY` | token signing key; rotating it invalidates sessions |
