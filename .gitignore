@@ -146,3 +146,9 @@ ner/data/
 ner/checkpoints/
 eval/ner-report-*.json
 eval/reports/retrieval-cost-*.json
+
+# Bicep build output. The compiled ARM template is a generated artifact that CI
+# uploads as evidence; committing it would create a second copy of the source of
+# truth that can drift from the .bicep it came from.
+infra/**/*.json
+!infra/bicepconfig.json
