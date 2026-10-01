@@ -57,10 +57,12 @@ jobs:
         uses: actions/checkout@v4
 
       # Pinned rather than "latest": the committed plan fixture records
-      # terraform_version 1.16.3, and the lock file is resolved against it. A
+      # terraform_version 1.16.3, and the lock files are resolved against it. A
       # floating CLI would make the gate's meaning change without a commit.
+      # v4 is the current major (v3's last release is 2024); its terraform_version
+      # and terraform_wrapper inputs are the ones documented in its README.
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.16.3"
           # The wrapper intercepts the CLI and rewrites exit codes; a gate that
