@@ -798,18 +798,25 @@ def get_admin_stats(
     user_count = db.query(User).count()
     active_user_count = db.query(User).filter(User.is_active == True).count()
     admin_count = db.query(User).filter(User.role == UserRole.ADMIN).count()
+    from maia.llm import last_generation_state
+
     try:
         _, store, _, _, llm = build_stack()
         kb_points = store.count()
         llm_mode = llm.mode
+        # The outcome of the last call, next to the static mode: `llm_mode`
+        # alone cannot tell an operator that generation is degraded.
+        generation_state = last_generation_state()[0]
     except Exception:
         kb_points, llm_mode = -1, "unknown"
+        generation_state = "unknown"
     return {
         "total_users": user_count,
         "active_users": active_user_count,
         "admin_users": admin_count,
         "kb_points": kb_points,
         "llm_mode": llm_mode,
+        "llm_generation_state": generation_state,
         "workflow": _wf.counts(),
     }
 
@@ -998,25 +1005,68 @@ def ready():
     it called build_stack(), because every Embedder() loads the FastEmbed
     ONNX model (~hundreds of MB). The model now lives in a process-wide
     singleton (embeddings.get_embedder) loaded once; this probe only checks
-    Qdrant connectivity + reports llm/rerank modes (both cheap, no model).
+    vector-store connectivity + reports llm/rerank modes (both cheap, no model).
+
+    The store comes from `build_vector_store`, the same factory the query path
+    uses, and `vector_store_backend` names what was actually probed.
     """
     try:
-        from maia.llm import build_llm
+        from maia.llm import build_llm, last_generation_state
         from maia.reranker import resident_reranker_mode
-        from maia.vector_store import QdrantStore
+        from maia.retrieval_backends import (
+            BACKEND_QDRANT,
+            build_vector_store,
+            resolve_backend_name,
+        )
 
-        store = QdrantStore(url=settings.QDRANT_URL, collection=settings.QDRANT_COLLECTION,
-                            dim=settings.EMBED_DIM, api_key=settings.QDRANT_API_KEY)
+        # Resolve the backend through the SAME factory the query path uses
+        # (pipeline_query.build_stack). Constructing QdrantStore directly here
+        # meant that with VECTOR_STORE_BACKEND=azure_ai_search this probe still
+        # probed Qdrant while every real query hit AI Search: a green readiness
+        # signal for a backend nothing else was using.
+        #
+        # dim comes from settings, NOT from get_embedder(): constructing the
+        # embedder loads the FastEmbed ONNX model (~hundreds of MB) and this
+        # probe must stay cheap. That constraint is why the probe never called
+        # build_stack() in the first place.
+        backend = resolve_backend_name()
+        store = build_vector_store(dim=settings.EMBED_DIM, backend=backend)
         llm = build_llm()
         # Deliberately NOT get_reranker(): a probe must not trigger a ~30s
         # cross-encoder load, and must not be the thing that populates the
         # process-wide cache and pins ~90MB. Reports the mode of an already
         # resident reranker, or "not-loaded" if no query has run yet.
-        return {"status": "ok", "qdrant_points": store.count(),
-                "collection": settings.QDRANT_COLLECTION,
-                "llm_mode": llm.mode, "rerank_mode": resident_reranker_mode(),
-                "embed_model": settings.EMBED_MODEL}
+        #
+        # `llm_mode` is the STATIC configuration; `llm_generation_state` is what
+        # the last call in THIS PROCESS actually did. Reporting only the former
+        # means a readiness check cannot say "generation is degraded right now".
+        # Read from the module, not from the object just built: build_stack()
+        # constructs a fresh adapter per request, so a per-instance flag read
+        # here would be "unknown" forever.
+        generation_state, generation_error = last_generation_state()
+        body: dict = {"status": "ok", "vector_store_backend": backend,
+                      "qdrant_points": store.count(),
+                      "llm_mode": llm.mode,
+                      "llm_generation_state": generation_state,
+                      "rerank_mode": resident_reranker_mode(),
+                      "embed_model": settings.EMBED_MODEL}
+        if generation_error:
+            body["llm_generation_error"] = generation_error
+        if backend == BACKEND_QDRANT:
+            # Field name is Qdrant-specific but is the published contract
+            # (scripts/deploy_check.py checks qdrant_points > 0, and it is what
+            # docs/deployment.md documents), so it stays exactly as it was.
+            body["collection"] = settings.QDRANT_COLLECTION
+        else:
+            # Naming the Qdrant collection while probing AI Search would be the
+            # same class of lie as the hardcoded store: the probe says which
+            # backend it asked, not one it did not.
+            body["collection"] = getattr(store, "index_name", "") or settings.QDRANT_COLLECTION
+        return body
     except Exception as e:
+        # Fail closed. A dependency error (AzureSearchUnavailable, a missing
+        # endpoint, a refused connection) is reported as itself -- never
+        # re-labelled as another backend, and never turned into "ok".
         return {"status": "degraded", "error": f"{type(e).__name__}: {e}"}
 
 

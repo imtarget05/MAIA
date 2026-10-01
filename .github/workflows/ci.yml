@@ -361,6 +361,90 @@ jobs:
       - name: Contact usability gate (G-04-FU2, conditional survival = 1.0)
         run: |
           PYTHONPATH=src python -m maia.eval --group contact_usability --top-k 3 --fail-under-contact 1.0
+  abstention-gate-measurement:
+    # GATE 8B-C (MAIA abstention) — MEASUREMENT ONLY. NOT A GATE.
+    #
+    # WHY THIS IS NOT BLOCKING. The gate currently reports status FAIL, and that
+    # FAIL is the finding, not an accident to be configured away:
+    #
+    #   abstention          1/9 labelled no-answer queries refused (n=9)
+    #   separable           false -- max no-answer top_dense 0.6957
+    #                                vs min answerable top_dense 0.3140
+    #
+    # The two classes OVERLAP, so no value of SIMILARITY_THRESHOLD separates
+    # them: any threshold low enough to refuse every no-answer query also
+    # refuses the weakest genuine answer. Closing this needs a different decision
+    # signal (answer-span verification, or an NLI entailment check), not a
+    # threshold change and not a dataset edit.
+    #
+    # A permanently-red pipeline is worse than no gate: people learn to
+    # re-run it, and re-running until green is how a real finding gets waved
+    # through. So this job measures, records and reports, and never blocks.
+    #
+    # PROMOTION CONDITION — this job becomes BLOCKING when, and only when, every
+    # row in eval/golden/no_answer.jsonl carries a human-verified
+    # `review_status` (VERIFIED, or a deliberate REJECTED with `verification`
+    # evidence), AND the separability defect above has been closed with a new
+    # decision signal rather than a retuned threshold. At that point: drop both
+    # `continue-on-error: true` flags below, and treat this job id as a blocking
+    # dependency in the `notify` needs list. Until then it stays advisory.
+    name: Abstention gate 8B-C (measurement, non-blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run abstention gate (8B-C)
+        # Advisory: a non-zero exit is the CURRENT MEASURED FINDING, so the step
+        # must not fail the job. The exit code is captured and reported below
+        # rather than swallowed.
+        continue-on-error: true
+        env:
+          # The gate's default evidence path is outside the repo checkout
+          # (../docs/evidence/e2e), which does not exist on a runner, so it is
+          # redirected into the workspace and uploaded as an artifact instead.
+          MAIA_GATE8B_EVIDENCE: ${{ github.workspace }}/ci-artifacts/gate8b-abstention.json
+          MAIA_GATE8B_STORAGE: ${{ github.workspace }}/ci-artifacts/storage
+        run: |
+          set +e
+          python gate8b_abstention.py
+          code=$?
+          set -e
+          echo "::notice title=Abstention gate 8B-C::exit=${code} - a non-zero exit is the expected current finding, see the uploaded artifact"
+          exit 0
+      - name: Summarise the measurement (denominator included)
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("ci-artifacts/gate8b-abstention.json")
+          if not p.exists():
+              print("no evidence artifact produced; the gate did not reach its verdict")
+              raise SystemExit(0)
+          d = json.loads(p.read_text())
+          a, c = d["abstention"], d["conclusion"]
+          print(f"status                  : {d['status']}")
+          print(f"blocking checks         : {d['blocking_failures'] or 'none'}")
+          print(f"abstention              : {a['abstained']}/{a['rows']} refused (rate={a['abstention_rate']}, n={a['rows']})")
+          print(f"answerable authorised   : {a['answerable_authorized']}/{a['answerable_controls']}")
+          print(f"separable_by_similarity : {a['separable']} (max no-answer {a['max_noanswer_top_dense']} vs min answerable {a['min_answerable_top_dense']})")
+          print(f"conclusion              : {c['headline']}")
+          print(f"closing it needs        : {c['consequence']}")
+          print(f"threshold tuned?        : {c['why_not_a_threshold_change']}")
+          print(f"labels adjusted to fit?  : {c['why_not_a_data_change']}")
+          PY
+      - name: Upload abstention gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate8b-abstention
+          path: ci-artifacts/gate8b-abstention.json
+          if-no-files-found: error
+
   coverage:
     # Coverage ratchet, phase 1: unmeasured baseline → report-only (NO
     # fail-under) until a baseline is locked. No codecov upload: this repo
@@ -586,7 +670,7 @@ jobs:
     # webhook secret is configured.
     name: Notify on completion
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, unit-tests, threshold-regression, reranker, eval-manifest, contact-usability-gate, sonarcloud-analysis, deploy-production]
+    needs: [lint-and-typecheck, unit-tests, promptops-mcp, threshold-regression, reranker, eval-manifest, contact-usability-gate, abstention-gate-measurement, coverage, gitleaks, bicep-validate, sonarcloud-analysis, deploy-production]
     if: always()
     steps:
       - name: Notify Discord

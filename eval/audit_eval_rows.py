@@ -25,7 +25,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from answerability_schema import (  # noqa: E402
     DEFAULT_PENDING, EXPLICIT, EXPLICIT_REJECTED, LEGACY_EXPECT_REFUSAL,
     map_legacy_answerability)
-from verify_eval_rows import load_corpus, corpus_files, norm  # noqa: E402
+from verify_eval_rows import (  # noqa: E402
+    build_token_index, corpus_files, load_corpus, term_present)
 
 GOLDEN = pathlib.Path(__file__).resolve().parent / "golden"
 
@@ -66,6 +67,7 @@ def read_rows(path: pathlib.Path) -> list[dict]:
 def audit_file(path: pathlib.Path) -> dict:
     corpus = load_corpus()
     names = corpus_files()
+    token_index = build_token_index(corpus)
     rows = read_rows(path)
 
     explicit = legacy = pending = 0
@@ -111,10 +113,22 @@ def audit_file(path: pathlib.Path) -> dict:
             continue
 
         # Corpus check. For NO_ANSWER this is where a wrong label gets caught.
+        #
+        # Token-sequence matching, via verify_eval_rows.term_present(). The
+        # previous `norm(term) in body` substring test reported NOANS-006 as
+        # mislabelled because "cat" occurs inside "Authentication" in
+        # VPN_Guide.md - a false contradiction that would have been "fixed" by
+        # deleting a probe term from a correct row. See term_present() for why
+        # the matcher, not the data, is where that defect is repaired.
         if answerability == "NO_ANSWER":
-            terms = row.get("probe_terms") or row.get("absence_probe_terms", [])
+            # Union of both fields, never one in preference to the other.
+            # `absence_probe_terms` is what review asserted absent; `probe_terms`
+            # is the legacy gate input. Checking both means adding the reviewed
+            # field can never silently reduce coverage.
+            terms = list(dict.fromkeys(
+                [*row.get("absence_probe_terms", []), *row.get("probe_terms", [])]))
             for term in terms:
-                hits = [n for n, body in corpus.items() if norm(term) in body]
+                hits = term_present(term, token_index)
                 if hits:
                     corpus_failures.append(
                         f"{rid}: absence_probe_term {term!r} IS PRESENT in {hits}")
