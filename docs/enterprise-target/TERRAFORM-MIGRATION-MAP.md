@@ -44,3 +44,36 @@
 - Remote state, federated credentials, live import, `plan` against Azure:
   Phase 2 / Phase 3 scope, explicitly out of TF-M2..M15 except the exact
   subtasks that name them.
+
+## Terraform-only artefacts (no Bicep counterpart)
+
+The tables above classify **Bicep sources**. The files below have no Bicep
+counterpart and therefore cannot appear in those tables — recording them here
+means the directory has no unclassified content, which is the rule this document
+exists to enforce.
+
+| Artefact | Purpose | Status |
+|---|---|---|
+| `infra/terraform/tests/composition.tftest.hcl` | Root wiring contract: identity RG name/location, the shared tag contract, and the four role ids forwarded from `locals.tf` into the rbac module | **ADDED_BY_MIGRATION** |
+| `infra/terraform/modules/*/versions.tf` | Provider requirements per module, so `terraform test` inside a module can resolve providers and stays on the root's majors | **ADDED_BY_MIGRATION** |
+| `infra/terraform/tests/probe_plan_controls.py` | Negative controls: 11 mutations against the committed plan fixture, asserting each invariant fails for its own reason | **ADDED_BY_MIGRATION** |
+| `infra/terraform/tests/fixtures/plan.v1.json` | Reduced, placeholder-only capture of a real V1 plan, so CI can run the invariant checker without authenticating to Azure | **ADDED_BY_MIGRATION** |
+| `infra/terraform/scripts/phase1_check.sh` | The single offline gate entry point; asserts test **counts**, because an empty `terraform test` and a passing one share an exit code | **ADDED_BY_MIGRATION** |
+| `infra/terraform/policies/` | Trivy config, one reviewed exception (`AZU-0013`) with its removal condition, and a scan whose positive control must fire before a clean result is trusted | **ADDED_BY_MIGRATION** |
+| `.github/workflows/terraform-validate.yml` | Runs the gate in CI with `contents: read` and no Azure authentication | **ADDED_BY_MIGRATION** |
+
+### Why these are not `INTENTIONALLY_NOT_PORTED`
+
+They are verification apparatus for the port itself, not deployment units. Bicep
+has no equivalent because Bicep has no equivalent requirement: the parity test
+is against **the Bicep source**, and these files are what makes that test
+reproducible by anyone with a clone.
+
+## Re-verification note
+
+The `PARITY_VERIFIED` rows above were re-read **source-to-source** on 2026-10-02
+(`4303dd6d`) — every Bicep parameter, resource property, output and conditional
+guard against its Terraform counterpart. That is a source-parity check and is
+nothing more: no Azure resource was planned, applied, imported or queried in that
+pass, so **no row here asserts that a resource exists**. Evidence:
+`docs/evidence/terraform-phase1/2026-10-02-gate.log`.

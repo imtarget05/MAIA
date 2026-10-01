@@ -3,6 +3,10 @@
 ```text
 derived_from : docs/enterprise-target/CURRENT-STATE.md
 measured_at  : 2026-10-01
+updated_at   : 2026-10-02 — row 1 re-measured at source_sha 4303dd6d
+               (docs/evidence/terraform-phase1/2026-10-02-gate.log). Every
+               other row below is unchanged from the 2026-10-01 pass and is
+               NOT re-measured here.
 ```
 
 ## Status vocabulary
@@ -27,7 +31,7 @@ No required row may be closed with `PARTIAL` / `PLANNED_ONLY` / `NOT_VERIFIED`.
 
 | # | Required component | Status (now) | Evidence measured | Close in |
 |---|---|---|---|---|
-| 1 | Terraform as canonical IaC | **NOT_PRESENT** | 0 `*.tf`; Bicep only | Phase 1 |
+| 1 | Terraform as canonical IaC | **IMPLEMENTED_TESTED** (not yet canonical) | at `4303dd6d`: 19 `*.tf`, 4 `*.tftest.hcl`; root+modules `terraform test` green; 7 plan invariants PASS; 15 control negative controls; Bicep **0** files changed; no Azure plan/apply/import. **NOT_PRESENT no longer applies**, but Bicep is still `CURRENT_CANONICAL_IAC` until the port is merged | Phase 1 (merge = canonical) |
 | 2 | Remote state + GitHub OIDC (no `AZURE_CLIENT_SECRET`) | **NOT_PRESENT** | no secretless deploy path measured | Phase 2 |
 | 3 | Import existing Azure resources (no recreate) | **UNMEASURED** | live inventory not probed | Phase 3 |
 | 4 | VNet + Private Endpoints + Private DNS | **UNMEASURED** | `infra/modules/*` network shape only | Phase 4 |
