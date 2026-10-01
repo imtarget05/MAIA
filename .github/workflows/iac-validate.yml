@@ -1,0 +1,65 @@
+name: IaC Validate
+
+# The IaC gate. It runs infra/validate.sh -- the same entry point a developer
+# runs, so a local green and a CI green mean the same thing.
+#
+# It never authenticates to Azure and never creates, updates or deletes a
+# resource. A green run means the templates are well-formed and the guards
+# hold, NOT that the stack exists. Claiming a deployment on the basis of this
+# workflow would be exactly the overclaim the evidence rules forbid.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/iac-validate.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/iac-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # WHY az bicep install and not a pinned download URL: it places the CLI
+      # on PATH at ~/.azure/bin, which is what infra/validate.sh requires. The
+      # script refuses to run without a CLI rather than skipping, and it
+      # refuses to trust a version it cannot check.
+      - name: Install bicep CLI
+        run: |
+          az bicep install
+          echo "$HOME/.azure/bin" >> "$GITHUB_PATH"
+          bicep --version
+
+      - name: Restore Bicep modules
+        run: az bicep restore --file infra/main.bicep
+
+      - name: Run IaC validation
+        run: ./infra/validate.sh
+
+      - name: Upload compiled V1 template
+        # The invariant checks read the COMPILED ARM JSON rather than the
+        # .bicep source: a grep for `enablePurgeProtection: true` would pass
+        # just as happily on a line inside a comment. Uploading the compiled
+        # artifact makes the thing that was actually asserted reviewable.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iac-compiled-v1
+          path: ${{ runner.temp }}/maia-iac-art/*.json
+          retention-days: 14
+          if-no-files-found: warn
