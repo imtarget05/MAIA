@@ -28,6 +28,25 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION: str = "maia_knowledge"
     QDRANT_API_KEY: str = ""
 
+    # Vector store backend selection (ADR-0005).
+    #
+    # Which implementation of the maia.retrieval_port protocols to build.
+    # "qdrant" stays the default and stays the only backend the eval baselines
+    # were measured on: the Azure cutover is gated on score-normalised eval
+    # parity (see docs/azure-integration.md), not on the backend merely
+    # existing. Accepted: qdrant | azure_ai_search | memory. "memory" is the
+    # offline InMemoryVectorStore used by tests and demos.
+    VECTOR_STORE_BACKEND: str = "qdrant"
+
+    # Azure AI Search (S1 or higher -- the free tier has no vector search).
+    AZURE_AI_SEARCH_ENDPOINT: str = ""
+    AZURE_AI_SEARCH_INDEX: str = "maia_knowledge"
+    # API key is the LOCAL DEV fallback only. The cloud path is managed
+    # identity (Search Index Data Reader/Contributor role on the service), so
+    # this stays empty in Azure and the value is never a deployment secret.
+    # It exists at all because a dev container has no identity to assume.
+    AZURE_AI_SEARCH_API_KEY: str = ""
+
     # Embeddings (§9)
     #
     # Two different dimensions are in play and conflating them is a bug:
