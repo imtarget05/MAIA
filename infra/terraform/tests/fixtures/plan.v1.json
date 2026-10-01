@@ -1,0 +1,361 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "azurerm_resource_group.identity",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "location": "eastasia",
+          "managed_by": null,
+          "name": "rg-maia-identity",
+          "tags": {
+            "env": "prod",
+            "managedBy": "terraform",
+            "owner": "platform-team@example.invalid",
+            "project": "maia"
+          },
+          "timeouts": null
+        },
+        "after_sensitive": {
+          "tags": {}
+        },
+        "after_unknown": {
+          "id": true,
+          "tags": {}
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "identity",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "type": "azurerm_resource_group"
+    },
+    {
+      "address": "module.identity.azuread_application_redirect_uris.spa",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "redirect_uris": null,
+          "timeouts": null,
+          "type": "SPA"
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "application_id": true,
+          "id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.identity",
+      "name": "spa",
+      "provider_name": "registry.terraform.io/hashicorp/azuread",
+      "type": "azuread_application_redirect_uris"
+    },
+    {
+      "address": "module.identity.azuread_application_redirect_uris.web",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "redirect_uris": null,
+          "timeouts": null,
+          "type": "Web"
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "application_id": true,
+          "id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.identity",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/azuread",
+      "type": "azuread_application_redirect_uris"
+    },
+    {
+      "address": "module.identity.azuread_application_registration.workload",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "description": "MAIA API \u2014 machine identity for the enterprise Azure deployment. Managed identity only; no interactive sign-in.",
+          "display_name": "maia",
+          "group_membership_claims": null,
+          "homepage_url": null,
+          "implicit_access_token_issuance_enabled": null,
+          "implicit_id_token_issuance_enabled": null,
+          "logout_url": null,
+          "marketing_url": null,
+          "notes": null,
+          "privacy_statement_url": null,
+          "requested_access_token_version": 2,
+          "service_management_reference": null,
+          "sign_in_audience": "AzureADMyOrg",
+          "support_url": null,
+          "terms_of_service_url": null,
+          "timeouts": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "client_id": true,
+          "disabled_by_microsoft": true,
+          "id": true,
+          "object_id": true,
+          "publisher_domain": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.identity",
+      "name": "workload",
+      "provider_name": "registry.terraform.io/hashicorp/azuread",
+      "type": "azuread_application_registration"
+    },
+    {
+      "address": "module.identity.azuread_service_principal.workload",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "account_enabled": true,
+          "alternative_names": null,
+          "app_role_assignment_required": null,
+          "description": null,
+          "login_url": null,
+          "notes": null,
+          "notification_email_addresses": null,
+          "owners": null,
+          "preferred_single_sign_on_mode": null,
+          "saml_single_sign_on": [],
+          "timeouts": null,
+          "use_existing": null
+        },
+        "after_sensitive": {
+          "app_role_ids": {},
+          "app_roles": [],
+          "feature_tags": [],
+          "features": [],
+          "oauth2_permission_scope_ids": {},
+          "oauth2_permission_scopes": [],
+          "redirect_uris": [],
+          "saml_single_sign_on": [],
+          "service_principal_names": [],
+          "tags": []
+        },
+        "after_unknown": {
+          "app_role_ids": true,
+          "app_roles": true,
+          "application_tenant_id": true,
+          "client_id": true,
+          "display_name": true,
+          "feature_tags": true,
+          "features": true,
+          "homepage_url": true,
+          "id": true,
+          "logout_url": true,
+          "oauth2_permission_scope_ids": true,
+          "oauth2_permission_scopes": true,
+          "object_id": true,
+          "redirect_uris": true,
+          "saml_metadata_url": true,
+          "saml_single_sign_on": [],
+          "service_principal_names": true,
+          "sign_in_audience": true,
+          "tags": true,
+          "type": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.identity",
+      "name": "workload",
+      "provider_name": "registry.terraform.io/hashicorp/azuread",
+      "type": "azuread_service_principal"
+    },
+    {
+      "address": "module.identity.azurerm_user_assigned_identity.workload",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "isolation_scope": null,
+          "location": "eastasia",
+          "name": "id-maia",
+          "resource_group_name": "rg-maia-identity",
+          "tags": {
+            "env": "prod",
+            "managedBy": "terraform",
+            "owner": "platform-team@example.invalid",
+            "project": "maia"
+          },
+          "timeouts": null
+        },
+        "after_sensitive": {
+          "tags": {}
+        },
+        "after_unknown": {
+          "client_id": true,
+          "id": true,
+          "principal_id": true,
+          "tags": {},
+          "tenant_id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.identity",
+      "name": "workload",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "type": "azurerm_user_assigned_identity"
+    },
+    {
+      "address": "module.keyvault.azurerm_key_vault.vault",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "enabled_for_deployment": false,
+          "enabled_for_disk_encryption": false,
+          "enabled_for_template_deployment": false,
+          "location": "eastasia",
+          "name": "kv-maia-01",
+          "network_acls": [
+            {
+              "bypass": "AzureServices",
+              "default_action": "Allow",
+              "ip_rules": null,
+              "virtual_network_subnet_ids": null
+            }
+          ],
+          "public_network_access_enabled": true,
+          "purge_protection_enabled": true,
+          "rbac_authorization_enabled": true,
+          "resource_group_name": "rg-maia-identity",
+          "sku_name": "standard",
+          "soft_delete_retention_days": 90,
+          "tags": {
+            "env": "prod",
+            "managedBy": "terraform",
+            "owner": "platform-team@example.invalid",
+            "project": "maia"
+          },
+          "tenant_id": "00000000-0000-0000-0000-000000000000",
+          "timeouts": null
+        },
+        "after_sensitive": {
+          "access_policy": [],
+          "contact": [],
+          "network_acls": [
+            {}
+          ],
+          "tags": {}
+        },
+        "after_unknown": {
+          "access_policy": true,
+          "contact": true,
+          "enable_rbac_authorization": true,
+          "id": true,
+          "network_acls": [
+            {}
+          ],
+          "tags": {},
+          "vault_uri": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.keyvault",
+      "name": "vault",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "type": "azurerm_key_vault"
+    },
+    {
+      "address": "module.rbac.azurerm_role_assignment.deploy_identity_contributor",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "condition": null,
+          "delegated_managed_identity_resource_id": null,
+          "description": null,
+          "principal_id": "00000000-0000-0000-0000-000000000000",
+          "principal_type": "ServicePrincipal",
+          "role_definition_id": "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c",
+          "timeouts": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "condition_version": true,
+          "id": true,
+          "name": true,
+          "role_definition_name": true,
+          "scope": true,
+          "skip_service_principal_aad_check": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.rbac",
+      "name": "deploy_identity_contributor",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "type": "azurerm_role_assignment"
+    },
+    {
+      "address": "module.rbac.azurerm_role_assignment.key_vault_secrets_user[0]",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "condition": null,
+          "delegated_managed_identity_resource_id": null,
+          "description": null,
+          "principal_type": "ServicePrincipal",
+          "role_definition_id": "/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6",
+          "skip_service_principal_aad_check": false,
+          "timeouts": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "condition_version": true,
+          "id": true,
+          "name": true,
+          "principal_id": true,
+          "role_definition_name": true,
+          "scope": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "index": 0,
+      "mode": "managed",
+      "module_address": "module.rbac",
+      "name": "key_vault_secrets_user",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "type": "azurerm_role_assignment"
+    }
+  ],
+  "terraform_version": "1.16.3"
+}

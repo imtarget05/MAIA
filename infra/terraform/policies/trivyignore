@@ -1,0 +1,26 @@
+# Trivy ignore list for infra/terraform.
+#
+# Every line here is a DELIBERATE, REVIEWED deviation from a security check.
+# An uncommented line with no reason is a defect: it makes a finding invisible
+# without recording who decided that and why.
+#
+# policies/scan.sh asserts that the set of ignored IDs is exactly the one below,
+# so adding a suppression requires changing that assertion and this file in the
+# same review.
+
+# AZU-0013 — Vault network ACL does not block access by default.
+#
+# DELIBERATE V1 POSTURE, NOT AN OVERSIGHT. The V1 profile sets
+# public_network_access_enabled = true with network_acls.default_action =
+# "Allow" (infra/terraform/modules/keyvault/main.tf). The alternative — a Deny
+# default — is worse in V1: there is no private endpoint, and the Container Apps
+# workload connects over the public endpoint from addresses that are not covered
+# by the AzureServices bypass. A Deny default would therefore lock the workload
+# out of its own secrets, turning a security finding into an outage.
+#
+# REMOVAL CONDITION: this entry MUST be deleted in the same change that sets
+# enable_private_network_for_vault = true (the V5 switch). The V5 change also
+# inverts invariant KV2 in tests/check_plan_invariants.py, which currently
+# asserts the public endpoint IS enabled; the two are coupled and must move
+# together.
+AZU-0013

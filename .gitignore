@@ -152,3 +152,11 @@ eval/reports/retrieval-cost-*.json
 # truth that can drift from the .bicep it came from.
 infra/**/*.json
 !infra/bicepconfig.json
+# Terraform plan fixture. Deliberate exception for the same reason as
+# bicepconfig.json: this is not a plan artefact of a live deployment but a
+# captured, placeholder-only V1 plan that CI replays through
+# infra/terraform/tests/check_plan_invariants.py. CI never authenticates to
+# Azure, so without a committed fixture the "plan-JSON controls bite" gate could
+# not run there at all — and an unchecked control is an unchecked claim.
+!infra/terraform/tests/fixtures/plan.v1.json
+

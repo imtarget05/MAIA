@@ -1,0 +1,106 @@
+name: Terraform Validate
+
+# The Terraform gate for Phase 1 (the Bicep -> Terraform migration). It runs
+# infra/terraform/scripts/phase1_check.sh, which is:
+#
+#   terraform fmt -check -recursive
+#   terraform init -backend=false     (root + each module)
+#   terraform validate
+#   terraform test                    (root + each module)
+#   python3 tests/probe_plan_controls.py   (plan-JSON negative controls)
+#   bash policies/scan.sh                (Trivy: positive control + repo scan)
+#
+# WHY a separate workflow rather than a job in iac-validate.yml: that one is the
+# Bicep gate. Two IaC languages need two failure signals, so a broken Terraform
+# module cannot hide behind a green Bicep compile (or the reverse). It also means
+# a Terraform change is validated in seconds without waiting behind the Bicep
+# restore/compile or the Python suite.
+#
+# WHAT THIS JOB DOES NOT DO — deliberately:
+#   * no azure/login, no OIDC token exchange, no federated credential
+#   * no `terraform plan` against a real subscription, no `terraform apply`
+#   * no state backend contact (`-backend=false` everywhere)
+# A green run means "the configuration is well-formed, the module contracts
+# hold, and the plan invariants bite on a real captured plan". It is NOT evidence
+# that any Azure resource exists, and claiming otherwise from a green check is
+# exactly the overclaim the evidence rules forbid. Importing/provisioning is a
+# later, explicitly authorised phase.
+
+on:
+  push:
+    branches: [main, develop, 'migration/**']
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  workflow_dispatch:
+
+# Same rationale as ci.yml and iac-validate.yml: a newer commit makes older IaC
+# conclusions irrelevant, so cancel rather than queue.
+concurrency:
+  group: terraform-validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: fmt, validate, test and plan-JSON controls
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pinned rather than "latest": the committed plan fixture records
+      # terraform_version 1.16.3, and the lock file is resolved against it. A
+      # floating CLI would make the gate's meaning change without a commit.
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.3"
+          # The wrapper intercepts the CLI and rewrites exit codes; a gate that
+          # reads exit codes must see the real ones.
+          terraform_wrapper: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Pinned to the same version the findings in policies/trivyignore were
+      # measured with, and referenced by commit SHA so a tag cannot move the
+      # policy set under us. Without this step the scan would fail closed in
+      # policies/scan.sh rather than silently skip, which is the behaviour we
+      # want from a security gate.
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
+        with:
+          version: v0.74.0
+          cache: true
+
+      # `set -o pipefail` matters here: without it the step's exit status would
+      # be tee's (always 0) and the gate would report success while the script
+      # exited 1. This is the single most likely way this gate could lie.
+      - name: Run the Phase 1 Terraform gate
+        working-directory: infra/terraform
+        env:
+          NO_COLOR: "1"
+        run: |
+          set -o pipefail
+          ./scripts/phase1_check.sh 2>&1 | tee "$RUNNER_TEMP/terraform-phase1-gate.log"
+
+      # The log is the reviewable artefact. "The job was green" is not evidence
+      # anyone can audit after the fact.
+      - name: Upload the gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-phase1-gate-log
+          path: ${{ runner.temp }}/terraform-phase1-gate.log
+          if-no-files-found: warn
+          retention-days: 30
