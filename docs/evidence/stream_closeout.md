@@ -109,20 +109,59 @@ Mutation controls           VERIFIED
 Mock TTFT evidence          VERIFIED (orchestration only)
 Real provider token stream  PARTIAL / provider-dependent (fallback documented)
 Compute cancellation        PARTIAL (delivery stops, in-flight sync call drops result)
-Full suite                  CI GREEN 13/13 @ a82f24b (run 36819947283); unit-tests 998/12/2-deselected/3, 0 failed
+Citations frame contract    VERIFIED (always emitted; empty when nothing retrieved)
+Grounded delivery on the deployed revision   NOT VERIFIED (probe returned citations([]); no vector store reachable)
+Full suite                  see the measured-figure block below
 Canonical SHA               a82f24b (code, CI-backed) + docs commit below
 ```
+
+### Full-suite count: which figure is current
+
+The `13/13 @ a82f24b` and `998/12/2-deselected/3` figures below are a **dated CI
+run record for SHA `a82f24b`** (run `36819947283`), retained because the
+streaming evidence in §2–§4 was produced there. They are **not** the current
+count. `.github/workflows/ci.yml` now defines **15** job keys.
+
+The current measured figure for the canonical suite on `main` at `8ced0695`,
+with `MAIA_EMBED_FORCE_HASH=1` and
+`pytest tests/ -m "not live and not infra" --strict-markers`:
+
+```text
+1163 passed, 14 skipped, 2 deselected, 3 xfailed, 0 failed
+```
+
+The 14 skips are environment-gated, not failures: 10 need a running Qdrant
+(`tests/test_tracing.py`, `tests/test_threshold_regression.py`,
+`tests/test_golden_eval.py` — each skips with "Qdrant not available - set
+QDRANT_URL"), 1 needs `azure-search-documents`, 2 need `MAIA_POSTGRES_DSN`, and
+1 is a deliberate skip at `tests/test_azure_identity.py:564`. Docker was
+unavailable during that run, so a Qdrant-present figure was **NOT** re-measured
+and no "with services" number is extrapolated here.
 
 ## 9. Cloud closeout (Azure, exact canonical SHA)
 
 ```text
 source    a82f24b2123b5abceeeb5264677aa81bbc437df7
-CI        run 36819947283 — success 13/13
+CI        run 36819947283 — success 13/13 (historical; ci.yml now defines 15 job keys)
 image     ghcr.io/imtarget05/maia-maia-api:a82f24b2123b5abceeeb5264677aa81bbc437df7@sha256:9be70ed14aaa849c17b8e9544dca284f853163895f039ed804e664f13c091514 (run 36819947364, provenance attested)
-revision  ca-maia-api--0000006, 100% traffic, Healthy
+revision  ca-maia-api--0000006 — the revision the probes below were run against
 ```
 
-Live probes against the revision (fresh container FS, Qdrant unreachable):
+**Two identities, and which one serves traffic is NOT VERIFIED.** Two docs name
+different revisions as authoritative and nothing committed establishes which
+receives traffic:
+
+| identity | revision / image | what backs it |
+|---|---|---|
+| revision backing this streaming evidence | `ca-maia-api--0000006` / `a82f24b` | the probe results in this section |
+| newest documented deployment | `ca-maia-api--0000012` / `b53aca4` | `docs/azure-integration.md` §7 |
+
+The `100% traffic, Healthy` wording that used to sit here described the state at
+probe time. It is retained as **what the probe observed then**, not as the
+current deployment state — no retained artifact re-establishes it. Which
+revision currently serves traffic is **NOT VERIFIED**.
+
+Live probes against `--0000006` (fresh container FS, Qdrant unreachable):
 
 - `/health` → `{"status":"ok","version":"0.4.0"}`
 - unauthenticated `/chat/stream` → 401
@@ -133,19 +172,39 @@ The error-path defect found by the first probe (`AttributeError` on
 `llm.mode` when the stack is down) was fixed in `a82f24b` (degrade to
 `"unknown"`, regression test `tests/test_agent_error_path.py`); the re-probe
 above is against the fixed build. Grounded-answer delivery is not verifiable
-in this environment (no vector store); retrieval mechanics are covered by CI.
-`2d2eaf9` and its digest are historical.
+in this environment (no vector store) — the probe returned `citations([])`.
+Retrieval mechanics are covered by CI, not by this probe
+(`tests/test_agent_task_benchmark.py::test_task001_retrieval_citation_no_tool`
+retrieves and asserts a cited chunk offline). `2d2eaf9` and its digest are
+historical.
 
 ## 8. Approved CV wording (do not strengthen)
 
-> Implemented authenticated multi-tenant SSE response streaming with grounded
-> citations, disconnect-aware delivery cancellation, partial-write discard,
-> and approval-safe agent execution.
+> Implemented authenticated multi-tenant SSE response streaming with a
+> typed `meta → token* → citations → done` contract, disconnect-aware delivery
+> cancellation, partial-write discard, and approval-safe agent execution. The
+> `citations` frame always ships and is **empty when retrieval yields nothing**;
+> grounded retrieval itself is covered by the CI retrieval tests
+> (`tests/test_agent_task_benchmark.py::test_task001_retrieval_citation_no_tool`),
+> not by the live probe.
 
 Token variant (only with the fallback clause):
 
 > Implemented SSE streaming with provider token streaming when available and
-> deterministic chunked fallback, preserving tenant isolation, grounded
-> citations, and approval-safe execution.
+> deterministic chunked fallback, preserving tenant isolation, approval-safe
+> execution, and a citations frame that is populated from retrieval and empty
+> when nothing is retrieved.
 
-Never claim: WebSocket, lower total latency, scale, or compute cancellation.
+Why the earlier "grounded citations" phrasing was withdrawn: it asserted a
+delivery property the only retained live probe contradicts. The probe recorded
+`citations([])` (§9, and `docs/evidence/stream_closeout.md:129`) because no
+vector store was reachable in that environment, so no grounded answer was ever
+observed end-to-end against the deployed revision.
+
+Frame contract, verified in `src/maia/api.py::chat_stream`: all three terminal
+branches — `approval_required`, empty/abstain, and answered — read
+`citations = result.get("citations") or []` and then emit exactly one
+`citations` frame, so the frame's presence is not evidence of grounding.
+
+Never claim: WebSocket, lower total latency, scale, compute cancellation, or
+grounded citations from a live deployment.
