@@ -6,7 +6,7 @@
 // replace: ownerContact, keyVaultName (globally unique), containerRegistryName
 // (globally unique), entraApplicationName (tenant-unique), and
 // deployIdentityPrincipalId (zero GUID below fails what-if loudly on purpose).
-using '../main.bicep'
+using '../main.v6-target.bicep'
 
 param environmentName = 'dev'
 param location = 'eastasia'

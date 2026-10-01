@@ -4,7 +4,7 @@
 // replace ownerContact, the three globally/tenant-unique names and
 // deployIdentityPrincipalId before any real deployment. Prod differs from dev
 // in names/tags only; no topology switch lives in this file.
-using '../main.bicep'
+using '../main.v6-target.bicep'
 
 param environmentName = 'prod'
 param location = 'eastasia'
