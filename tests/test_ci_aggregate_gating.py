@@ -1,6 +1,7 @@
 """The CI aggregate must gate on every non-advisory job.
 
-Root cause: `.github/workflows/ci.yml` defines 14 jobs but the `notify`
+Root cause: `.github/workflows/ci.yml` defined 14 jobs (historical count at
+the time of this defect) but the `notify`
 aggregate job listed only 8 in `needs`. `gitleaks`, `bicep-validate`,
 `coverage` and `promptops-mcp` were absent, so a red secret scan or a red IaC
 validation could not flip the aggregate result the Discord notification and
@@ -48,11 +49,17 @@ def test_the_workflow_still_declares_every_job(workflow: dict):
     """A guard on the guard: if someone deletes a job, the subset check below
     would still pass on a smaller world.
 
-    15 = the 14 original jobs + `abstention-gate-measurement`. Bump this
-    number when a job is added or removed, and keep the count honest rather
-    than loosening the assertion.
+    14 = 13 live jobs + `abstention-gate-measurement`. Bump this number when a
+    job is added or removed, and keep the count honest rather than loosening
+    the assertion.
+
+    HISTORY: this was 15 until `deploy-production` (a Render no-op placeholder
+    whose only content was a comment pointing at the Render CD workflow) was
+    removed in the repository cleanup — Render is no longer a deployment
+    target, so a job named "Deploy to Render" must not survive. Bumping to 14
+    is the honest correction; weakening this to `>=` would defeat the guard.
     """
-    assert len(workflow["jobs"]) == 15
+    assert len(workflow["jobs"]) == 14
 
 
 def test_every_non_advisory_job_is_in_the_aggregate_needs(workflow: dict):
