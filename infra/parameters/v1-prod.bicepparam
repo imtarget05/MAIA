@@ -4,7 +4,7 @@ using '../main.bicep'
 
 param environmentName = 'prod'
 param location = 'eastasia'
-param tenantId = 'aa79a92c-ec09-4de1-baa9-151b8f9df886'
+param tenantId = '00000000-0000-0000-0000-000000000000'
 param ownerContact = 'platform-team@example.invalid'
 param identityResourceGroupName = 'rg-maia-identity'
 param managedIdentityName = 'id-maia'
