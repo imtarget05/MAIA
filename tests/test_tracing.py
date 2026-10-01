@@ -291,7 +291,16 @@ def test_query_emits_otel_stage_spans_without_pii(monkeypatch):
         tracing, "get_tracer", lambda name="maia.pipeline": provider.get_tracer(name)
     )
 
-    secret = "SECRET-XYZ-123"
+    # WHY the name and the value: this is a PII canary, not a credential. The
+    # assertion below is that the canary never appears in a span attribute. The
+    # previous literal was a credential-shaped placeholder on a variable named
+    # `secret`, which tripped gitleaks' generic-api-key rule on entropy alone and
+    # turned the secret-scanning gate red. A credential-shaped name on a fake
+    # value is the wrong signal twice over: it fails the scanner, and it teaches a
+    # reader that this string is the kind of thing that gets committed. The old
+    # literal is deliberately not quoted here, because a comment naming it would
+    # trip the same rule it was renamed to avoid.
+    pii_canary = "MAIA-PII-CANARY-4f9c2e7a"
 
     class _Retriever:
         tenant_id = "default"
@@ -299,7 +308,7 @@ def test_query_emits_otel_stage_spans_without_pii(monkeypatch):
         def retrieve(self, q, tenant_id=None, session_id=None):
             return [{
                 "chunk_id": "c1",
-                "text": f"policy text {secret}",
+                "text": f"policy text {pii_canary}",
                 "metadata": {"filename": "policy.md", "page": 1, "section": "leave"},
                 "dense_score": 0.9, "bm25_score": 0.5, "fused_score": 0.8,
             }]
@@ -314,14 +323,14 @@ def test_query_emits_otel_stage_spans_without_pii(monkeypatch):
         mode = "mock"
 
         def chat(self, messages):
-            return f"mock answer {secret}"
+            return f"mock answer {pii_canary}"
 
     monkeypatch.setattr(
         pq, "build_stack",
         lambda tenant_id=None: (None, None, _Retriever(), _Reranker(), _LLM()),
     )
 
-    res = pq.query(f"chính sách nghỉ phép? {secret}", top_k_final=3)
+    res = pq.query(f"chính sách nghỉ phép? {pii_canary}", top_k_final=3)
     assert res["has_evidence"] is True
 
     spans = exporter.get_finished_spans()
@@ -336,7 +345,7 @@ def test_query_emits_otel_stage_spans_without_pii(monkeypatch):
     for s in spans:
         for k, v in dict(s.attributes or {}).items():
             assert k not in ("query", "text", "chunk_text", "context", "answer"), (s.name, k)
-            assert secret not in str(v), (s.name, k)
+            assert pii_canary not in str(v), (s.name, k)
     assert dict(by_name["maia.query"].attributes)["status"] == "answered"
 
 
