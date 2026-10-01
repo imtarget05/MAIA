@@ -175,6 +175,54 @@ def test_p8_secret_clients_are_reused_per_vault_uri(monkeypatch):
     assert built == ["https://a.vault.azure.net", "https://b.vault.azure.net"]
 
 
+def test_p8_clients_are_not_reused_across_different_identities(monkeypatch):
+    """STEP 2: the cache key must include the identity, not only the vault.
+
+    The sibling test above proves a vault A client is never handed to a vault B
+    call. That is necessary but not sufficient. `_secret_clients` is keyed by
+    vault URL alone, so a caller that changes the user-assigned managed identity
+    mid-process -- a redeploy with a rotated identity, a test, or a multi-tenant
+    deployment sharing one worker -- would keep receiving the client built with
+    the OLD identity. That is a privilege confusion, not a performance detail:
+    the cached client authenticates as a principal the current configuration did
+    not ask for.
+
+    This fails against the vault-URL-only key and passes once the identity is
+    part of the key.
+    """
+    monkeypatch.setattr(az, "azure_credential", lambda: SimpleNamespace())
+    built: list[tuple[str, str]] = []
+
+    class _FakeSecretClient:
+        def __init__(self, vault_url, credential):
+            built.append((vault_url, az.settings.AZURE_CLIENT_ID.strip()))
+
+    vault = "https://same.vault.azure.net"
+
+    monkeypatch.setattr(az.settings, "AZURE_CLIENT_ID", "identity-A")
+    c1 = az._cached_secret_client(vault, _FakeSecretClient)
+
+    monkeypatch.setattr(az.settings, "AZURE_CLIENT_ID", "identity-B")
+    c2 = az._cached_secret_client(vault, _FakeSecretClient)
+
+    assert c2 is not c1, (
+        "a client built with identity-A was reused after the configured "
+        "identity changed to identity-B; the cached client would authenticate "
+        "as a principal the current configuration did not select"
+    )
+    assert [identity for _, identity in built] == ["identity-A", "identity-B"], built
+
+    # ...and the same identity on the same vault still reuses, so the fix keys
+    # on identity WITHOUT giving up the reuse the cache exists for.
+    monkeypatch.setattr(az.settings, "AZURE_CLIENT_ID", "identity-A")
+    c3 = az._cached_secret_client(vault, _FakeSecretClient)
+    assert c3 is c1, (
+        "reusing within one (vault, identity) pair is the point of the cache; "
+        "a fix that disables reuse entirely would pass the test above and "
+        "silently reinstate the per-call credential chain this avoids"
+    )
+
+
 def test_p8_secret_values_are_never_cached(monkeypatch):
     """Rotation must be visible without restart: every resolve re-reads."""
     monkeypatch.setattr(az.settings, "AZURE_KEY_VAULT_URI",
