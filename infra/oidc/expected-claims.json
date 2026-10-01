@@ -1,0 +1,25 @@
+{
+  "_why": "The expected GitHub Actions OIDC claims that Azure will check when exchanging a token for an Azure one. This file is the single authoritative source: .github/workflows/delivery-identity.yml declares the environment, and infra/scripts/test_oidc_contract.py DERIVES the subject from that workflow and compares it to the subject here. Neither file is trusted alone -- if the workflow's environment changes and this file does not, the control fails. That is the whole point: the credential Azure creates is bound to a subject string, and a subject that has silently drifted from the workflow it was minted for is a credential nobody can deploy with and nobody notices until a release stops.",
+
+  "_no_credentials": "Nothing secret belongs in this file. issuer/audience/subject are public protocol values -- they appear in every token and in the Azure portal. The only value here that must stay out of logs is the eventual Azure tenant/client id, which is why they are not recorded as claims either: they identify the credential, they do not authenticate it.",
+
+  "issuer": "https://token.actions.githubusercontent.com",
+
+  "_audience_why": "api://AzureADTokenExchange is the audience Entra requires on an external-issuer token. It is not a URL the workflow requests and not a value anything validates at runtime; Azure rejects a token whose audience is anything else, which is why an audience control is worth having at all.",
+
+  "audience": "api://AzureADTokenExchange",
+
+  "repository": "imtarget05/MAIA",
+
+  "_environment_why": "Environment-scoped rather than branch-scoped. A branch subject (repo:org/repo:ref:refs/heads/main) keeps working when someone renames the branch, and it also keeps working for a workflow_dispatch run from any ref -- which is a larger trust surface than the deployment needs. The environment form binds the trust to the protected environment instead, and GitHub environment protection rules (required reviewers) layer on top of it.",
+
+  "environment": "azure-prod",
+
+  "_subject_why": "GitHub composes this from the workflow run's repository and environment. The control recomputes it from the workflow file rather than trusting this string, so the value below is an assertion to check, not an input.",
+
+  "subject": "repo:imtarget05/MAIA:environment:azure-prod",
+
+  "_credential_state": "NOT CREATED. Creating the Entra federated identity credential that accepts this subject requires a privileged tenant mutation and is tracked as BLOCKED_ON_PRIVILEGED_AZURE_MUTATION. Until that credential exists, this file describes an intended binding, not an active one. Nothing in CI claims otherwise.",
+
+  "_never_wildcard": "The subject must name exactly one repository and one environment. A wildcard, or an environment subject for a repo that does not exist, would let any workflow in the org claim this credential. infra/scripts/test_oidc_contract.py rejects both."
+}

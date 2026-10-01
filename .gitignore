@@ -152,3 +152,8 @@ eval/reports/retrieval-cost-*.json
 # truth that can drift from the .bicep it came from.
 infra/**/*.json
 !infra/bicepconfig.json
+# The OIDC delivery contract is hand-written source, not build output, and the
+# rule above would silently drop it from the repository -- which is exactly the
+# failure this file exists to catch. A contract that is not committed cannot be
+# reviewed, cannot be diffed against the workflow, and cannot drift visibly.
+!infra/oidc/expected-claims.json

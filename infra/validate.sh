@@ -273,6 +273,20 @@ fi
 # reads as a decision rather than an oversight.
 printf '        main.v6-target.bicep: no invariant assertions (deploys no vault in this wave)\n'
 
+# ------------------------------------------------------- delivery identity
+# The OIDC contract is checked here for the same reason the traversal contracts
+# are: a delivery workflow that lost id-token, or whose environment drifted away
+# from the subject Azure will be configured to accept, fails SILENTLY. The build
+# stays green, the deploy job is manual, and the break surfaces weeks later as an
+# authentication error that reads like a role-assignment problem.
+printf '\n-- delivery identity contract --\n'
+if python3 scripts/test_oidc_contract.py; then
+  :
+else
+  printf '%s  FAIL%s  delivery identity contract failed\n' "$RED" "$OFF"
+  failures=$((failures + 1))
+fi
+
 # ------------------------------------------------------- checker traversal
 # The checker above only exercises the real, compiled template. Its OWN
 # traversal logic -- symbolic-name maps, path propagation, malformed shapes --
