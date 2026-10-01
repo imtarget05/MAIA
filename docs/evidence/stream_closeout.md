@@ -196,10 +196,10 @@ Token variant (only with the fallback clause):
 > when nothing is retrieved.
 
 Why the earlier "grounded citations" phrasing was withdrawn: it asserted a
-delivery property the only retained live probe contradicts. The probe recorded
-`citations([])` (§9, and `docs/evidence/stream_closeout.md:129`) because no
-vector store was reachable in that environment, so no grounded answer was ever
-observed end-to-end against the deployed revision.
+delivery property the only retained live probe contradicts. That probe recorded
+`citations([])` (§9, "Live probes against `--0000006`") because no vector store
+was reachable in that environment, so no grounded answer was ever observed
+end-to-end against the deployed revision.
 
 Frame contract, verified in `src/maia/api.py::chat_stream`: all three terminal
 branches — `approval_required`, empty/abstain, and answered — read

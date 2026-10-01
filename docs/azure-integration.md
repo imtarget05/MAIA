@@ -305,9 +305,11 @@ at the platform, not something this document can assert.
 
 ### Verification state of the endpoints below
 
-> HONEST STATUS: of the six endpoints listed, four have retained probe evidence
-> and two do not. An authenticated Azure SSE probe and the Qdrant Cloud cluster
-> behaviour have **no retained artifact**, so neither is claimed here.
+> HONEST STATUS: of the six endpoints originally listed here, **one** has
+> retained probe evidence and **five** do not. An authenticated Azure SSE probe
+> and the Qdrant Cloud cluster behaviour have **no retained artifact**, so
+> neither is claimed. Every route below exists in code; existing is not the
+> same as observed.
 
 | endpoint | state | evidence |
 |---|---|---|
