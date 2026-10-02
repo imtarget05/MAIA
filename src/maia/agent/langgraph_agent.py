@@ -414,8 +414,24 @@ def _is_approved(decision) -> bool:
     return bool(decision)
 
 
+# ---------------------------------------------------------------------------
+# Tools that change business state and therefore MUST be executed through the
+# idempotency guard. Read-only tools are deliberately absent: `check_leave_balance`
+# can be re-run freely, and putting it behind the guard would only add latency
+# and make a legitimate re-read look like a replay.
+# ---------------------------------------------------------------------------
+SIDE_EFFECT_TOOLS = frozenset({"create_leave_request", "create_it_ticket"})
+
+
 def _execute_tool(tool: str, params: dict, employee_id: str | None, tenant_id: str | None) -> dict:
-    """Execute a side-effect tool from ``TOOL_REGISTRY`` with tenant-aware params."""
+    """Execute a side-effect tool from ``TOOL_REGISTRY`` with tenant-aware params.
+
+    Write-capable tools go through ``idempotency.run_once`` so a retried HITL
+    approval cannot spend leave twice or open a duplicate ticket. The operation
+    id is derived from the tenant, employee, tool and canonical params, so the
+    natural retry — the same approval arriving again — collapses onto one
+    execution, while a genuinely different request still runs.
+    """
     from .tools import TOOL_REGISTRY
     fn = TOOL_REGISTRY.get(tool)
     if fn is None:
@@ -425,12 +441,23 @@ def _execute_tool(tool: str, params: dict, employee_id: str | None, tenant_id: s
         kw.setdefault("employee_id", employee_id)
     if tenant_id:
         kw.setdefault("tenant_id", tenant_id)
-    try:
-        return fn(**kw)
-    except TypeError as e:
-        return {"ok": False, "error": f"Tool arg error: {e}"}
-    except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    def _invoke() -> dict:
+        try:
+            return fn(**kw)
+        except TypeError as e:
+            return {"ok": False, "error": f"Tool arg error: {e}"}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    if tool not in SIDE_EFFECT_TOOLS:
+        return _invoke()
+
+    from .idempotency import run_once
+    return run_once(
+        _invoke, tool=tool, params=params,
+        employee_id=employee_id, tenant_id=tenant_id,
+    )
 
 
 def node_finalize(state: AgentState) -> AgentState:
