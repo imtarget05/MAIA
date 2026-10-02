@@ -17,13 +17,13 @@ import asyncio
 import os
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
-# tests/ -> MAIA-clean/ -> Projects/
+# tests/ -> MAIA/
 MAIA_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(MAIA_ROOT, "src")
-PROJECTS = os.path.dirname(MAIA_ROOT)
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
@@ -122,20 +122,44 @@ def test_state_persists_across_two_sequential_processes():
     """
     Chay hai process that: tien trinh dau ghi state roi chet, tien trinh sau
     doc lai. Day la kiem chung toi thieu cho tinh ben vung.
+
+    WHY THIS IS A FAILURE AND NOT A SKIP. The probe used to be checked with
+    `pytest.skip("probe script khong ton tai")`, and the probe was never
+    committed — so this test skipped silently in every run while the suite
+    reported green. That is the same defect class this repository has already
+    rejected twice: the empty `terraform test` run, and
+    tests/test_distributed_state.py skipping when the redis client is absent.
+    A durability test that never executes asserts nothing.
+
+    So a missing probe is now a hard failure. If you delete the probe, this
+    test goes red, which is the correct outcome.
     """
-    probe = os.path.join(PROJECTS, "docs", "_p8_process_restart_probe.py")
-    if not os.path.isfile(probe):
-        pytest.skip("probe script khong ton tai")
+    probe = os.path.join(MAIA_ROOT, "docs", "_p8_process_restart_probe.py")
+    assert os.path.isfile(probe), (
+        "durability probe missing: docs/_p8_process_restart_probe.py. "
+        "Without it this test would silently skip and the suite would report "
+        "green while executing zero durability assertions."
+    )
 
-    env = {**os.environ, ENV_DSN: DSN}
-    w = subprocess.run([sys.executable, probe, "write"],
-                       capture_output=True, text=True, env=env, timeout=120)
-    assert w.returncode == 0, f"write phase that: {w.stderr[-500:]}"
+    # The reader needs to learn the thread id, the sentinel value and the
+    # writer's PID. Passing them through a temp file is what lets the reader
+    # assert "these really were two different processes, and this is exactly
+    # what the first one wrote" rather than trusting a shared global.
+    with tempfile.TemporaryDirectory() as tmp:
+        state_file = os.path.join(tmp, "probe_state.json")
+        env = {**os.environ, ENV_DSN: DSN, "MAIA_PROBE_STATE": state_file}
 
-    r = subprocess.run([sys.executable, probe, "read"],
-                       capture_output=True, text=True, env=env, timeout=120)
-    assert r.returncode == 0, f"read phase that: {r.stderr[-500:]}"
-    assert "RESULT: PASS" in r.stdout
-    assert '"processes_differ": true' in r.stdout
-    assert '"state_survived_restart": true' in r.stdout
-    assert '"resumed_correctly": true' in r.stdout
+        w = subprocess.run([sys.executable, probe, "write"],
+                           capture_output=True, text=True, env=env, timeout=120)
+        assert w.returncode == 0, f"write phase that: {w.stderr[-500:]}"
+
+        # The writer process has exited by the time this line runs. That exit
+        # IS the thing under test: a same-process check could not distinguish
+        # "Postgres persisted it" from "the object was still in memory".
+        r = subprocess.run([sys.executable, probe, "read"],
+                           capture_output=True, text=True, env=env, timeout=120)
+        assert r.returncode == 0, f"read phase that: {r.stderr[-500:]}"
+        assert "RESULT: PASS" in r.stdout
+        assert '"processes_differ": true' in r.stdout
+        assert '"state_survived_restart": true' in r.stdout
+        assert '"resumed_correctly": true' in r.stdout
