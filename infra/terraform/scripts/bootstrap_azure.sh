@@ -46,7 +46,7 @@ APP_DISPLAY_NAME="maia-github-oidc"
 FED_CREDENTIAL_NAME="github-actions-azure-verify"
 GITHUB_REPO="imtarget05/MAIA"
 GITHUB_ENVIRONMENT="azure-verify"
-GITHUB_ISSUER="https://token.actions.githubusercontent.com/"
+GITHUB_ISSUER="https://token.actions.githubusercontent.com"
 GITHUB_AUDIENCE="api://AzureADTokenExchange"
 
 STATE_RG="rg-maia-tfstate"

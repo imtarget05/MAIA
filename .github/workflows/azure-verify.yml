@@ -116,6 +116,29 @@ jobs:
       #   correct subject restriction  -> fails with AADSTS700211 -> GREEN
       #   over-broad credential       -> login SUCCEEDS            -> RED
       #   unrelated breakage          -> fails for another reason  -> RED
+      # WHY THE REPO-SCOPED FALLBACK — measured on the first real run. The three
+      # identifiers live as ENVIRONMENT variables, and this job deliberately has
+      # no `environment:`, so `${{ vars.AZURE_* }}` resolved empty and `az login
+      # --tenant ''` failed with "Tenant 'v2.0' not found" — a false rejection
+      # caused by a missing variable, not by the subject restriction.
+      #
+      # So this job reads the repo-level copies, which are visible to every job
+      # regardless of environment. That is deliberate: the control must reach
+      # Azure with valid credentials so the ONLY thing that can reject it is the
+      # subject mismatch. If the identifiers are absent here, the job fails
+      # loudly instead of reporting a meaningless rejection.
+      - name: Require the identifiers this control depends on
+        env:
+          CID: ${{ vars.AZURE_CLIENT_ID }}
+          TID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          if [ -z "$CID" ] || [ -z "$TID" ]; then
+            echo "::error::repo-level AZURE_CLIENT_ID / AZURE_TENANT_ID are empty."
+            echo "::error::Set them with: gh variable set --repo imtarget05/MAIA <name>"
+            exit 1
+          fi
+          echo "identifiers present"
+
       - name: Mint the token and exchange it ourselves
         # Not azure/login: we need the Azure error TEXT to assert on the reason,
         # and azure/login does not expose its output as a step artifact.
@@ -126,7 +149,6 @@ jobs:
         env:
           ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         run: |
           set +e
           # The token request proves a token WAS minted with the wrong subject.
