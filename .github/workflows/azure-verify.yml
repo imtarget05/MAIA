@@ -234,14 +234,27 @@ jobs:
           fi
 
           # A failure is only evidence of enforcement if it is the RIGHT
-          # failure. AADSTS700211 = "No matching federated identity record".
-          if grep -q "AADSTS700211" "$LOGIN_LOG"; then
-            echo "PASS: rejected with AADSTS700211 (no matching federated identity record)."
-            echo "      Intended reason confirmed: the subject does not match."
+          # failure. Both codes mean "no matching federated identity record",
+          # and which one Entra returns is not stable:
+          #   AADSTS700211 — surfaced when the ISSUER does not match
+          #   AADSTS700213 — surfaced when the SUBJECT does not match, and it
+          #                  names the presented subject in the message
+          # The 700213 form is the stronger evidence, because the message
+          # quotes the exact subject that failed to match. Accepting only 700211
+          # would have called a correctly-enforced restriction a failure.
+          if grep -qE "AADSTS70021[13]" "$LOGIN_LOG"; then
+            if grep -q "AADSTS700213" "$LOGIN_LOG"; then
+              echo "PASS: rejected with AADSTS700213 — no matching federated identity"
+              echo "      for the presented SUBJECT. Azure quotes the subject it"
+              echo "      rejected, so the mismatch is directly evidenced."
+            else
+              echo "PASS: rejected with AADSTS700211 — no matching federated identity."
+            fi
           else
-            echo "::error::The login failed, but NOT with AADSTS700211."
-            echo "::error::The failure is real but is NOT the subject restriction being"
-            echo "::error::enforced, so this run proves nothing about restriction."
+            echo "::error::The login failed, but NOT with a federated-identity rejection."
+            echo "::error::Expected AADSTS700211 or AADSTS700213. The failure is real but"
+            echo "::error::is NOT the subject restriction being enforced, so this run"
+            echo "::error::proves nothing about restriction."
             exit 1
           fi
 

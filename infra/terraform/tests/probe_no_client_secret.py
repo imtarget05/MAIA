@@ -176,12 +176,20 @@ def check_negative_control_semantics() -> list[str]:
             "continue-on-error forces to 'success'; the assertion can never bite"
         )
 
-    # (c) the reason check.
-    if "AADSTS700211" not in text:
+    # (c) the reason check. Both 700211 (issuer mismatch) and 700213 (subject
+    # mismatch) are genuine federated-identity rejections; requiring only one
+    # would call correct enforcement a failure on the other code path.
+    if "AADSTS70021" not in text:
         findings.append(
-            "S6 azure-verify.yml: does not require the AADSTS700211 rejection, so a "
+            "S6 azure-verify.yml: does not require an AADSTS70021x rejection, so a "
             "login failing for an unrelated reason would be reported as enforcement "
             "(a measured false pass)"
+        )
+    if not re.search(r"AADSTS70021\[13\]|AADSTS700211.*AADSTS700213", text, re.DOTALL):
+        findings.append(
+            "S6 azure-verify.yml: accepts only one of AADSTS700211/700213; Entra "
+            "returns 700213 on the subject-mismatch path, so the control would fail "
+            "while enforcement is working correctly"
         )
     return findings
 
