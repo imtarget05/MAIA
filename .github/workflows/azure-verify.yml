@@ -151,26 +151,28 @@ jobs:
           ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           set +e
-          # NO `curl -sf`: on the previous run that combination returned an EMPTY
-          # token with exit 0, az then said AADSTS50027 ("JWT malformed"), and
-          # the control failed for a fourth unrelated reason. Without -s the
-          # response body is visible, so an empty token is impossible to miss.
-          RESP="$(curl -sS -w '\n__HTTP__%{http_code}' \
+          # WHY jq AND NOT `curl -w`: the previous attempt appended a marker to the
+          # body and stripped it with sed, which still handed `az login` a token
+          # that Entra rejected as AADSTS50027 "JWT malformed" — while the body
+          # itself decoded fine. Any string surgery on the token risks corrupting
+          # it, and a corrupted token produces a failure that looks like a
+          # policy decision. jq extracts .value untouched.
+          TOKEN="$(curl -sS \
                     -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-                    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" 2>&1)"
-          HTTP="$(printf '%s' "$RESP" | sed -n 's/.*__HTTP__//p')"
-          BODY="$(printf '%s' "$RESP" | sed 's/__HTTP__[0-9]*//')"
-          echo "token_http_status=$HTTP"
+                    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" \
+                    | jq -r '.value // empty')"
 
-          if [ -z "$BODY" ]; then
-            echo "::error::no token issued (HTTP $HTTP). Nothing was exchanged with Azure."
-            echo "raw: $RESP"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::no OIDC token was issued; nothing was exchanged with Azure."
+            TOKEN_RAW="$(curl -sS \
+                    -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange")"
+            echo "raw response: $TOKEN_RAW"
             echo "outcome=notoken" >> "$GITHUB_OUTPUT"
             echo "log=/dev/null" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          TOKEN="$BODY"
           # The sub claim is the evidence that this token really is the
           # wrong-subject one. Printing it means a reader can see the mismatch
           # instead of taking the rejection on faith.
