@@ -103,33 +103,90 @@ jobs:
       # SUCCEEDED, continue-on-error would swallow it and the workflow would go
       # green. Only the explicit outcome check makes that a red build.
       #
-      # Net effect, which is the whole point of this job:
-      #   correct subject restriction  -> workflow GREEN
-      #   over-broad credential       -> workflow RED
-      - name: Attempt login WITHOUT the azure-verify environment
-        id: login
-        continue-on-error: true
-        uses: azure/login@8216e11d8cd9b42fe925c852af8e76311ff067ac # v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Assert the login was REJECTED
-        # `outcome` is the REAL result; `conclusion` would read 'success'
-        # because of continue-on-error. Asserting on the wrong one is how a
-        # negative control silently stops testing anything.
+      # WHY THERE IS ALSO A REASON CHECK — measured, not theorised. On the first
+      # real run the POSITIVE login failed (wrong subject format) and this job
+      # still went GREEN, because "login failed" was true. That is a false pass:
+      # the control proved a login failed without proving it failed *for the
+      # intended reason*. A negative control that cannot distinguish
+      # "correctly rejected" from "broken for an unrelated cause" is not a
+      # control at all. So the assertion below requires the Azure error to be
+      # specifically AADSTS700211 (no matching federated identity record);
+      # anything else is a different bug and must not be reported as enforcement.
+      #
+      #   correct subject restriction  -> fails with AADSTS700211 -> GREEN
+      #   over-broad credential       -> login SUCCEEDS            -> RED
+      #   unrelated breakage          -> fails for another reason  -> RED
+      - name: Mint the token and exchange it ourselves
+        # Not azure/login: we need the Azure error TEXT to assert on the reason,
+        # and azure/login does not expose its output as a step artifact.
+        # Same underlying mechanism (OIDC token -> federated exchange); only the
+        # wrapper differs, and the token itself is read from the Actions OIDC
+        # endpoint, exactly as azure/login does.
+        id: probe
         env:
-          LOGIN_OUTCOME: ${{ steps.login.outcome }}
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set +e
+          # The token request proves a token WAS minted with the wrong subject.
+          # Without this, "login failed" could just mean no token was issued.
+          TOKEN="$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange")"
+          echo "token_request_exit=$?"
+          if [ -n "$TOKEN" ]; then
+            echo "PRESENTED SUBJECT CLAIM:"
+            echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null \
+              | grep -o '"sub":"[^"]*"' || echo "  (could not decode)"
+          else
+            echo "no token issued"
+          fi
+
+          az login --service-principal \
+                   -u "$ARM_CLIENT_ID" \
+                   --tenant "$ARM_TENANT_ID" \
+                   --federated-token "$TOKEN" \
+                   --allow-no-subscriptions >"$RUNNER_TEMP/login.log" 2>&1
+          rc=$?
+          echo "az_login_exit=$rc"
+          cat "$RUNNER_TEMP/login.log"
+          echo "log=$RUNNER_TEMP/login.log" >> "$GITHUB_OUTPUT"
+          # The REAL result, from the exit code. Writing a constant here would
+          # make the assertion downstream meaningless — it would report what
+          # this file says rather than what az actually did.
+          echo "outcome=$([ $rc -eq 0 ] && echo success || echo failure)" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Assert the login was REJECTED, and for the RIGHT reason
+        # `outcome` is computed from az's real exit code. Asserting on a value
+        # continue-on-error rewrote would be the same defect in subtler form.
+        env:
+          LOGIN_LOG: ${{ steps.probe.outputs.log }}
+          LOGIN_OUTCOME: ${{ steps.probe.outputs.outcome }}
         run: |
           echo "azure/login outcome without the environment: ${LOGIN_OUTCOME}"
+          echo "--- presented token / azure error ---"
+          cat "$LOGIN_LOG" 2>/dev/null || echo "(no log captured)"
+
+          # An over-broad credential LOGS IN successfully here. That is the one
+          # failure mode that must never be reported as enforcement.
           if [ "$LOGIN_OUTCOME" = "success" ]; then
             echo "::error::OIDC login SUCCEEDED without the azure-verify environment."
             echo "::error::The federated credential subject is not constraining the token."
-            echo "::error::Fix the subject to repo:imtarget05/MAIA:environment:azure-verify"
             exit 1
           fi
-          echo "PASS: the federated subject rejected a token from outside the environment."
+
+          # A failure is only evidence of enforcement if it is the RIGHT
+          # failure. AADSTS700211 = "No matching federated identity record".
+          if grep -q "AADSTS700211" "$LOGIN_LOG"; then
+            echo "PASS: rejected with AADSTS700211 (no matching federated identity record)."
+            echo "      Intended reason confirmed: the subject does not match."
+          else
+            echo "::error::The login failed, but NOT with AADSTS700211."
+            echo "::error::The failure is real but is NOT the subject restriction being"
+            echo "::error::enforced, so this run proves nothing about restriction."
+            exit 1
+          fi
 
       - name: Record the enforcement
         run: >-

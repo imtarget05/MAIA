@@ -287,7 +287,35 @@ fi
 
 # --- 3. Federated credential (GitHub OIDC) ---------------------------------
 step "federated credential"
-FED_SUBJECT="repo:${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}"
+# SUBJECT FORMAT — MEASURED FROM A REAL FAILED RUN, not from documentation.
+#
+# GitHub does NOT send `repo:owner/repo:environment:env`. When a repository has
+# a non-alphanumeric-containing name (or the owner does), it appends the NUMERIC
+# owner id and repo id:
+#
+#   sent by GitHub : repo:imtarget05@163159731/MAIA@1357198812:environment:azure-verify
+#   naive          : repo:imtarget05/MAIA:environment:azure-verify
+#
+# The naive form fails with AADSTS700211 "No matching federated identity record"
+# at CI time, which looks exactly like a permissions problem and is not one.
+#
+# GITHUB_OWNER_ID / GITHUB_REPO_ID are passed in rather than hardcoded, because
+# they are per-repository identifiers. Read them with:
+#   gh api repos/<owner>/<repo> --jq '.owner.id, .id'
+FED_SUBJECT="repo:${GITHUB_REPO}"
+if [ -n "${GITHUB_OWNER_ID:-}" ] && [ -n "${GITHUB_REPO_ID:-}" ]; then
+  GITHUB_REPO_SLUG="${GITHUB_REPO%%/*}"
+  GITHUB_REPO_NAME="${GITHUB_REPO##*/}"
+  FED_SUBJECT="repo:${GITHUB_REPO_SLUG}@${GITHUB_OWNER_ID}/${GITHUB_REPO_NAME}@${GITHUB_REPO_ID}"
+else
+  echo "   -> WARNING: GITHUB_OWNER_ID / GITHUB_REPO_ID not set."
+  echo "      Falling back to repo:${GITHUB_REPO}, which will FAIL at CI time"
+  echo "      with AADSTS700211 if GitHub appends numeric ids to the subject."
+  echo "      Read the real ids with:"
+  echo "        gh api repos/${GITHUB_REPO} --jq '{owner:.owner.id,repo:.id}'"
+fi
+FED_SUBJECT="${FED_SUBJECT}:environment:${GITHUB_ENVIRONMENT}"
+echo "   federated subject: $FED_SUBJECT"
 FED_FILE="$(mktemp)"
 trap 'rm -f "$FED_FILE"' EXIT
 cat >"$FED_FILE" <<JSON

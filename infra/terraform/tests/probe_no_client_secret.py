@@ -19,10 +19,17 @@ RULES:
       not exist on a developer machine — so it breaks LOCAL `terraform init`
       while looking correct. CI auth belongs in the ARM_* environment; local
       auth comes from `az login`. One config, two paths, no second backend.
-  S6  the OIDC negative control must both tolerate AND assert its expected
-      failure: `continue-on-error: true` without an outcome assertion is a
-      control that can never fail, and would let an over-broad federated
-      credential pass green.
+  S6  the OIDC negative control must all THREE of:
+        (a) capture the real login outcome rather than assume it,
+        (b) fail the job if the login SUCCEEDED (over-broad credential),
+        (c) require the failure to be the INTENDED one (AADSTS700211, no
+            matching federated identity record).
+      Measured on a real run: with only (a)+(b) the job went GREEN while the
+      POSITIVE login was failing for an unrelated reason — a false pass, because
+      "login failed" was true without proving the subject restriction caused it.
+      `continue-on-error` alone is never sufficient, and a hardcoded
+      `outcome=failure` is worse than none: it reports what the script says
+      rather than what az actually did.
 
 Usage: python3 tests/probe_no_client_secret.py
 Exit:  0 = tree clean AND every rule bit for its intended reason.
@@ -116,22 +123,26 @@ def workflow_path() -> Path:
 
 
 def check_negative_control_semantics() -> list[str]:
-    """S6: the OIDC negative control must tolerate AND assert its failure.
+    """S6: the OIDC negative control must capture, assert, and assert the REASON.
 
-    Both halves are required, and each half alone is a real defect:
+    Three independent requirements, and each one alone is a real defect. The
+    third exists because of a measured false pass: with only (a) and (b) the
+    job went GREEN while the POSITIVE login was failing for an unrelated
+    reason. "The login failed" was true; "the subject restriction caused it" was
+    not. That is a control reporting enforcement it never observed.
 
-      * WITHOUT `continue-on-error: true`, the EXPECTED login rejection fails
-        the step, fails the job and turns the whole workflow red — for the right
-        reason but the wrong outcome. "We predicted a rejection and got a
-        failure" is indistinguishable from "the control is broken".
+      (a) The outcome must come from the real `az` exit code. A hardcoded
+          `outcome=failure` is worse than no check at all: it reports what the
+          script says rather than what Azure did.
+      (b) If the login SUCCEEDED, the job must fail. Without this,
+          `continue-on-error: true` swallows an over-broad credential and the
+          workflow passes green.
+      (c) The failure must be the intended one: AADSTS700211, "no matching
+          federated identity record". Any other error is a different bug and
+          must not be recorded as subject enforcement.
 
-      * WITHOUT an explicit outcome assertion, `continue-on-error: true`
-        swallows everything. If the federated credential were over-broad and
-        the login SUCCEEDED, the job would pass green. That is a control that
-        cannot fail, which is the one thing a negative control must never be.
-
-    Together they produce the intended mapping: correct restriction -> GREEN,
-    over-broad credential -> RED.
+    Together: correct restriction -> GREEN, over-broad credential -> RED,
+    unrelated breakage -> RED.
     """
     path = workflow_path()
     if not path.exists():
@@ -140,22 +151,37 @@ def check_negative_control_semantics() -> list[str]:
     text = path.read_text(encoding="utf-8")
     findings: list[str] = []
 
-    if "continue-on-error: true" not in text:
+    # (a) the outcome must be DERIVED, not asserted as a constant.
+    if re.search(r"outcome=failure", text):
         findings.append(
-            "S6 azure-verify.yml: the negative-control login has no "
-            "continue-on-error, so an expected rejection would fail the workflow"
+            "S6 azure-verify.yml: writes a hardcoded `outcome=failure`; the outcome "
+            "must be computed from the real az exit code or the assertion is circular"
         )
-    if "steps.login.outcome" not in text:
+    if not re.search(r"outcome=\$\(\[\s*\$rc", text) and "steps.login.outcome" not in text:
         findings.append(
-            "S6 azure-verify.yml: no assertion on steps.login.outcome, so "
-            "continue-on-error would swallow an over-broad credential and pass green"
+            "S6 azure-verify.yml: no captured login outcome; a negative control that "
+            "does not read the real result cannot know whether the login was rejected"
         )
-    # Asserting on `conclusion` instead of `outcome` is the subtle version of
-    # the same bug: with continue-on-error, `conclusion` is always 'success'.
+
+    # (b) an over-broad credential logs in successfully and must turn the job red.
+    if "LOGIN_OUTCOME" not in text:
+        findings.append(
+            "S6 azure-verify.yml: no outcome assertion, so continue-on-error would "
+            "swallow an over-broad federated credential and pass green"
+        )
+    # `conclusion` is always 'success' under continue-on-error; `outcome` is not.
     if "steps.login.conclusion" in text:
         findings.append(
             "S6 azure-verify.yml: asserts on steps.login.conclusion, which "
             "continue-on-error forces to 'success'; the assertion can never bite"
+        )
+
+    # (c) the reason check.
+    if "AADSTS700211" not in text:
+        findings.append(
+            "S6 azure-verify.yml: does not require the AADSTS700211 rejection, so a "
+            "login failing for an unrelated reason would be reported as enforcement "
+            "(a measured false pass)"
         )
     return findings
 
