@@ -661,7 +661,7 @@ def get_durable_graph():
         # migrations. Idempotent, so calling it on every process start is correct
         # and keeps multi-replica startup races harmless.
         saver.setup()
-    except Exception as exc:  # noqa: BLE001 - re-raised with actionable context
+    except Exception as exc:
         stack.close()
         raise DurableCheckpointUnavailable(
             f"Could not initialise the PostgreSQL checkpoint backend: {exc}"
