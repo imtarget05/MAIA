@@ -169,6 +169,43 @@ def _interrupt_of(result):
     interrupts = result.get("__interrupt__")
     assert interrupts, f"graph did not pause for approval: {list(result)}"
     return interrupts[0].value
+
+
+def _pause_and_restart(thread: str) -> None:
+    """Run to the interrupt, then tear the durable graph down completely.
+
+    Shared by every restart scenario so each test states only what it is
+    actually asserting. The teardown is the point: after it, the next
+    ``get_durable_graph()`` must build a new connection, a new saver and a new
+    graph, so a later pass can only come from PostgreSQL.
+    """
+    _interrupt_of(get_durable_graph().invoke(_hitl_state(), _cfg(thread)))
+    close_durable_graph()
+    assert lg._durable_graph is None and lg._durable_cm is None
+
+
+def _resume(thread: str, approved: bool):
+    """Resume ``thread`` on a freshly built graph, as a restarted process would."""
+    return get_durable_graph().invoke(
+        Command(
+            resume={"approved": approved, "employee_id": "emp_m2"},
+        ),
+        _cfg(thread),
+    )
+
+
+def _persisted_rows(table: str, thread: str, where: str = "") -> int:
+    """Count ``table`` rows for ``thread`` directly in PostgreSQL.
+
+    The durability proofs must not rely on the graph's own view of the world:
+    if a resume is served from anywhere other than the database, these queries
+    are what notice.
+    """
+    import psycopg
+
+    sql = f"SELECT count(*) FROM {table} WHERE thread_id = %s{where}"
+    with psycopg.connect(os.environ["DATABASE_URL"].strip()) as conn:
+        return conn.execute(sql, (thread,)).fetchone()[0]
 # --------------------------------------------------------------------------- D1
 
 
@@ -207,13 +244,8 @@ def test_d1b_rejection_resumes_across_restart(fake_stack):
     """D1 (negative branch): rejecting a pending action also survives a restart."""
     thread = f"m2-d1b-{uuid4().hex}"
 
-    _interrupt_of(get_durable_graph().invoke(_hitl_state(), _cfg(thread)))
-    close_durable_graph()
-
-    result = get_durable_graph().invoke(
-        Command(resume={"approved": False, "employee_id": "emp_m2"}), _cfg(thread)
-    )
-    assert result.get("status") == "action_cancelled"
+    _pause_and_restart(thread)
+    assert _resume(thread, approved=False).get("status") == "action_cancelled"
 
 
 # --------------------------------------------------------------------------- D2
@@ -232,15 +264,8 @@ def test_d2_independent_instance_resumes_same_thread(fake_stack, hr_db):
     """
     thread = f"m2-d2-{uuid4().hex}"
 
-    instance_a = get_durable_graph()
-    _interrupt_of(instance_a.invoke(_hitl_state(), _cfg(thread)))
-    close_durable_graph()  # instance A is gone before B is ever built
-
-    instance_b = get_durable_graph()
-    result = instance_b.invoke(
-        Command(resume={"approved": True, "employee_id": "emp_m2"}), _cfg(thread)
-    )
-    assert result.get("status") == "action_completed"
+    _pause_and_restart(thread)  # instance A is gone before B is ever built
+    assert _resume(thread, approved=True).get("status") == "action_completed"
 
 
 def test_d2b_checkpoint_is_visible_in_postgres(fake_stack, hr_db):
@@ -249,16 +274,12 @@ def test_d2b_checkpoint_is_visible_in_postgres(fake_stack, hr_db):
     Guards against a false pass where the graph resumes from some other store
     that merely happens to work in-process.
     """
-    import psycopg
-
     thread = f"m2-d2b-{uuid4().hex}"
     _interrupt_of(get_durable_graph().invoke(_hitl_state(), _cfg(thread)))
 
-    with psycopg.connect(os.environ["DATABASE_URL"].strip()) as conn:
-        persisted = conn.execute(
-            "SELECT 1 FROM checkpoint_blobs WHERE thread_id = %s", (thread,)
-        ).fetchall()
-    assert persisted, "interrupt must be committed to PostgreSQL, not held in memory"
+    assert _persisted_rows("checkpoint_blobs", thread), (
+        "interrupt must be committed to PostgreSQL, not held in memory"
+    )
 
 
 # --------------------------------------------------------------------------- D3
@@ -289,8 +310,6 @@ def test_d3_unknown_thread_resume_fails_safely(fake_stack, hr_db):
     is the kind of trace. No write to the ``__interrupt__`` channel means no
     pending approval was ever recorded for an identity that never existed.
     """
-    import psycopg
-
     graph = get_durable_graph()
     missing = f"m2-d3-never-existed-{uuid4().hex}"
 
@@ -308,13 +327,10 @@ def test_d3_unknown_thread_resume_fails_safely(fake_stack, hr_db):
     ).get("tool"), "no side-effecting tool may be selected for an unknown thread"
 
     # The persisted run must not contain a pending-approval record.
-    with psycopg.connect(os.environ["DATABASE_URL"].strip()) as conn:
-        interrupts = conn.execute(
-            "SELECT count(*) FROM checkpoint_writes "
-            "WHERE thread_id = %s AND channel = '__interrupt__'",
-            (missing,),
-        ).fetchone()[0]
-    assert interrupts == 0, "invalid resume identity must not leave a pending approval"
+    assert (
+        _persisted_rows("checkpoint_writes", missing, " AND channel = '__interrupt__'")
+        == 0
+    ), "invalid resume identity must not leave a pending approval"
 
 
 # --------------------------------------------------------------------------- D4
@@ -409,16 +425,9 @@ def test_n1_memory_saver_cannot_survive_restart(monkeypatch, fake_stack, hr_db):
 
     thread = f"m2-n1-{uuid4().hex}"
 
-    graph_a = get_durable_graph()
-    _interrupt_of(graph_a.invoke(_hitl_state(), _cfg(thread)))
-    close_durable_graph()
+    _pause_and_restart(thread)
 
-    graph_b = get_durable_graph()
-    result = graph_b.invoke(
-        Command(resume={"approved": True, "employee_id": "emp_m2"}), _cfg(thread)
-    )
-
-    assert result.get("status") != "action_completed", (
+    assert _resume(thread, approved=True).get("status") != "action_completed", (
         "a process-local checkpoint unexpectedly resumed across a restart, "
         "which would make D1 vacuous"
     )
@@ -430,13 +439,9 @@ def test_n1b_postgres_path_does_reach_the_database(fake_stack, hr_db):
     Confirms the unmutated durable path really does write to PostgreSQL, so the
     N1 failure is caused by the saver swap and not by a broken harness.
     """
-    import psycopg
-
     thread = f"m2-n1b-{uuid4().hex}"
     _interrupt_of(get_durable_graph().invoke(_hitl_state(), _cfg(thread)))
 
-    with psycopg.connect(os.environ["DATABASE_URL"].strip()) as conn:
-        n = conn.execute(
-            "SELECT count(*) FROM checkpoint_blobs WHERE thread_id = %s", (thread,)
-        ).fetchone()[0]
-    assert n > 0, "canonical path must commit to PostgreSQL"
+    assert _persisted_rows("checkpoint_blobs", thread) > 0, (
+        "canonical path must commit to PostgreSQL"
+    )
