@@ -577,6 +577,40 @@ jobs:
     # does not use codecov (coverage.xml kept as a CI artifact instead).
     name: Coverage (report-only, no fail-under)
     runs-on: ubuntu-latest
+    # Same observation contract as `unit-tests`: this job runs the whole suite,
+    # so it needs the same real services and the same migration step. Without
+    # them the durable tests failed with
+    #   psycopg.OperationalError: connection refused ... 10 errors
+    # which is a red job for an environment reason, not a code reason — and a
+    # coverage number computed from a suite that lost 10 tests is not a
+    # measurement.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maia
+          POSTGRES_PASSWORD: maia
+          POSTGRES_DB: maia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U maia -d maia_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      MAIA_TEST_REDIS_URL: redis://localhost:6379
+      MAIA_TEST_PG_DSN: postgresql://maia:maia@localhost:5432/maia_test
+      MAIA_DATABASE_URL: postgresql://maia:maia@localhost:5432/maia_test
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -587,6 +621,12 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install pytest pytest-cov
+          pip install --only-binary :all: "redis==8.1.0" "psycopg[binary]==3.3.6" "alembic==1.20.0"
+      - name: Migrate the durable schema to head
+        # Same reason and same single-command rule as unit-tests: this job runs
+        # the durable suite, so an unmigrated database would fail every
+        # durable test in fixture setup.
+        run: python -m alembic upgrade head
       - name: Run tests with coverage (fast only, report-only)
         env:
           MAIA_EMBED_FORCE_HASH: "1"
