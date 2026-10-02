@@ -12,8 +12,8 @@
 #     langchain-core, langgraph, jsonschema, requests, numpy, pandas,
 #     pyyaml, qdrant-client
 #
-#   LAZY (12 gói, chỉ cần khi endpoint gọi tới): torch, sentence-transformers,
-#     fastembed, llama-index, rank-bm25, trafilatura, pypdf, docx, redis,
+#   LAZY (11 gói, chỉ cần khi endpoint gọi tới): torch, sentence-transformers,
+#     fastembed, llama-index, trafilatura, pypdf, docx, redis,
 #     google, httpx, bilstm. Không gói nào trong số này chặn khởi động, nên
 #     app vẫn đứng vững khi thiếu và /ready báo degraded.
 #
@@ -32,10 +32,27 @@
 #      không xuất hiện nếu chỉ đi thẳng vào `maia.agent.mcp_dispatch`.
 #   6. Lambda.body là ast.Call chứ không phải list, nên dùng iter_child_nodes.
 #
-# Cố tình KHÔNG có: fastembed, onnxruntime, sentence-transformers, torch,
-# rank-bm25. Đó là RAG runtime. /ready báo degraded rõ ràng thay vì đóng gói
-# một stack không dùng rồi che việc nó không chạy. qdrant-client được giữ lại
-# vì nó là client gọi HTTP, không phải server và không kéo theo model nào.
+# Cố tình KHÔNG có: fastembed, onnxruntime, sentence-transformers, torch. Đó là
+# RAG runtime nặng: /ready báo degraded rõ ràng thay vì đóng gói một stack
+# không dùng rồi che việc nó không chạy. qdrant-client được giữ lại vì nó là
+# client gọi HTTP, không phải server và không kéo theo model nào.
+#
+# ---- rank-bm25: CỐ Ý CÓ (đảo ngược quyết định cũ) ------------------------
+# Trước đây rank-bm25 nằm trong nhóm "không có", cùng lý do 1 GiB. Lý do đó
+# đúng cho torch và SAI cho rank-bm25: wheel của nó là 8.6 KB, thuần Python,
+# không dependency, không kéo model nào. Ràng buộc bộ nhớ không biện minh
+# được cho việc loại nó.
+#
+# Hậu quả đã đo được (docs/evidence/baseline-ai-reality/): khi thiếu gói này,
+# `retriever.py` nuốt ImportError, đặt `self._bm25 = None`, và `retrieve()`
+# gate nhánh sparse theo đúng giá trị đó -> RRF chỉ nhận MỘT ranking list.
+# "Hybrid retrieval (dense + BM25, RRF)" khi đó chỉ là claim trên source.
+# Đo bằng chính retriever thật trong venv dựng từ đúng file này
+# (tools/baseline_ai_reality_check.py).
+#
+# Contract giữ cho file này: mọi gói mà `maia` import ở ĐƯỜNG CHẠY THẬT phải có
+# mặt ở đây. tests/test_runtime_dependency_contract.py là chỗ enforce điều đó
+# — đọc file đó trước khi thêm hoặc xoá gói.
 fastapi>=0.110
 uvicorn[standard]>=0.27
 pydantic>=2.5
@@ -52,5 +69,8 @@ numpy>=1.26
 pandas>=2.0
 pyyaml>=6.0
 qdrant-client>=1.7
+# Sparse leg of hybrid retrieval. See the header note: this one was wrongly
+# excluded under the 1 GiB argument, which holds for torch and not for this.
+rank-bm25>=0.2.2
 
 
