@@ -105,6 +105,12 @@ jobs:
     env:
       MAIA_TEST_REDIS_URL: redis://localhost:6379
       MAIA_TEST_PG_DSN: postgresql://maia:maia@localhost:5432/maia_test
+      # Alembic reads THIS, not MAIA_TEST_PG_DSN. Omitting it made
+      # `alembic upgrade head` fall back to alembic.ini's
+      # `sqlite:///./maia_auth.db`, which against a PostgreSQL service failed
+      # with `sqlite3.OperationalError: unrecognized token: ":"` — a migration
+      # step that looked configured but pointed at the wrong database entirely.
+      MAIA_DATABASE_URL: postgresql://maia:maia@localhost:5432/maia_test
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up Python
@@ -126,17 +132,37 @@ jobs:
           # turns "pip may execute a setup.py from an sdist" into a hard failure
           # instead of a silent build step.
           pip install --only-binary :all: "redis==8.1.0" "psycopg[binary]==3.3.6"
+          # Alembic is the schema tool; the durable suite needs a migrated
+          # database, so the job has to be able to migrate one. Exact pin to
+          # match requirements.txt — a migration history is only reproducible
+          # with a fixed tool.
+          pip install --only-binary :all: "alembic==1.20.0"
       - name: Prove the service containers are actually reachable
         # A service that failed to start would otherwise present as a suite full
-        # of skips, which reads exactly like success.
+        # of skips, which reads exactly like success. The retry loop is because
+        # `docker compose`/service containers report running before they accept
+        # connections; one immediate PING is a race, and a flaky race is worse
+        # than a deliberate wait.
         run: |
           python - <<'PY'
-          import os, sys
+          import os, time, sys
           import redis, psycopg
-          r = redis.Redis.from_url(os.environ["MAIA_TEST_REDIS_URL"], socket_connect_timeout=5)
-          assert r.ping(), "redis did not answer PING"
-          with psycopg.connect(os.environ["MAIA_TEST_PG_DSN"], connect_timeout=5) as c:
-              c.execute("select 1")
+
+          def wait(label, probe, attempts=30, delay=2):
+              last = None
+              for _ in range(attempts):
+                  try:
+                      return probe()
+                  except Exception as exc:  # noqa: BLE001
+                      last = exc
+                      time.sleep(delay)
+              sys.exit(f"{label} never became reachable: {last}")
+
+          wait("redis", lambda: redis.Redis.from_url(
+              os.environ["MAIA_TEST_REDIS_URL"], socket_connect_timeout=2).ping())
+          wait("postgres", lambda: psycopg.connect(
+              os.environ["MAIA_TEST_PG_DSN"], connect_timeout=5
+          ).execute("select 1"))
           print("redis and postgres reachable")
           PY
       - name: Migrate the durable schema to head
@@ -149,9 +175,12 @@ jobs:
         # rather than a local habit: M1 (empty -> head) now executes on every run.
         #
         # The DSN comes from the job-level env, never from a committed file.
-        run: |
-          .venv/bin/python -m alembic upgrade head 2>/dev/null || \
-            python -m alembic upgrade head
+        #
+        # NO `2>/dev/null || fallback` here. An earlier version had one, and it
+        # did exactly what it was written to prevent: it hid a failed migration
+        # and then ran a different command, so the job reported a green step
+        # having proven nothing. One command, its exit code is the verdict.
+        run: python -m alembic upgrade head
       - name: Prove the durable schema exists before the suite claims anything
         run: |
           python - <<'PY'
