@@ -119,6 +119,10 @@ for dir in "${TARGETS[@]}"; do
 done
 
 run "plan-JSON negative controls" python3 tests/probe_plan_controls.py
+# The secretless-deploy controls (S1-S4 + their negative controls). Added in
+# Phase 2: a secretless identity is only secretless while a control keeps it
+# that way, and a control nobody has seen fail is not a control.
+run "no-client-secret probe" python3 tests/probe_no_client_secret.py
 run "policy scan (trivy)" bash "$ROOT/policies/scan.sh"
 
 if [ "$MODE" = "plan" ]; then

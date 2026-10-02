@@ -1,0 +1,263 @@
+name: Azure Verify (manual — OIDC + transient)
+
+# THE CREDENTIAL BLOCKER GATE. Everything else in this repo runs without an
+# Azure subscription; this workflow is the only place the secretless path is
+# actually exercised.
+#
+# WHAT IT PROVES, AND WHAT IT DOES NOT:
+#   * `oidc-login` proves GitHub -> Entra federation works with NO client
+#     secret. This is the Phase 2 exit-gate item "OIDC works".
+#   * `oidc-negative-control` proves the federation is actually CONSTRAINED.
+#     The same client id and the same token, but WITHOUT the `azure-verify`
+#     environment, must FAIL — because the federated credential's subject is
+#     `repo:imtarget05/MAIA:environment:azure-verify`. Without this job, a
+#     wildcard subject would look identical to a correct one.
+#   * `terraform-plan` proves remote state works and the plan is clean.
+#   * `transient-verify` (opt-in) applies, reads the live control plane, then
+#     DESTROYS. Opt-in because it creates billable resources.
+#
+# A green run here is evidence about the DEPLOY PATH. It is not evidence that
+# MAIA's application works; nothing in this workflow starts the API.
+#
+# COST: the default path is read-only (login + plan). Only
+# `workflow_dispatch.inputs.apply` = true creates anything, and that job
+# destroys in the same run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Terraform environment to target
+        type: choice
+        default: validation
+        options: [dev, validation, prod]
+      apply:
+        description: "APPLY + VERIFY + DESTROY (creates billable resources)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Two concurrent applies would fight over the same state blob lease and, worse,
+  # could leave a half-destroyed stack. Serialise.
+  group: azure-verify-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  oidc-login:
+    name: OIDC login (no client secret)
+    runs-on: ubuntu-latest
+    # The environment is part of the federated credential SUBJECT, so declaring
+    # it here is what changes the OIDC token's `sub` claim — and therefore what
+    # makes this job authorised. Removing it makes the job fail, by design.
+    environment: azure-verify
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Pinned by SHA for the same reason as every other action here: a tag is
+      # mutable, and this action receives the OIDC token.
+      - name: Azure login via OIDC
+        uses: azure/login@8216e11d8cd9b42fe925c852af8e76311ff067ac # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Not "the job succeeded" — WHICH identity it became. `az account show`
+      # output is the Definition of Done for the credential blocker, so it is
+      # uploaded rather than scrolled past.
+      - name: Show the account we actually got
+        run: az account show --output json
+
+      # Belt and braces against a well-meaning future edit adding a client
+      # secret to the login step. This runs the SAME probe the offline gate
+      # runs, rather than a second, weaker grep: two checks for one property is
+      # one too many, and the weaker one is the one that gets remembered.
+      - name: Assert the deploy path is still secretless
+        working-directory: infra/terraform
+        run: python3 tests/probe_no_client_secret.py
+
+  oidc-negative-control:
+    name: OIDC negative control (wrong subject must be REJECTED)
+    runs-on: ubuntu-latest
+    # NO `environment:` here on purpose — that absence is what changes the OIDC
+    # token's `sub` claim away from the federated credential's subject.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # WHY continue-on-error: WITHOUT it, the expected rejection fails this
+      # step, fails this job, and turns the whole workflow RED for the right
+      # reason but the wrong outcome — "we expected a rejection and got a
+      # workflow failure" reads identically to "the control is broken".
+      #
+      # WHY that alone is NOT enough (the assert below is not optional):
+      # `continue-on-error: true` without an assertion is a control that can
+      # never fail. If the federated credential were over-broad and this login
+      # SUCCEEDED, continue-on-error would swallow it and the workflow would go
+      # green. Only the explicit outcome check makes that a red build.
+      #
+      # Net effect, which is the whole point of this job:
+      #   correct subject restriction  -> workflow GREEN
+      #   over-broad credential       -> workflow RED
+      - name: Attempt login WITHOUT the azure-verify environment
+        id: login
+        continue-on-error: true
+        uses: azure/login@8216e11d8cd9b42fe925c852af8e76311ff067ac # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Assert the login was REJECTED
+        # `outcome` is the REAL result; `conclusion` would read 'success'
+        # because of continue-on-error. Asserting on the wrong one is how a
+        # negative control silently stops testing anything.
+        env:
+          LOGIN_OUTCOME: ${{ steps.login.outcome }}
+        run: |
+          echo "azure/login outcome without the environment: ${LOGIN_OUTCOME}"
+          if [ "$LOGIN_OUTCOME" = "success" ]; then
+            echo "::error::OIDC login SUCCEEDED without the azure-verify environment."
+            echo "::error::The federated credential subject is not constraining the token."
+            echo "::error::Fix the subject to repo:imtarget05/MAIA:environment:azure-verify"
+            exit 1
+          fi
+          echo "PASS: the federated subject rejected a token from outside the environment."
+
+      - name: Record the enforcement
+        run: >-
+          echo "subject restriction enforced: the credential accepts
+          repo:imtarget05/MAIA:environment:azure-verify and rejects everything else."
+
+  terraform-plan:
+    name: Remote state + plan invariants
+    needs: [oidc-login, oidc-negative-control]
+    runs-on: ubuntu-latest
+    environment: azure-verify
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: "1.16.3"
+          terraform_wrapper: false
+
+      - name: Azure login via OIDC
+        uses: azure/login@8216e11d8cd9b42fe925c852af8e76311ff067ac # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # The backend reads ARM_* for BOTH the management and the data plane.
+      # backend.hcl deliberately does NOT hardcode `use_oidc` (that would force
+      # the GitHub-only OIDC path and break a local `az login` init), so these
+      # variables ARE the CI authentication mechanism. One backend config, two
+      # paths: `az login` locally, ARM_* here.
+      #
+      # These are identifiers, not secrets. There is no ARM_CLIENT_SECRET and
+      # adding one would fail tests/probe_no_client_secret.py.
+      - name: Init against the remote backend
+        working-directory: infra/terraform
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD_AUTH: "true"
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          terraform init -input=false -reconfigure \
+            -backend-config=environments/${{ inputs.environment }}/backend.hcl
+
+      - name: Prove the state is remote, not local
+        working-directory: infra/terraform
+        run: |
+          if ls ./*.tfstate* >/dev/null 2>&1; then
+            echo "::error::a local .tfstate exists — the remote backend is not in use"
+            ls -la ./*.tfstate*
+            exit 1
+          fi
+          echo "no local state file"
+          terraform state pull >/dev/null && echo "remote state reachable"
+
+      - name: Plan and check the invariants
+        working-directory: infra/terraform
+        run: |
+          terraform plan -input=false -lock=false \
+            -var-file=environments/${{ inputs.environment }}/terraform.tfvars -out=tfplan
+          terraform show -json tfplan >plan.json
+          python3 tests/check_plan_invariants.py plan.json
+
+      - name: Upload plan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: azure-verify-plan-${{ inputs.environment }}
+          path: |
+            infra/terraform/plan.json
+            infra/terraform/tfplan
+          if-no-files-found: warn
+          retention-days: 30
+
+  transient-verify:
+    name: Transient apply + verify + destroy
+    needs: [oidc-login, oidc-negative-control]
+    if: inputs.apply
+    runs-on: ubuntu-latest
+    environment: azure-verify
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: "1.16.3"
+          terraform_wrapper: false
+
+      - name: Azure login via OIDC
+        uses: azure/login@8216e11d8cd9b42fe925c852af8e76311ff067ac # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # scripts/transient_verify.sh arms `trap destroy EXIT` BEFORE it applies,
+      # so this job cannot leave a billable stack behind — not on success, not
+      # on failure, not when the runner is cancelled.
+      - name: Apply, verify, destroy
+        working-directory: infra/terraform
+        env:
+          # Same reason as the terraform-plan job: backend.hcl carries no
+          # `use_oidc`, so CI authentication comes from ARM_* here.
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD_AUTH: "true"
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          EVIDENCE_DIR: ${{ github.workspace }}/docs/evidence/terraform-verify/${{ inputs.environment }}
+        run: ./scripts/transient_verify.sh ${{ inputs.environment }}
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: azure-verify-run-${{ inputs.environment }}
+          path: docs/evidence/terraform-verify/${{ inputs.environment }}
+          if-no-files-found: warn
+          retention-days: 90

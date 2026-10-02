@@ -1,24 +1,39 @@
-# Remote state backend contract (Phase 2 wires the actual backend).
+# Remote state backend (Phase 2).
 #
-# The block below is INTENTIONALLY COMMENTED OUT. Phase 1 is source parity and
-# must run offline (`terraform init` resolves providers only, no Azure). An
-# active `backend "azurerm"` block would force a remote-state connection at
-# init time, which Phase 1 is not authorised to create or contact.
-#
-# Phase 2 will activate a backend of this shape, with per-environment keys so
-# that dev / validation / prod never share a state file:
+# The backend block below is PARTIAL CONFIG on purpose: every attribute lives in
+# environments/<env>/backend.hcl (or `-backend-config` flags), never here. That
+# keeps the source tree credential-free by construction — there is no line in
+# this repository that a leaked git clone turns into a usable credential.
 #
 #   terraform {
-#     backend "azurerm" {
-#       resource_group_name  = "rg-tfstate-maia"        # created in Phase 2
-#       storage_account_name = "<tfstate storage account>"
-#       container_name       = "tfstate"
-#       key                  = "maia/<environment>.terraform.tfstate"
-#     }
+#     backend "azurerm" {}
 #   }
 #
-# Values are supplied at `terraform init` time (CLI `-backend-config`, or the
-# environments/<env>/backend.hcl convention), never hardcoded here, and no
-# credential is ever written into this file. Blob leases provide state locking.
+# Then per environment:
+#
+#   terraform init \
+#     -backend-config=environments/prod/backend.hcl \
+#     -reconfigure
+#
+# environments/prod/backend.hcl pins key = "maia/prod.terraform.tfstate", so dev /
+# validation / prod never share a state file. Blob leases provide state locking.
+#
+# AUTHENTICATION IS ENTRA ID / OIDC, NOT AN ACCESS KEY.
+# `use_oidc = true` + `use_azuread_auth = true` in every backend.hcl means the
+# backend data plane authenticates with a token, so no account key is ever
+# needed or stored. Locally the token comes from `az login`; in GitHub Actions
+# it comes from the federated credential minted from the Actions OIDC token
+# (see scripts/bootstrap_azure.sh and .github/workflows/azure-verify.yml).
+# Consequence: the identity needs `Storage Blob Data Contributor` on the state
+# container, NOT `Storage Account Contributor` — role assignment is out of band
+# for the backend itself, which is why bootstrap_azure.sh does it with the CLI.
+#
+# WHY THIS IS STILL SAFE FOR THE OFFLINE GATE: scripts/phase1_check.sh inits with
+# `-backend=false`, which skips backend initialisation entirely, so a backend
+# block that needs Azure does not make the offline gate depend on Azure.
 #
 # State is NEVER committed. See infra/terraform/.gitignore.
+
+terraform {
+  backend "azurerm" {}
+}

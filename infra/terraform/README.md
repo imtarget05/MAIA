@@ -1,4 +1,9 @@
-# MAIA — Terraform (canonical IaC target, Phase 1)
+# MAIA — Terraform (canonical IaC, Phase 1 source parity + Phase 2 state/OIDC)
+
+> **Phase 2 quick start:** remote state, GitHub OIDC and the cost controls are
+> documented in [`docs/azure-oidc-bootstrap.md`](../../docs/azure-oidc-bootstrap.md).
+> That file is the one to read before creating anything billable. This README is
+> the reference for the module layout and the offline gate.
 #
 # STATUS: MIGRATION_CANDIDATE. Bicep (`infra/*.bicep`) remains
 # CURRENT_CANONICAL_IAC until this reaches verified source parity and is merged.

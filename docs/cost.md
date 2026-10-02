@@ -4,6 +4,26 @@ Local LAN inference (default `LLM_PROVIDER=local`): ~$0 marginal cost.
 Reference commercial price (for the "saved" estimate in `/metrics/ai`):
 `pipeline_query._COMMERCIAL_PER_1K_USD` = GPT-4o-mini $0.15/1M input tokens.
 
+## Azure cost controls (a budget is not a cap)
+
+An Azure budget **only alerts**. Exceeding it does **not** stop resources, so a
+"$10 budget" is not a $10 ceiling. The real controls are listed in
+[`azure-oidc-bootstrap.md`](./azure-oidc-bootstrap.md) §5:
+
+- **Blast radius** — CI holds Contributor on one resource group per project,
+  never on the subscription, so a mistake cannot spread or escalate.
+- **Lifetime** — `infra/terraform/scripts/transient_verify.sh` applies, verifies
+  and destroys in a single run, with the destroy armed (`trap destroy EXIT`)
+  *before* the apply. Leaving a stack running needs two explicit keys.
+- **Opt-in** — the apply job in `.github/workflows/azure-verify.yml` defaults to
+  `apply: false`; a default workflow run creates nothing.
+- **Exempt** — the Terraform **state storage account is permanent** and is never
+  destroyed. It can carry a small ongoing cost (capacity + transactions); that
+  is accepted, because destroying it would destroy state history.
+
+On Azure for Students, keep the spending limit: exhausting the credit disables
+the subscription instead of falling through to unlimited pay-as-you-go.
+
 Where cost is tracked:
 
 - Per query: `_est_tokens(q + answer + citations)` → `maia_tokens_total`,
