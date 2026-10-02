@@ -46,24 +46,54 @@ class CircuitOpenError(Exception):
     """Raised by CircuitBreaker.call when the breaker is OPEN (short-circuit)."""
 
 
+def _should_retry(exc: Exception, config: RetryConfig) -> bool:
+    """Is this exception worth another attempt?
+
+    Two filters, in order:
+
+    1. Exception TYPE must be in `config.retryable`.
+    2. If it carries an HTTP response, the STATUS must be classified retryable.
+
+    The second filter is not redundant. `requests.exceptions.HTTPError`
+    subclasses `OSError`, so step 1 alone matches every HTTP error — including
+    400 and 401. That made a rejected credential retry three times before
+    surfacing, which is both slower and noisier against the provider, and it
+    is precisely the failure an interviewer asks about. See
+    `maia.agent.reliability.classify_http_status` for the status rule.
+
+    Non-HTTP exceptions defer to the type tuple alone, so timeout and
+    connection behaviour is unchanged.
+    """
+    if not isinstance(exc, config.retryable):
+        return False
+
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is None:
+        return True  # not an HTTP error; type filter already approved it
+
+    from maia.agent.reliability import is_retryable_response
+    return is_retryable_response(status)
+
+
 def with_retry(config: RetryConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     """Call `fn(*args, **kwargs)` with exponential-backoff retry.
 
-    Retries only on exceptions in `config.retryable`. Any other exception
-    propagates immediately. Returns fn's result, or raises the last exception
-    after `config.max_retries` failed attempts.
+    Retries only failures that are both in `config.retryable` AND, for HTTP
+    errors, classified retryable by status. Anything else propagates
+    immediately. Returns fn's result, or raises the last exception once the
+    retry budget is spent.
     """
     last_exc: Exception | None = None
     for attempt in range(config.max_retries + 1):
         try:
             return fn(*args, **kwargs)
-        except config.retryable as e:
+        except Exception as e:
+            if not _should_retry(e, config):
+                raise
             last_exc = e
             if attempt < config.max_retries:
                 time.sleep(config.backoff_base * (2 ** attempt))
-            # else: fall through and raise
-        except Exception:
-            raise
     raise last_exc  # type: ignore[misc]
 
 
