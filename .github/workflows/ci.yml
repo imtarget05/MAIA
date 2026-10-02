@@ -117,7 +117,15 @@ jobs:
           pip install pytest
           # The distributed-state suite needs the real clients, otherwise every
           # assertion in it is skipped and the job is green for the wrong reason.
-          pip install "redis>=5.0" "psycopg[binary]>=3.2"
+          #
+          # Exact versions, not ranges: this is the only place CI resolves these
+          # two, so a range would make the gate's meaning drift without a commit.
+          # Both were verified to publish a wheel for the CI interpreter (3.11) —
+          # psycopg-binary 3.3.6 ships cp311 wheels, redis 8.1.0 ships a
+          # pure-python wheel — which is what makes --only-binary safe here: it
+          # turns "pip may execute a setup.py from an sdist" into a hard failure
+          # instead of a silent build step.
+          pip install --only-binary :all: "redis==8.1.0" "psycopg[binary]==3.3.6"
       - name: Prove the service containers are actually reachable
         # A service that failed to start would otherwise present as a suite full
         # of skips, which reads exactly like success.
