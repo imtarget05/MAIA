@@ -151,17 +151,43 @@ jobs:
           ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           set +e
-          # The token request proves a token WAS minted with the wrong subject.
-          # Without this, "login failed" could just mean no token was issued.
-          TOKEN="$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-                    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange")"
-          echo "token_request_exit=$?"
-          if [ -n "$TOKEN" ]; then
-            echo "PRESENTED SUBJECT CLAIM:"
-            echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null \
-              | grep -o '"sub":"[^"]*"' || echo "  (could not decode)"
-          else
-            echo "no token issued"
+          # NO `curl -sf`: on the previous run that combination returned an EMPTY
+          # token with exit 0, az then said AADSTS50027 ("JWT malformed"), and
+          # the control failed for a fourth unrelated reason. Without -s the
+          # response body is visible, so an empty token is impossible to miss.
+          RESP="$(curl -sS -w '\n__HTTP__%{http_code}' \
+                    -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" 2>&1)"
+          HTTP="$(printf '%s' "$RESP" | sed -n 's/.*__HTTP__//p')"
+          BODY="$(printf '%s' "$RESP" | sed 's/__HTTP__[0-9]*//')"
+          echo "token_http_status=$HTTP"
+
+          if [ -z "$BODY" ]; then
+            echo "::error::no token issued (HTTP $HTTP). Nothing was exchanged with Azure."
+            echo "raw: $RESP"
+            echo "outcome=notoken" >> "$GITHUB_OUTPUT"
+            echo "log=/dev/null" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TOKEN="$BODY"
+          # The sub claim is the evidence that this token really is the
+          # wrong-subject one. Printing it means a reader can see the mismatch
+          # instead of taking the rejection on faith.
+          SUB="$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null \
+                 | grep -o '"sub":"[^"]*"' | cut -d'"' -f4)"
+          echo "PRESENTED SUBJECT CLAIM: ${SUB:-<undecodable>}"
+          if [ -z "$SUB" ]; then
+            echo "::error::could not decode the sub claim; cannot prove which subject was presented."
+            echo "outcome=notoken" >> "$GITHUB_OUTPUT"
+            echo "log=/dev/null" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if printf '%s' "$SUB" | grep -q ':environment:'; then
+            echo "::error::this token carries an :environment: claim, so it is NOT the wrong-subject case."
+            echo "outcome=notoken" >> "$GITHUB_OUTPUT"
+            echo "log=/dev/null" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           az login --service-principal \
@@ -189,6 +215,13 @@ jobs:
           echo "azure/login outcome without the environment: ${LOGIN_OUTCOME}"
           echo "--- presented token / azure error ---"
           cat "$LOGIN_LOG" 2>/dev/null || echo "(no log captured)"
+
+          # No token at all means the exchange never happened, so the subject
+          # restriction was never exercised. That is NOT enforcement.
+          if [ "$LOGIN_OUTCOME" = "notoken" ]; then
+            echo "::error::no OIDC token was issued; the exchange never reached Azure."
+            exit 1
+          fi
 
           # An over-broad credential LOGS IN successfully here. That is the one
           # failure mode that must never be reported as enforcement.
