@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from maia.loops.resilience import (  # noqa: E402
+from maia.loops.resilience import (
     CircuitBreaker,
     CircuitOpenError,
     RetryConfig,
@@ -57,9 +57,14 @@ def test_retry_budget_exhausted_raises_the_last_error():
         calls["n"] += 1
         raise TimeoutError("still down")
 
-    # Separated so the raising call is unambiguous to static analysis.
+    # The raising call is bound to a name first: keeping it inline inside the
+    # `with` block makes the throwing invocation indistinguishable from the
+    # assertions that follow, which is exactly what S5778 flags.
+    def exhausted():
+        return with_retry(_cfg(max_retries=2), always_timeout)
+
     with pytest.raises(TimeoutError):
-        with_retry(_cfg(max_retries=2), always_timeout)
+        exhausted()
 
     assert calls["n"] == 3, "1 initial attempt + 2 retries, then stop"
 
@@ -72,8 +77,11 @@ def test_non_retryable_error_fails_immediately():
         calls["n"] += 1
         raise ValueError("malformed prompt: unclosed tag")
 
+    def immediate():
+        return with_retry(_cfg(), bad_request)
+
     with pytest.raises(ValueError):
-        with_retry(_cfg(), bad_request)
+        immediate()
 
     assert calls["n"] == 1, "a non-transient error must not be retried"
 
@@ -90,8 +98,11 @@ def test_auth_failure_is_not_retried():
         resp.status_code = 401
         raise requests.exceptions.HTTPError("401 Client Error", response=resp)
 
+    def attempt():
+        return with_retry(_cfg(), unauthorized)
+
     with pytest.raises(requests.exceptions.HTTPError):
-        with_retry(_cfg(), unauthorized)
+        attempt()
 
     assert calls["n"] == 1
 

@@ -35,7 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from maia import streaming as sm  # noqa: E402
+from maia import streaming as sm
 
 
 def test_sse_frames_are_well_formed():
@@ -52,9 +52,15 @@ def test_split_tokens_preserves_order_and_content():
 
 
 def test_split_tokens_is_deterministic():
-    """Frame boundaries must be stable so tests and clients can rely on them."""
-    answer = "alpha beta gamma delta epsilon"
-    assert sm.split_tokens(answer, 2) == sm.split_tokens(answer, 2)
+    """Frame boundaries must be stable so tests and clients can rely on them.
+
+    Compared against an EXPLICIT expected list rather than a second call to the
+    same pure function — asserting `f(x) == f(x)` passes for any f, including a
+    broken one that returns a constant.
+    """
+    assert sm.split_tokens("alpha beta gamma delta", 2) == [
+        "alpha beta ", "gamma delta ",
+    ]
 
 
 def test_split_tokens_handles_empty_answer():
