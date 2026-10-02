@@ -57,8 +57,10 @@ def test_retry_budget_exhausted_raises_the_last_error():
         calls["n"] += 1
         raise TimeoutError("still down")
 
+    # Separated so the raising call is unambiguous to static analysis.
     with pytest.raises(TimeoutError):
         with_retry(_cfg(max_retries=2), always_timeout)
+
     assert calls["n"] == 3, "1 initial attempt + 2 retries, then stop"
 
 
@@ -72,6 +74,7 @@ def test_non_retryable_error_fails_immediately():
 
     with pytest.raises(ValueError):
         with_retry(_cfg(), bad_request)
+
     assert calls["n"] == 1, "a non-transient error must not be retried"
 
 
@@ -89,6 +92,7 @@ def test_auth_failure_is_not_retried():
 
     with pytest.raises(requests.exceptions.HTTPError):
         with_retry(_cfg(), unauthorized)
+
     assert calls["n"] == 1
 
 

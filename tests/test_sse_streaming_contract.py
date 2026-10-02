@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import inspect
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -78,11 +77,11 @@ def test_upstream_token_streaming_exists_but_is_not_used_by_the_endpoint():
 
     src = inspect.getsource(api)
     handler = src[src.index("async def chat_stream"):]
-    # The handler must NOT be slicing a finished answer into fake token frames.
-    assert "split_tokens" in handler, "expected the current chunked-slicing path"
-    # No invocation of the upstream streaming helper: look for `X.chat_stream(`
-    # or a bare `chat_stream(` that is not the def/route we sliced past.
-    assert ".chat_stream(" not in handler, (
+    uses_splitter = "split_tokens" in handler
+    calls_upstream = ".chat_stream(" in handler
+
+    assert uses_splitter, "expected the current chunked-slicing path"
+    assert not calls_upstream, (
         "if this now calls upstream token streaming, update the M5 evidence doc "
         "and the module docstring — TTFT semantics have changed"
     )
@@ -119,12 +118,12 @@ def test_disconnect_stops_delivery_not_the_upstream_work():
 def test_stream_timeout_is_bounded():
     """A hung provider must surface as an error frame, not an open request."""
     assert sm.STREAM_TIMEOUT_SEC > 0
-    assert sm.ERR_PROVIDER_TIMEOUT and sm.ERR_PROVIDER_ERROR
+    assert sm.ERR_PROVIDER_TIMEOUT
+    assert sm.ERR_PROVIDER_ERROR
 
 
-def test_error_frame_precedes_done_on_failure():
-    """Representation of failure is part of the contract."""
-    names = {sm.ERR_PROVIDER_TIMEOUT, sm.ERR_PROVIDER_ERROR}
-    assert names, "provider error codes must be defined for the client to branch on"
-    start = time.monotonic()
-    assert (time.monotonic() - start) < 1.0
+def test_error_codes_exist_for_the_client_to_branch_on():
+    """Representation of failure is part of the wire contract."""
+    codes = {sm.ERR_PROVIDER_TIMEOUT, sm.ERR_PROVIDER_ERROR}
+    assert codes
+    assert all(isinstance(c, str) and c for c in codes)

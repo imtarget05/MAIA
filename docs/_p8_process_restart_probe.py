@@ -136,8 +136,8 @@ async def _read(thread_id: str, expected: str) -> dict:
 
     snapshot = await _with_saver(get)
 
-    values = dict(getattr(snapshot, "values", {}) or {})
-    nexts = tuple(getattr(snapshot, "next", ()) or ())
+    values = dict(snapshot.values) if snapshot.values else {}
+    nexts = tuple(snapshot.next) if snapshot.next else ()
 
     # A fresh process is by construction a different interpreter with a
     # different PID and no shared memory with the writer.
