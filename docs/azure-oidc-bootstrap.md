@@ -249,38 +249,47 @@ the kind of thing that gets run twice by accident.
 
 ## 7. What is verified, and what is not
 
-**Verified live 2026-10-02** (measured with `az`, not read from docs):
+**Verified live (measured with `az` and with a real GitHub Actions run):**
 
 - `rg-maia-tfstate` + `rg-maia-verify` exist; `sttfmaia` has
   `allowSharedKeyAccess=false`, HTTPS-only, TLS 1.2, blob public access off.
 - `tfstate` container exists and is listable with `--auth-mode login` — Entra,
   no account key.
 - `maia-github-oidc` has **0** password credentials and **0** key credentials.
-- Federated credential reads back exactly
-  `repo:imtarget05/MAIA:environment:azure-verify`; it is the only federated
-  credential on the app.
+- The federated credential is issuer `https://token.actions.githubusercontent.com`
+  (no trailing slash), subject
+  `repo:imtarget05@163159731/MAIA@1357198812:environment:azure-verify`, audience
+  `api://AzureADTokenExchange`. It is the only one on the app.
 - The GitHub service principal holds Contributor on `rg-maia-verify` only, plus
   Reader + Blob Data Contributor on `rg-maia-tfstate`, and Owner nowhere.
-- `terraform init` against the **azurerm** remote backend succeeded locally with
-  `az login`; the `maia/validation.terraform.tfstate` blob is reachable via the
-  Blob API, `terraform state pull` works, and **no local `.tfstate` exists**.
-- `terraform plan` is read-only clean: **9 to add, 0 to change, 0 to destroy**.
+- **GitHub Actions OIDC, run `36983504649`, workflow green:**
+  - `oidc-login` — `azure/login` with no client secret; `az account show`
+    returned sub `a3deec78-…` / tenant `aa79a92c-…`.
+  - `oidc-negative-control` — presented subject
+    `repo:…@1357198812:ref:refs/heads/main`, Azure rejected it with
+    **AADSTS700213** quoting that exact subject; the job stayed GREEN on that
+    expected rejection.
+  - `terraform-plan` — azurerm backend initialised through OIDC, no local state
+    file, `state pull` reachable, plan **9 add / 0 change / 0 destroy**, all 7
+    plan invariants PASS.
+- `rg-maia-verify` still contains **zero** resources.
+
+**Three things the federated subject got wrong, each found by a real run:**
+
+| Symptom | Cause |
+|---|---|
+| `AADSTS700211` | Subject lacked the numeric ids GitHub appends: `repo:owner/repo` vs `repo:owner@163159731/repo@1357198812` |
+| `AADSTS700211` again | Issuer had a trailing slash; GitHub presents it without one |
+| `AADSTS50027` | The token itself was corrupted by sed string surgery, not by Azure policy |
 
 **Still not verified:**
 
-- GitHub Actions `azure/login` — needs the `azure-verify` environment to exist.
-- The negative control actually executing in CI.
-- CI-side `terraform init` / `plan` through OIDC.
+- Any `terraform apply` of the application stack. `deploy_identity_principal_id`
+  is still the zero-GUID placeholder and `transient_verify.sh` refuses to apply
+  until it is a real object id.
 - The budget: Azure rejected every start date at both RG and subscription scope
-  on this subscription (`Please enter a valid start date`), so
-  `BUDGET_NOT_CREATED`. This is Azure-side, not a malformed request. Create it
-  in the portal, where the same dates are accepted.
-- `terraform apply` of anything. `deploy_identity_principal_id` is still the
-  zero-GUID placeholder, and `transient_verify.sh` refuses to apply until it is a
-  real object id.
-
-Until the first four are measured, Azure is not "CI-deployable". It is
-**locally verified and OIDC-configured**, with one real gap (the budget).
+  on this subscription, so `BUDGET_NOT_CREATED`. Create it in the portal, where
+  the same dates are accepted.
 authorisation input. Deleting it makes those jobs fail by design.
 
 ### Why Contributor on a resource group, not the subscription
