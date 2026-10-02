@@ -298,25 +298,66 @@ requirement is confirmed in scope and the backend blocker is cleared.
 ## 15. Mutations performed
 
 ```text
-NONE
+B1 (remote state foundation) — 3 repositories
+  3 × state resource group
+  3 × storage account (Standard_LRS, shared key disabled, Entra-only)
+  3 × tfstate container
+  3 × Storage Blob Data Contributor for the operator, at STORAGE ACCOUNT scope
+  0 × compute, AKS, ACA, database, Redis, Service Bus, APIM, Front Door
+  0 × provider registrations, 0 × quota requests, 0 × deletions
+  0 × client secrets, 0 × storage keys used
 ```
 
-This audit was read-only throughout: no `apply`, no resource creation, no role
-change, no provider registration, no quota request, no deletion.
+**Compute quota unchanged**: `eastasia cores 0/10`, `southeastasia cores 0/10`,
+`lowPriorityCores 0/3`. Storage accounts are not compute-quota consumers.
 
-The only writes in this session were to the MAIA repository (commits
-`5e3944af` … `1956bddb`) documenting the OIDC verification completed *before*
-this audit, plus the GitHub `azure-verify` environment created at that time.
+The portfolio audit (this section's predecessor) was read-only and remains so;
+the mutations above are B1 only, and every one is a state-foundation resource.
+
+## 15b. B1 POST-STATE MATRIX
+
+```text
+PROJECT      STATE_RG               STORAGE          CONTAINER  SHARED_KEY  PUBLIC_NW  HUMAN_BLOB_SCOPE
+MAIA         rg-maia-tfstate        sttfmaia         tfstate    disabled    Allow       storage account
+AKS-SRE      rg-aks-tfstate         stakssre         tfstate    disabled    Allow       storage account
+Helpdesk     rg-helpdesk-tfstate    sthdhelpdesk     tfstate    disabled    Allow       storage account
+Factory      rg-factory-tfstate     stfactorystate   tfstate    disabled    Allow       storage account
+
+PROJECT      STATE_KEY                                      LOCAL_STATE  INIT    REMOTE_STATE        CI_OIDC
+MAIA         maia/{dev,validation,prod}                     none         PASS    VERIFIED_LIVE       CONFIGURED
+AKS-SRE      aks-sre/validation                             none         PASS    VERIFIED_LIVE       NOT_CONFIGURED
+Helpdesk     helpdesk/validation                            none         PASS    VERIFIED_LIVE       NOT_CONFIGURED
+Factory      factory/{validation,dev,prod}                  none         PASS    VERIFIED_LIVE       NOT_CONFIGURED
+```
+
+`allowSharedKeyAccess` reads back as `null`, which is Azure's representation of
+disabled — not an unset value.
+
+Isolation is a control, not a convention: each repository's
+`probe_backend_isolation.py` fails if it names another project's state resources,
+if two environments share a key, if `use_oidc` is hardcoded, or if a missing
+backend config lets `terraform init` fall back to local state.
+
+Public network access is `Allow` on all four accounts, deliberately: GitHub-hosted
+runners have no stable outbound IP to allow-list. Recorded as
+`PUBLIC_NETWORK_REACHABLE + ENTRA_AUTH_REQUIRED + SHARED_KEY_DISABLED`. None of
+these accounts is private-endpoint protected, and none is claimed to be.
 
 ## 16. Blockers summary
 
 | # | Blocker | Project | Kind | Would more quota help? |
 |---|---|---|---|---|
-| B1 | No remote Terraform backend | AKS-SRE, Helpdesk, Factory | engineering | no |
+| B1 | ~~No remote Terraform backend~~ | AKS-SRE, Helpdesk, Factory | engineering | **CLOSED 2026-10-02** — see §15b |
 | B2 | 0 vCPU headroom for autoscaling proof | AKS-SRE | capacity | **yes** |
 | B3 | `Microsoft.Insights`/`Monitor`/`Dashboard` unregistered | AKS-SRE | registration | no |
-| B4 | Minimum live-proof Terraform unwritten | MAIA | engineering | no |
+| B4 | Minimum live-proof Terraform unwritten (MAIA); required tfvars missing (Helpdesk); `tenant_id` + digest-pinned `container_image` unsupplied (Factory) | MAIA, Helpdesk, Factory | engineering | no |
 | B5 | Budget creation rejected by Azure | all | Azure-side | no |
+
+B1 closing revealed B4 in two more repositories than the audit recorded:
+Helpdesk has no `environments/*/terraform.tfvars` at all, and Factory's plan stops
+on `tenant_id` and `container_image`, which deliberately have no defaults. Both
+are application-configuration gaps, not state gaps — the backends themselves are
+verified live.
 
 ## 17. Next
 
