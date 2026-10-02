@@ -146,6 +146,21 @@ class Settings(BaseSettings):
     DATA_DIR: str = "./data/samples"
     ENTERPRISE_DATA_DIR: str = "./data/enterprise"
 
+    # Durable application state — PostgreSQL.
+    #
+    # THIS IS THE HITL DURABLE CHECKPOINT AUTHORITY. It is deliberately NOT
+    # defaulted: an empty value means the durable path has no database, and
+    # langgraph_agent.get_durable_graph() then fails explicitly rather than
+    # falling back to a local SQLite file. The fallback is the reason a process
+    # restart used to lose an approval-pending action while appearing durable.
+    #
+    # A blank default also means `import maia.config` never tries to connect, so
+    # unit tests that do not touch the durable graph are unaffected.
+    #
+    # Do NOT put a real DSN here: this value is a default, not a secret store.
+    # Supply it through the environment (or a local .env, which is gitignored).
+    DATABASE_URL: str = ""
+
     # Streaming checkpoint budget (the MemorySaver graph in langgraph_agent).
     #
     # The SSE path runs on a process-wide in-memory checkpointer keyed by
