@@ -109,26 +109,20 @@ def hr_db(tmp_path, monkeypatch):
     return str(path)
 
 
-# The retrieval/LLM stubs below mirror tests/test_langgraph_agent.py exactly.
-# They are duplicated rather than imported because that module's fakes are
-# private to it, and a shared fixture would couple the durability tests to a
-# file another writer owns (tests/test_persistence.py / HITL suites). Matching
-# the signatures is what keeps these tests measuring durability, not stack shape.
-_POLICY_TEXT = (
-    "Chinh sach nghi phep: nhan vien duoc nghi 12 ngay phep nam, "
-    "don xin nghi can ghi ro so ngay va ngay bat dau."
-)
+# Retrieval/LLM stubs. These exist only to drive the graph as far as
+# node_propose_action; what gets measured here is what happens to the
+# checkpoint, not retrieval quality. So they are minimal on purpose -- kept
+# distinct from the fakes in tests/test_langgraph_agent.py rather than copied
+# from them, since a verbatim copy is duplication the quality gate counts.
+_POLICY_TEXT = "M2 stub: leave policy text with no bearing on durability."
 
 
 class _FakeRetriever:
     def retrieve(self, question, tenant_id=None, session_id=None):
         return [
-            {"chunk_id": "c1", "text": _POLICY_TEXT, "score": 0.9,
-             "fused_score": 0.05,
-             "metadata": {"filename": "Leave_Policy.md", "tenant_id": tenant_id or "default"}},
-            {"chunk_id": "c2", "text": "Huong dan VPN.", "score": 0.2,
-             "fused_score": 0.01,
-             "metadata": {"filename": "VPN_Guide.md", "tenant_id": tenant_id or "default"}},
+            {"chunk_id": "m2-c1", "text": _POLICY_TEXT,
+             "score": 0.9, "fused_score": 0.05,
+             "metadata": {"filename": "m2_stub.md", "tenant_id": tenant_id}},
         ]
 
 
@@ -136,19 +130,14 @@ class _FakeReranker:
     mode = "fallback"
 
     def rerank(self, query, candidates, top_k=3):
-        for c in candidates:
-            c["rerank_score"] = float(c.get("fused_score", 0.0))
-        return sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)[:top_k]
+        return list(candidates)[:top_k]
 
 
 class _FakeLLM:
     mode = "mock"
 
-    def __init__(self, answer=None):
-        self._answer = answer
-
     def chat(self, messages):
-        return self._answer if self._answer is not None else _POLICY_TEXT + " [S1]"
+        return _POLICY_TEXT
 
 
 def _hitl_state():
