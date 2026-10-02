@@ -67,23 +67,80 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
+    # Real Redis and PostgreSQL, not mocks.
+    #
+    # WHY: tests/test_distributed_state.py skips when the `redis` client is
+    # absent, so without this block the job reports "passed" having executed
+    # zero of the distributed-state assertions. That is a green test observing
+    # nothing — the same defect class as the empty `terraform test` run this
+    # repository already caught once. A distributed quota is a claim about what
+    # two processes see, and no mock can demonstrate it.
+    #
+    # PostgreSQL is started now because the durable-state lane writes its schema
+    # and migrations next; the current tests use Redis only, and the Postgres
+    # service is what stops that lane from having to re-touch this job.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maia
+          POSTGRES_PASSWORD: maia
+          POSTGRES_DB: maia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U maia -d maia_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      MAIA_TEST_REDIS_URL: redis://localhost:6379
+      MAIA_TEST_PG_DSN: postgresql://maia:maia@localhost:5432/maia_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install pytest
+          # The distributed-state suite needs the real clients, otherwise every
+          # assertion in it is skipped and the job is green for the wrong reason.
+          pip install "redis>=5.0" "psycopg[binary]>=3.2"
+      - name: Prove the service containers are actually reachable
+        # A service that failed to start would otherwise present as a suite full
+        # of skips, which reads exactly like success.
+        run: |
+          python - <<'PY'
+          import os, sys
+          import redis, psycopg
+          r = redis.Redis.from_url(os.environ["MAIA_TEST_REDIS_URL"], socket_connect_timeout=5)
+          assert r.ping(), "redis did not answer PING"
+          with psycopg.connect(os.environ["MAIA_TEST_PG_DSN"], connect_timeout=5) as c:
+              c.execute("select 1")
+          print("redis and postgres reachable")
+          PY
       - name: Run unit tests (fast only — live/infra run in ci-live.yml)
         env:
           MAIA_EMBED_FORCE_HASH: "1"
         # Test isolation: live/infra-marked tests need real infra/LLM endpoints
         # and never run in the default fast job (markers registered in
         # pyproject.toml [tool.pytest.ini_options], hence --strict-markers).
-        run: pytest tests/ -x --tb=short -m "not live and not infra" --strict-markers
+        # -rs prints the skip reasons, so a suite that quietly stops executing the
+        # distributed-state assertions shows up in the log as skips rather than
+        # hiding behind a green line.
+        run: pytest tests/ -x --tb=short -m "not live and not infra" --strict-markers -rs
 
   # PromptOps + MCP + data pipeline. Split into its own job (rather than relying
   # only on the sweep above) so a failure points at the right subsystem, and so the
