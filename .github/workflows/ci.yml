@@ -67,23 +67,149 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-latest
+    # Real Redis and PostgreSQL, not mocks.
+    #
+    # WHY: tests/test_distributed_state.py skips when the `redis` client is
+    # absent, so without this block the job reports "passed" having executed
+    # zero of the distributed-state assertions. That is a green test observing
+    # nothing — the same defect class as the empty `terraform test` run this
+    # repository already caught once. A distributed quota is a claim about what
+    # two processes see, and no mock can demonstrate it.
+    #
+    # PostgreSQL is started now because the durable-state lane writes its schema
+    # and migrations next; the current tests use Redis only, and the Postgres
+    # service is what stops that lane from having to re-touch this job.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maia
+          POSTGRES_PASSWORD: maia
+          POSTGRES_DB: maia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U maia -d maia_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      MAIA_TEST_REDIS_URL: redis://localhost:6379
+      MAIA_TEST_PG_DSN: postgresql://maia:maia@localhost:5432/maia_test
+      # Alembic reads THIS, not MAIA_TEST_PG_DSN. Omitting it made
+      # `alembic upgrade head` fall back to alembic.ini's
+      # `sqlite:///./maia_auth.db`, which against a PostgreSQL service failed
+      # with `sqlite3.OperationalError: unrecognized token: ":"` — a migration
+      # step that looked configured but pointed at the wrong database entirely.
+      MAIA_DATABASE_URL: postgresql://maia:maia@localhost:5432/maia_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install pytest
+          # The distributed-state suite needs the real clients, otherwise every
+          # assertion in it is skipped and the job is green for the wrong reason.
+          #
+          # Exact versions, not ranges: this is the only place CI resolves these
+          # two, so a range would make the gate's meaning drift without a commit.
+          # Both were verified to publish a wheel for the CI interpreter (3.11) —
+          # psycopg-binary 3.3.6 ships cp311 wheels, redis 8.1.0 ships a
+          # pure-python wheel — which is what makes --only-binary safe here: it
+          # turns "pip may execute a setup.py from an sdist" into a hard failure
+          # instead of a silent build step.
+          pip install --only-binary :all: "redis==8.1.0" "psycopg[binary]==3.3.6"
+          # Alembic is the schema tool; the durable suite needs a migrated
+          # database, so the job has to be able to migrate one. Exact pin to
+          # match requirements.txt — a migration history is only reproducible
+          # with a fixed tool.
+          pip install --only-binary :all: "alembic==1.20.0"
+      - name: Prove the service containers are actually reachable
+        # A service that failed to start would otherwise present as a suite full
+        # of skips, which reads exactly like success. The retry loop is because
+        # `docker compose`/service containers report running before they accept
+        # connections; one immediate PING is a race, and a flaky race is worse
+        # than a deliberate wait.
+        run: |
+          python - <<'PY'
+          import os, time, sys
+          import redis, psycopg
+
+          def wait(label, probe, attempts=30, delay=2):
+              last = None
+              for _ in range(attempts):
+                  try:
+                      return probe()
+                  except Exception as exc:  # noqa: BLE001
+                      last = exc
+                      time.sleep(delay)
+              sys.exit(f"{label} never became reachable: {last}")
+
+          wait("redis", lambda: redis.Redis.from_url(
+              os.environ["MAIA_TEST_REDIS_URL"], socket_connect_timeout=2).ping())
+          wait("postgres", lambda: psycopg.connect(
+              os.environ["MAIA_TEST_PG_DSN"], connect_timeout=5
+          ).execute("select 1"))
+          print("redis and postgres reachable")
+          PY
+      - name: Migrate the durable schema to head
+        # The service containers start EMPTY. Without this, every durable-state
+        # test fails at fixture setup with
+        #   ERROR: relation "conversation_messages" does not exist
+        # which is a red suite for a reason that has nothing to do with the code
+        # under test — and it hides the fact that CI never proves the migrations
+        # run at all. This step makes migration correctness a CI observation
+        # rather than a local habit: M1 (empty -> head) now executes on every run.
+        #
+        # The DSN comes from the job-level env, never from a committed file.
+        #
+        # NO `2>/dev/null || fallback` here. An earlier version had one, and it
+        # did exactly what it was written to prevent: it hid a failed migration
+        # and then ran a different command, so the job reported a green step
+        # having proven nothing. One command, its exit code is the verdict.
+        run: python -m alembic upgrade head
+      - name: Prove the durable schema exists before the suite claims anything
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+          expected = {
+              "conversations", "conversation_messages", "agent_runs",
+              "agent_checkpoints", "approval_requests",
+              "idempotency_records", "audit_events", "job_records",
+          }
+          with psycopg.connect(os.environ["MAIA_TEST_PG_DSN"], connect_timeout=5) as c:
+              rows = c.execute(
+                  "select tablename from pg_tables where schemaname='public'"
+              ).fetchall()
+          present = {r[0] for r in rows}
+          missing = expected - present
+          assert not missing, f"migration did not create: {sorted(missing)}"
+          print(f"durable schema present: {len(present)} tables")
+          PY
       - name: Run unit tests (fast only — live/infra run in ci-live.yml)
         env:
           MAIA_EMBED_FORCE_HASH: "1"
         # Test isolation: live/infra-marked tests need real infra/LLM endpoints
         # and never run in the default fast job (markers registered in
         # pyproject.toml [tool.pytest.ini_options], hence --strict-markers).
-        run: pytest tests/ -x --tb=short -m "not live and not infra" --strict-markers
+        # -rs prints the skip reasons, so a suite that quietly stops executing the
+        # distributed-state assertions shows up in the log as skips rather than
+        # hiding behind a green line.
+        run: pytest tests/ -x --tb=short -m "not live and not infra" --strict-markers -rs
 
   # PromptOps + MCP + data pipeline. Split into its own job (rather than relying
   # only on the sweep above) so a failure points at the right subsystem, and so the
@@ -451,6 +577,40 @@ jobs:
     # does not use codecov (coverage.xml kept as a CI artifact instead).
     name: Coverage (report-only, no fail-under)
     runs-on: ubuntu-latest
+    # Same observation contract as `unit-tests`: this job runs the whole suite,
+    # so it needs the same real services and the same migration step. Without
+    # them the durable tests failed with
+    #   psycopg.OperationalError: connection refused ... 10 errors
+    # which is a red job for an environment reason, not a code reason — and a
+    # coverage number computed from a suite that lost 10 tests is not a
+    # measurement.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: maia
+          POSTGRES_PASSWORD: maia
+          POSTGRES_DB: maia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U maia -d maia_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      MAIA_TEST_REDIS_URL: redis://localhost:6379
+      MAIA_TEST_PG_DSN: postgresql://maia:maia@localhost:5432/maia_test
+      MAIA_DATABASE_URL: postgresql://maia:maia@localhost:5432/maia_test
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -461,6 +621,12 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install pytest pytest-cov
+          pip install --only-binary :all: "redis==8.1.0" "psycopg[binary]==3.3.6" "alembic==1.20.0"
+      - name: Migrate the durable schema to head
+        # Same reason and same single-command rule as unit-tests: this job runs
+        # the durable suite, so an unmigrated database would fail every
+        # durable test in fixture setup.
+        run: python -m alembic upgrade head
       - name: Run tests with coverage (fast only, report-only)
         env:
           MAIA_EMBED_FORCE_HASH: "1"

@@ -21,9 +21,30 @@ infra/
 │   │   ├── keyvault/             # RBAC model, purge protection, NO secret values
 │   │   └── rbac/                 # least-privilege grants (Key Vault Secrets USER)
 │   └── tests/                    # contract tests + plan-invariant controls
-├── check_invariants.py           # ARM-JSON invariant checker (see note below)
+├── terraform/
 └── scripts/                      # historical Bicep-era tooling
 ```
+
+## The Bicep invariant checker is gone
+
+`check_invariants.py`, `scripts/test_checker_traversal.py` and
+`scripts/validate-v1-scope.py` were **deleted** after verifying that no workflow,
+no validation script, no Terraform gate and no test invoked them — only
+documentation did.
+
+That README previously said the files were "retained as-is per the cleanup
+decision" and that "its 22 traversal contracts still run". Nothing ran them. A
+security checker that no gate executes reads as protection in review while
+providing none, so the dead code was removed rather than left looking active.
+
+The lessons those contracts encoded — assert a *specific* discovery at a
+*specific* path, treat a missing resource as failure rather than skip, fail
+closed with a JSON path instead of a traceback, check value **and** type, and
+keep a negative control that proves the harness can fail — are preserved in
+[`docs/evidence/bicep-invariants/README.md`](../../docs/evidence/bicep-invariants/README.md)
+and are all implemented in the Terraform successors:
+`infra/terraform/tests/check_plan_invariants.py` and
+`infra/terraform/tests/probe_plan_controls.py`.
 
 ### Modules not yet ported
 
@@ -32,12 +53,6 @@ The deleted Bicep stack also carried `apps` (ACR + Container Apps),
 present in Terraform.** MAIA's Terraform currently covers the identity +
 key vault + RBAC foundation only. Do not read the Terraform tree as a complete
 port of the deleted Bicep tree.
-
-> `check_invariants.py` reads **compiled ARM JSON**, not `.bicep` source, and is
-> retained as-is per the cleanup decision. With no Bicep to compile it has no
-> input today; its 22 traversal contracts still run under
-> `infra/scripts/test_checker_traversal.py`. A Terraform-native replacement is
-> future work, not something this change silently claimed.
 
 ## Required inputs (before any real deployment)
 
