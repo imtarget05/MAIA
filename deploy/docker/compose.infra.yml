@@ -16,8 +16,69 @@ services:
       - portfolio-net
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------
+  # Durable shared state (DECISION 3).
+  #
+  # These two are NOT optional conveniences. The repository's durable truth today
+  # is a SQLite file inside whichever replica created it, plus a process-local
+  # rate-limit dict, which means a second replica cannot see a conversation, a
+  # pending HITL approval, or a rate-limit budget already spent. PostgreSQL
+  # carries the durable truth; Redis carries only short-lived shared state.
+  #
+  # Healthchecks are not decoration: the distributed-state tests wait on them,
+  # so a container that is up but not accepting connections fails loudly instead
+  # of producing a flaky "connection refused" halfway through a test.
+  # ---------------------------------------------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: maia-postgres
+    environment:
+      POSTGRES_USER: maia
+      POSTGRES_PASSWORD: maia
+      # A fixed test database name so the connection string in
+      # tests/test_distributed_state.py is stable and reviewable. This is a local
+      # development credential and must never be reused anywhere reachable.
+      POSTGRES_DB: maia_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - default
+      - portfolio-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maia -d maia_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: maia-redis
+    # appendonly is off on purpose: Redis holds rate-limit windows, cache entries
+    # and ephemeral locks, none of which are durable truth. If Redis must
+    # survive a restart it is being used for the wrong thing — durable state
+    # belongs in PostgreSQL, and DS-15 asserts exactly that separation.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    networks:
+      - default
+      - portfolio-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+    restart: unless-stopped
+
 volumes:
   qdrant_data:
+  postgres_data:
 
 networks:
   portfolio-net:
