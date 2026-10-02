@@ -368,15 +368,41 @@ def node_propose_action(state: AgentState) -> AgentState:
     decision = interrupt(proposal)
 
     # --- resume path only (decision is the approval payload) ---
-    if _is_approved(decision):
+    import logging as _logging
+    import datetime as _datetime
+
+    _hitl_logger = _logging.getLogger("maia.hitl.audit")
+    _approved = _is_approved(decision)
+
+    if _approved:
         result = _execute_tool(tool, proposal["params"], state.employee_id, state.tenant_id)
         state.action_result = {"type": tool, "result": result}
         state.status = "action_completed" if (result or {}).get("ok") else "action_failed"
     else:
+        result = None
         state.status = "action_cancelled"
+
+    # AUDIT TRAIL — structured log at INFO level so it appears in any log sink.
+    # Fields are stable strings (not prose) so log analytics can filter on them.
+    _hitl_logger.info(
+        "HITL_DECISION",
+        extra={
+            "hitl_timestamp": _datetime.datetime.now(_datetime.timezone.utc).isoformat(),
+            "hitl_tool": tool,
+            "hitl_params": proposal["params"],
+            "hitl_employee_id": state.employee_id,
+            "hitl_tenant_id": state.tenant_id,
+            "hitl_session_id": state.session_id,
+            "hitl_approved": _approved,
+            "hitl_outcome": state.status,
+            # NOTE: full audit persistence (to DB) requires wiring persistence.py.
+            # This structured log is the minimal observable trail until then.
+        },
+    )
     state.pending_action = proposal
     state.approval_needed = False
     return state
+
 
 
 def _is_approved(decision) -> bool:

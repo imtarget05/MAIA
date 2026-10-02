@@ -1,7 +1,7 @@
 # MAIA — Interview Evidence Kit
 
 > MAIA: internal RAG knowledge platform + LangGraph HITL agent.
-> Suite figure (measured on `main` at `8ced0695`): **1163 passed, 14 skipped,
+> Suite figure (measured on `main` at `658db396`): **1167 passed, 14 skipped,
 > 2 deselected, 3 xfailed, 0 failed** — see the README Testing section. There is
 > **no** "128 tests passing" badge in `README.md`; an earlier draft of this file
 > cited one and it never existed.
