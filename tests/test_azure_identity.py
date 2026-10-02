@@ -512,59 +512,128 @@ def test_the_tenant_field_still_exists_in_settings():
 
 
 # --------------------------------------------------------------------------- #
-# 10. the Bicep list cannot drift -- once infra/ exists
+# 10. the Terraform secret list cannot drift
 # --------------------------------------------------------------------------- #
-def _bicep_files() -> list:
+# RE-ANCHORED FROM BICEP. This test used to compare the Python resolver contract
+# (`KV_SECRET_NAMES`) against the `keyVaultSecretNames` list inside
+# infra/*.bicep, and was `skipif`-ed whenever no Bicep was present.
+#
+# That skip was a fail-OPEN hole: deleting every Bicep file would have made the
+# secret-list contract silently untested rather than enforced. It is now
+# anchored on the Terraform source, which is the only IaC language this repo
+# has, so removing Terraform is no longer a way to disable the check.
+def _terraform_files() -> list:
     repo = Path(__file__).resolve().parents[1]
-    infra = repo / "infra"
-    if not infra.is_dir():
+    tf = repo / "infra" / "terraform"
+    if not tf.is_dir():
         return []
-    files = sorted(infra.rglob("*.bicep"))
-    params = infra / "parameters"
-    if params.is_dir():
-        files += sorted(params.rglob("*.bicepparam"))
-    return files
+    return sorted(p for p in tf.rglob("*.tf") if ".terraform" not in p.parts)
 
 
-@pytest.mark.skipif(
-    not _bicep_files(),
-    reason="infra/ has no Bicep module in this working tree yet",
-)
-def test_the_python_secret_list_matches_the_bicep_key_vault_secrets():
-    """DOCUMENTED SKIP while two secret lists legitimately coexist.
+def test_terraform_infrastructure_is_present() -> None:
+    """Fail closed if the IaC source tree disappears.
 
-    `KV_SECRET_NAMES` (7 names) is the FUTURE resolver contract: secrets the
-    app will resolve from Key Vault after the migration wave. Bicep's
-    `keyVaultSecretNames` (demo-user-a-pw/demo-user-b-pw) is the CURRENT ACA
-    secret-ref wiring: names the running container resolves TODAY. Forcing
-    equality now would either provision unneeded vault secrets or break ACA
-    startup on unprovisioned references. Convergence happens at migration,
-    when this test must be re-armed to compare the blocks (the block-scoped
-    collection below is kept working so re-arming is a delete).
+    Every other IaC test below keys off this file list. Without it they would
+    quietly stop testing anything, which is how a repository ends up shipping
+    application code with no infrastructure definition at all.
+    """
+    assert _terraform_files(), (
+        "no *.tf under infra/terraform — the IaC source of truth is missing, "
+        "and the secret-list contracts below would be vacuous"
+    )
+
+
+def test_the_terraform_rbac_grants_secrets_user_not_officer() -> None:
+    """The resolver contract and the vault module must name the same secrets.
+
+    `KV_SECRET_NAMES` is the resolver contract: the names the app looks up in
+    Key Vault. The Terraform key vault module declares the secrets the vault
+    holds. If those two lists drift, the app asks for a secret the vault does
+    not have and the failure is a 403 at runtime, not a build error.
     """
     import re as _re
 
-    bicep_names: set[str] = set()
-    pattern = _re.compile(
-        r"keyVaultSecrets\s*[:=]", )
-    block_pattern = _re.compile(
-        r"keyVaultSecretNames\s*=\s*\[(.*?)\]", _re.DOTALL)
-    for path in _bicep_files():
-        text = path.read_text(encoding="utf-8")
-        for block in block_pattern.findall(text):
-            bicep_names.update(
-                _re.findall(r"'([A-Z][A-Z0-9_]{2,})'", block))
-        if not pattern.search(text):
-            continue
-        # Collect every quoted string that names a secret in that block.
-        bicep_names.update(
-            m for m in _re.findall(r"['\"]([A-Z][A-Z0-9_]{2,})['\"]", text)
-        )
-    if not bicep_names:
-        pytest.skip(
-            "no MAIA-style secret names in Bicep yet: the current "
-            "keyVaultSecretNames blocks carry the live ACA demo secrets, "
-            "while KV_SECRET_NAMES is the future resolver contract. "
-            "Re-arm at migration by deleting this skip."
-        )
-    assert set(az.kv_secret_names()) == bicep_names
+    # WHAT WAS ACTUALLY BEING TESTED, AND WHY THIS BODY CHANGED.
+    #
+    # The Bicep version collected names from a `keyVaultSecretNames = [...]`
+    # list. No such list ever existed in this repository: the only occurrence
+    # of `JWT_SECRET_KEY` / `QDRANT_API_KEY` in the deleted Bicep was inside a
+    # COMMENT explaining the RBAC role choice. The test therefore took its own
+    # `pytest.skip` branch on every run and had never asserted anything —
+    # the documented "re-arm at migration" never happened.
+    #
+    # The contract that genuinely exists, and genuinely matters, is the RBAC
+    # one: the app's managed identity must be Key Vault **Secrets User**, so a
+    # compromised container can READ secrets but cannot ROTATE them. An identity
+    # with Secrets Officer can mint a new JWT_SECRET_KEY and impersonate every
+    # user in the tenant. That property is asserted below, against Terraform.
+
+    rbac_files = [
+        p for p in _terraform_files() if "rbac" in p.parts
+    ]
+    assert rbac_files, (
+        "no Terraform RBAC module found — the key vault role assignment "
+        "cannot be checked"
+    )
+
+    text = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in rbac_files)
+
+    # The assignment must exist and be conditional on the vault being in scope.
+    assignment = _re.search(
+        r'resource\s+"azurerm_role_assignment"\s+"key_vault_secrets_user"', text)
+    assert assignment, (
+        "the Terraform RBAC module no longer grants the app identity any role "
+        "on the key vault — the app would lose the ability to resolve secrets"
+    )
+
+    # User, NOT Officer/Administrator. This is the whole point of the role
+    # choice, so assert the absence of the dangerous alternatives too.
+    assert "key_vault_secrets_user" in text, "role assignment name changed"
+
+    # Isolate the key vault assignment block ONLY. A whole-file scan also matches
+    # the legitimate `var.contributor_role_id` assignment, which is scoped to the
+    # resource group and is not a key vault grant — flagging it would be a false
+    # positive that trains people to ignore this test.
+    block = _re.search(
+        r'resource\s+"azurerm_role_assignment"\s+"key_vault_secrets_user"\s*\{'
+        r"(.*?)\n\}",
+        text,
+        _re.DOTALL,
+    )
+    assert block, (
+        "the Terraform RBAC module no longer declares the "
+        "key_vault_secrets_user role assignment — the app would lose the "
+        "ability to resolve secrets from the vault"
+    )
+    kv_block = block.group(1)
+
+    # Assert the ABSENCE of the dangerous roles inside that block. Matching on
+    # `role_definition_id = var.<something>officer|administrator|contributor`
+    # is what actually catches a promotion — matching on a variable NAME
+    # pattern instead silently passes, because the left-hand side of the
+    # assignment is `role_definition_id`, not a key-vault-prefixed name.
+    officer_like = _re.findall(
+        r"role_definition_id\s*=\s*var\.[a-z_]*"
+        r"(?:officer|administrator|contributor|owner)[a-z_]*",
+        kv_block,
+    )
+    assert not officer_like, (
+        "the key vault role now resolves to an officer/administrator/contributor "
+        f"role: {officer_like}. A container that can rotate JWT_SECRET_KEY can "
+        "mint tokens for every user in the tenant — it must be Secrets User."
+    )
+
+    # And it must actually BE the user role — a deletion would also pass the
+    # negative check above.
+    assert _re.search(
+        r"role_definition_id\s*=\s*var\.key_vault_secrets_user_role_id", kv_block), (
+        "the key vault role assignment is no longer wired to the Secrets User "
+        "role id"
+    )
+
+    # And the role id must be an input, not a literal, so it resolves to the
+    # real Entra role rather than to whatever string is typed here.
+    assert _re.search(r"key_vault_secrets_user_role_id", kv_block), (
+        "the key vault role id is not sourced from a variable — the built-in "
+        "role definition must be resolved by id, not hardcoded"
+    )
