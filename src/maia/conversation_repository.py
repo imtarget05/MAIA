@@ -142,21 +142,39 @@ class PostgresConversationRepository:
     def append_message(
         self, tenant_id: str, session_id: str, role: str, content: str
     ) -> str:
-        """Append a message, computing `seq` inside the same transaction.
+        """Append a message under a row-level lock on the conversation.
 
-        The unique constraint `(conversation_id, seq)` is the real guard. Two
-        concurrent appends would both read the same max, and the loser failing on
-        the constraint is the correct outcome (the caller retries) rather than a
-        silently interleaved transcript.
+        WHY THE LOCK. `seq` is allocated as max(seq)+1, so two concurrent
+        appends on the same conversation both read the same max. Without
+        serialisation one wins and the other loses on
+        `UNIQUE(conversation_id, seq)` — SAFE for data integrity, but not a
+        production contract: the loser surfaces to the caller as a raw
+        `IntegrityError`, i.e. a 500 for what is ordinary contention.
+
+        `SELECT ... FOR UPDATE` on the conversation row makes reading max(seq)
+        and inserting one serialised critical section. The second transaction
+        blocks, then reads the committed value: both messages are stored, `seq`
+        stays contiguous, and the caller never sees a constraint error.
+
+        Deliberately NOT a process-local lock. A per-process mutex serialises
+        appends inside one replica and does nothing across replicas — the exact
+        failure this lane exists to remove. Row locking is enforced by
+        PostgreSQL, so it holds however many replicas run.
+
+        The unique constraint stays as the last line of defence: if the lock is
+        ever removed, the constraint still prevents a duplicate `seq`, it just
+        turns the failure from "blocked and stored" into "error returned".
         """
         now = datetime.now(UTC)
         message_id = str(uuid.uuid4())
         with self._engine.begin() as conn:
             conversation = conn.execute(
-                select(Conversation.id).where(
+                select(Conversation.id)
+                .where(
                     Conversation.tenant_id == tenant_id,
                     Conversation.session_id == session_id,
                 )
+                .with_for_update()
             ).scalar_one_or_none()
             if conversation is None:
                 # No conversation for THIS tenant. Refusing here is what stops a

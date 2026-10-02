@@ -174,6 +174,93 @@ def test_two_instances_still_isolate_tenants(engine) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Concurrent append contract (A4) — the gap between "no corruption" and
+# "production behaviour"
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_appends_serialise_without_constraint_errors(engine) -> None:
+    """Two independent instances append at once: both stored, distinct contiguous seq.
+
+    Before the row lock this produced one committed message and one raw
+    `IntegrityError`, which a caller would see as a 500 for what is ordinary
+    contention. The assertion that matters is the triple at the end: two rows,
+    seqs 0 and 1, and no exception.
+    """
+    import threading
+
+    repo_a = PostgresConversationRepository(engine)
+    repo_b = PostgresConversationRepository(engine)
+    sid = _session_id()
+    repo_a.create(TENANT_A, sid)
+
+    barrier = threading.Barrier(2)
+    errors: list[Exception] = []
+    contents = ["from A", "from B"]
+
+    def worker(repo, content: str) -> None:
+        try:
+            barrier.wait(timeout=10)  # maximise the overlap
+            repo.append_message(TENANT_A, sid, "user", content)
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=worker, args=(repo_a, contents[0])),
+        threading.Thread(target=worker, args=(repo_b, contents[1])),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=20)
+
+    assert not errors, f"concurrent append leaked an exception: {errors!r}"
+    msgs = repo_a.list_messages(TENANT_A, sid)
+    assert [m["seq"] for m in msgs] == [0, 1], (
+        f"expected contiguous seqs [0, 1], got {[m['seq'] for m in msgs]}"
+    )
+    assert sorted(m["content"] for m in msgs) == contents, (
+        "a committed message was lost"
+    )
+
+
+def test_many_concurrent_appends_all_land(engine) -> None:
+    """Six appends from six repository objects: six rows, no duplicates, no errors.
+
+    More than two so the race cannot pass by accident of timing.
+    """
+    import threading
+
+    base = PostgresConversationRepository(engine)
+    sid = _session_id()
+    base.create(TENANT_A, sid)
+
+    n = 6
+    barrier = threading.Barrier(n)
+    errors: list[Exception] = []
+
+    def worker(i: int) -> None:
+        repo = PostgresConversationRepository(engine)
+        try:
+            barrier.wait(timeout=10)
+            repo.append_message(TENANT_A, sid, "user", f"msg-{i}")
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors, f"concurrent appends leaked exceptions: {errors!r}"
+    msgs = base.list_messages(TENANT_A, sid)
+    seqs = sorted(m["seq"] for m in msgs)
+    assert seqs == list(range(n)), f"expected seqs 0..{n - 1}, got {seqs}"
+    assert len({m["content"] for m in msgs}) == n, "a message was overwritten"
+
+
+# ---------------------------------------------------------------------------
 # Negative control — this is the whole point of the file
 # ---------------------------------------------------------------------------
 

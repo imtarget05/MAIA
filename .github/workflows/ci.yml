@@ -139,6 +139,38 @@ jobs:
               c.execute("select 1")
           print("redis and postgres reachable")
           PY
+      - name: Migrate the durable schema to head
+        # The service containers start EMPTY. Without this, every durable-state
+        # test fails at fixture setup with
+        #   ERROR: relation "conversation_messages" does not exist
+        # which is a red suite for a reason that has nothing to do with the code
+        # under test — and it hides the fact that CI never proves the migrations
+        # run at all. This step makes migration correctness a CI observation
+        # rather than a local habit: M1 (empty -> head) now executes on every run.
+        #
+        # The DSN comes from the job-level env, never from a committed file.
+        run: |
+          .venv/bin/python -m alembic upgrade head 2>/dev/null || \
+            python -m alembic upgrade head
+      - name: Prove the durable schema exists before the suite claims anything
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+          expected = {
+              "conversations", "conversation_messages", "agent_runs",
+              "agent_checkpoints", "approval_requests",
+              "idempotency_records", "audit_events", "job_records",
+          }
+          with psycopg.connect(os.environ["MAIA_TEST_PG_DSN"], connect_timeout=5) as c:
+              rows = c.execute(
+                  "select tablename from pg_tables where schemaname='public'"
+              ).fetchall()
+          present = {r[0] for r in rows}
+          missing = expected - present
+          assert not missing, f"migration did not create: {sorted(missing)}"
+          print(f"durable schema present: {len(present)} tables")
+          PY
       - name: Run unit tests (fast only — live/infra run in ci-live.yml)
         env:
           MAIA_EMBED_FORCE_HASH: "1"
