@@ -46,7 +46,7 @@ result            : 16 passed, 0 failed (PASS)
          user_id=db7203c2-5723-4a45-a718-66a9c43c5ec9  role=user  email=deploy-check-063d54ad@example.com
 
 [3/5] Login          POST /auth/login
-  [PASS] HTTP status 200  — got 200: {"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...","token_type":"bearer"}
+  [PASS] HTTP status 200  — got 200: {"access_token":"<REDACTED len=187>","token_type":"bearer"}
   [PASS] access_token present  — len=187
 
 [4/5] Chat           POST /chat

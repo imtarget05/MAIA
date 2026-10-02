@@ -368,8 +368,8 @@ def node_propose_action(state: AgentState) -> AgentState:
     decision = interrupt(proposal)
 
     # --- resume path only (decision is the approval payload) ---
-    import logging as _logging
     import datetime as _datetime
+    import logging as _logging
 
     _hitl_logger = _logging.getLogger("maia.hitl.audit")
     _approved = _is_approved(decision)
@@ -387,7 +387,7 @@ def node_propose_action(state: AgentState) -> AgentState:
     _hitl_logger.info(
         "HITL_DECISION",
         extra={
-            "hitl_timestamp": _datetime.datetime.now(_datetime.timezone.utc).isoformat(),
+            "hitl_timestamp": _datetime.datetime.now(_datetime.UTC).isoformat(),
             "hitl_tool": tool,
             "hitl_params": proposal["params"],
             "hitl_employee_id": state.employee_id,
