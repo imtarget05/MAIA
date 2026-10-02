@@ -1,61 +1,66 @@
 # MAIA enterprise infrastructure (`infra/`)
 
-V1 scope: **security foundation, validation only — nothing here deploys
-production in TODO 3.** The Bicep stack is reviewed, builds clean, and is
-gated in CI. Deployment, migration and runtime verification belong to later
-waves with their own evidence.
+**Terraform is the only IaC language in this repository.** Every `.bicep` and
+`.bicepparam` file has been deleted; `infra/terraform/` is the sole source of
+truth. Nothing here deploys production — `validate.sh` runs `terraform init
+-backend=false`, `validate` and `test`, and never `plan` or `apply` against a
+subscription.
 
 ## Layout
 
 ```text
 infra/
-├── main.bicep                 # subscription-scoped wiring (params only, no resources)
-├── resourceGroups.bicep       # 3 RGs: identity / edge / apps (blast-radius boundary)
-├── bicepconfig.json           # Graph extension (pinned), core analyzers on
-├── parameters/
-│   ├── dev.bicepparam         # dev names/tags; example contact; zero-GUID deploy principal
-│   └── prod.bicepparam        # prod names/tags; same contract
-└── modules/
-    ├── identity/              # user-assigned MI + Entra app (no interactive sign-in)
-    ├── keyvault/              # RBAC model, purge protection, NO secret values
-    ├── rbac/                  # least-privilege grants, one invocation per RG
-    ├── apps/                  # ACR + Container Apps env + app (Key Vault secret refs)
-    ├── observability/         # Log Analytics + App Insights + diagnostics
-    ├── apim/                  # ⚪ out of V1 deploy scope (build-validated only)
-    ├── edge/                  # ⚪ out of V1 deploy scope (Front Door Premium has real cost)
-    └── apim-policies/         # gateway policy XML, referenced by apim modules
+├── validate.sh                   # THE IaC gate. Fail-closed, Terraform-only.
+├── terraform/                    # ← the infrastructure source of truth
+│   ├── main.tf                   # resource group + module wiring
+│   ├── variables.tf / locals.tf / outputs.tf
+│   ├── backend.tf                # intentionally empty until Phase 2
+│   ├── environments/{dev,validation,prod}/terraform.tfvars
+│   ├── modules/
+│   │   ├── identity/             # user-assigned MI (no interactive sign-in)
+│   │   ├── keyvault/             # RBAC model, purge protection, NO secret values
+│   │   └── rbac/                 # least-privilege grants (Key Vault Secrets USER)
+│   └── tests/                    # contract tests + plan-invariant controls
+├── check_invariants.py           # ARM-JSON invariant checker (see note below)
+└── scripts/                      # historical Bicep-era tooling
 ```
 
-## Required parameters (before any real deployment)
+### Modules not yet ported
 
-Set in `parameters/{dev,prod}.bicepparam`: `ownerContact` (monitored mailbox),
-globally-unique `keyVaultName` / `containerRegistryName`, tenant-unique
-`entraApplicationName`, non-empty redirect URIs, and a real
-`deployIdentityPrincipalId` (the committed zero GUID fails what-if loudly by
-design). Secret VALUES are never committed — the vault deploys empty and
-values are written out of band (see future deployment runbook).
+The deleted Bicep stack also carried `apps` (ACR + Container Apps),
+`observability`, `apim`, `edge` and `apim-policies`. **Those are NOT yet
+present in Terraform.** MAIA's Terraform currently covers the identity +
+key vault + RBAC foundation only. Do not read the Terraform tree as a complete
+port of the deleted Bicep tree.
 
-## Validation (no Azure deployment)
+> `check_invariants.py` reads **compiled ARM JSON**, not `.bicep` source, and is
+> retained as-is per the cleanup decision. With no Bicep to compile it has no
+> input today; its 22 traversal contracts still run under
+> `infra/scripts/test_checker_traversal.py`. A Terraform-native replacement is
+> future work, not something this change silently claimed.
+
+## Required inputs (before any real deployment)
+
+`environments/*/terraform.tfvars`: `ownerContact` (monitored mailbox),
+globally-unique `key_vault_name` / `container_registry_name`, tenant id, and a
+real deploy identity principal id. Secret **values** are never committed — the
+vault is created empty by design and values are written out of band.
+
+## Validation (no Azure deployment, no remote state)
 
 ```bash
-az bicep build --file infra/main.bicep            # must exit 0, zero diagnostics
-az bicep build --file infra/parameters/dev.bicepparam   # expands against main.bicep
-/tmp/gitleaks detect --no-git --source infra/     # must report no leaks
+./infra/validate.sh    # fmt · init -backend=false · validate · test · controls · secret scan
 ```
 
-Future (NOT in TODO 3): `az deployment sub what-if` with a real
-`deployIdentityPrincipalId`, then a scoped V1-only deployment. `main.bicep`
-currently always includes edge/apim — a V1 deploy wave must gate or split
-that scope first, and must decide greenfield RGs vs adopting
-`rg-portfolio-evidence`/`cae-portfolio`/`ca-maia-api` (recorded limitation,
-not a TODO 3 defect).
+`validate.sh` refuses to report PASS when there is no `*.tf` under
+`infra/terraform`, so the gate cannot go green by having nothing to check.
 
 ## Cost
 
-Managed Identity and Bicep do not introduce a direct service charge; Key Vault
-is usage-priced and expected to have low portfolio-scale cost. Actual cost has
-not yet been measured. Front Door Premium, APIM and Premium ACR in this
-template carry real cost and are NOT approved for deployment by this file.
+Managed Identity and Terraform do not introduce a direct service charge; Key
+Vault is usage-priced. Actual cost has not yet been measured. Front Door
+Premium, APIM and Premium ACR carry real cost and are NOT approved for
+deployment by this file.
 
 ## Rollback
 

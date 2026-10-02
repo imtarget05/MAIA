@@ -1,8 +1,13 @@
 name: IaC Validate
 
-# The IaC gate. It runs infra/validate.sh: compile every Bicep file, resolve
-# every committed parameter file, run the negative tests, and scan for committed
-# secrets and real environment identifiers.
+# The IaC gate. It runs infra/validate.sh against TERRAFORM: format check,
+# init with no backend, validate root + modules, run the contract tests, prove
+# the plan-invariant controls actually bite, and scan for committed secrets and
+# real environment identifiers.
+#
+# RE-ANCHORED FROM BICEP. Every .bicep / .bicepparam file has been deleted from
+# this repository; Terraform is the only IaC language here. This workflow no
+# longer installs the Bicep CLI and no longer compiles ARM templates.
 #
 # THIS JOB DEPLOYS NOTHING. There is no Azure login, no az deployment and no
 # federated credential in this workflow, and there is deliberately no
@@ -37,7 +42,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Compile, lint and negative-test the Bicep
+    name: Validate, test and negative-control the Terraform
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,42 +56,39 @@ jobs:
         with:
           python-version: "3.11"
 
-      # WHY az bicep install and not a pinned download URL: it is the version
-      # the Azure CLI resolves, it authenticates nothing, and it puts the binary
-      # on PATH at ~/.azure/bin so validate.sh's `command -v bicep` check is
-      # satisfied. validate.sh refuses to run without a CLI rather than skipping
-      # its own checks, so this step is the only thing standing between a
-      # runner and a silently-green job.
-      - name: Install Bicep CLI
-        run: |
-          az bicep install
-          echo "$HOME/.azure/bin" >> "$GITHUB_PATH"
-          bicep --version
-
-      # A restore is needed for the Microsoft Graph extension declared in
-      # infra/modules/identity/main.bicep. Without it the compile fails on a
-      # missing type package, which looks like a template defect and is not one.
-      - name: Restore Bicep extension packages
-        run: az bicep restore --file infra/main.bicep
+      # WHY setup-terraform and not a manual download: it puts the binary on
+      # PATH so validate.sh's `command -v terraform` check is satisfied, and
+      # validate.sh refuses to run without a CLI rather than skipping its own
+      # checks, so this step is the only thing standing between a runner and a
+      # silently-green job.
+      #
+      # The version is pinned so a Terraform release that changes a default or
+      # tightens a validation cannot turn a green main red on an unrelated PR.
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.3
 
       - name: Run IaC validation
         run: ./infra/validate.sh
 
-      # WHY the artifact is uploaded: the compile output is the evidence that the
-      # templates built, and "the job was green" is not reviewable by anyone who
-      # is not reading the run log. It costs one file and makes the check
-      # auditable after the fact.
-      - name: Upload the compiled V1 template
+      # WHY the artifact is uploaded: the validation verdict is the evidence, and
+      # "the job was green" is not reviewable by anyone who is not reading the
+      # run log. It costs one file and makes the check auditable after the fact.
+      #
+      # WHY `validate -json` and NOT `plan`: a plan requires credentials and a
+      # subscription, and this job deliberately has neither. The artifact is an
+      # offline validation verdict, not a deployment preview.
+      - name: Record the Terraform validation verdict
         if: always()
         run: |
           mkdir -p iac-artifact
-          bicep build infra/main.bicep --outfile iac-artifact/main.v1.json
-          bicep build infra/main.v6-target.bicep --outfile iac-artifact/main.v6-target.json
+          terraform -chdir=infra/terraform validate -json > iac-artifact/validate.json || true
 
       - name: Upload IaC artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: iac-compiled-templates
+          name: iac-terraform-validation
           path: iac-artifact/
           retention-days: 30

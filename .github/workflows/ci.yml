@@ -558,45 +558,6 @@ jobs:
           path: gitleaks-history.json
           retention-days: 30
 
-  bicep-validate:
-    # IaC validation — HARD GATE, offline only (no Azure credentials, no
-    # deployment). Catches invalid Bicep before any wave is allowed to run
-    # what-if/deploy. See infra/README.md.
-    name: Bicep validate (offline)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Bicep CLI
-        run: az bicep install
-      - name: Build main template
-        run: az bicep build --file infra/main.bicep
-      - name: Build parameter files
-        run: |
-          az bicep build-params --file infra/parameters/v1-dev.bicepparam
-          az bicep build-params --file infra/parameters/v1-prod.bicepparam
-          az bicep build-params --file infra/parameters/v6-dev.bicepparam
-          az bicep build-params --file infra/parameters/v6-prod.bicepparam
-          az bicep build-params --file infra/parameters/dev.bicepparam
-          az bicep build-params --file infra/parameters/prod.bicepparam
-      - name: V1 deployment-scope invariant
-        run: python3 infra/scripts/validate-v1-scope.py
-
-      # WHY A SECOND, SEPARATE INVARIANT CHECK. The scope check above proves V1
-      # does not deploy later-wave services. It says nothing about whether the
-      # security properties of what it DOES deploy are set correctly, and a
-      # compile cannot tell the difference either: `enablePurgeProtection: false`
-      # is a well-formed template.
-      #
-      # This step asserts those values on the compiled ARM artifact rather than
-      # the .bicep source, so it cannot be satisfied by a matching line in a
-      # comment, and it fails if the vault cannot be located at all rather than
-      # passing vacuously.
-      - name: V1 security-property invariant
-        run: |
-          set -euo pipefail
-          az bicep build --file infra/main.bicep --outfile /tmp/main.v1.json
-          python3 infra/check_invariants.py /tmp/main.v1.json
-
   pip-audit:
     # Dependency audit — ADVISORY (continue-on-error) until triaged.
     # The offline dev env means advisories cannot be pre-triaged here, so a
@@ -664,7 +625,12 @@ jobs:
     # Settings -> Branches manually.
     name: Notify on completion
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, unit-tests, promptops-mcp, threshold-regression, reranker, eval-manifest, contact-usability-gate, abstention-gate-measurement, coverage, gitleaks, bicep-validate, sonarcloud-analysis]
+    # IaC validation lives in the dedicated `IaC Validate` workflow
+    # (.github/workflows/iac-validate.yml), which now validates Terraform. It is
+    # NOT duplicated as a job here: two gates running the same script means one
+    # of them gets skipped the first time it is inconvenient. The old
+    # `bicep-validate` job was removed with the Bicep sources.
+    needs: [lint-and-typecheck, unit-tests, promptops-mcp, threshold-regression, reranker, eval-manifest, contact-usability-gate, abstention-gate-measurement, coverage, gitleaks, sonarcloud-analysis]
     if: always()
     steps:
       - name: Notify Discord

@@ -53,13 +53,13 @@ def test_the_workflow_still_declares_every_job(workflow: dict):
     job is added or removed, and keep the count honest rather than loosening
     the assertion.
 
-    HISTORY: this was 15 until `deploy-production` (a Render no-op placeholder
-    whose only content was a comment pointing at the Render CD workflow) was
-    removed in the repository cleanup — Render is no longer a deployment
-    target, so a job named "Deploy to Render" must not survive. Bumping to 14
-    is the honest correction; weakening this to `>=` would defeat the guard.
+    HISTORY: 15 until `deploy-production` (a Render no-op placeholder) was
+    removed in the repository cleanup, then 14 until `bicep-validate` was
+    removed with the Bicep sources. 13 = the remaining live jobs. Bumping the
+    number is the honest correction; weakening this to `>=` would defeat the
+    guard.
     """
-    assert len(workflow["jobs"]) == 14
+    assert len(workflow["jobs"]) == 13
 
 
 def test_every_non_advisory_job_is_in_the_aggregate_needs(workflow: dict):
@@ -109,6 +109,36 @@ def test_advisory_jobs_are_still_marked_advisory(workflow: dict):
 
 def test_the_four_previously_ungated_jobs_are_now_gated(workflow: dict):
     """The named regression, spelled out so the diff that fixes it is obvious
-    and so a future removal is a deliberate act."""
+    and so a future removal is a deliberate act.
+
+    `bicep-validate` is gone from this list on purpose: the Bicep sources were
+    deleted and IaC validation now lives in the dedicated `IaC Validate`
+    workflow. Dropping it from `needs` was required because GitHub rejects a
+    workflow whose `needs` names a job that no longer exists. The IaC gate is
+    still blocking — it is just not in this file.
+    """
     needs = set(workflow["jobs"][AGGREGATE_JOB]["needs"])
-    assert {"promptops-mcp", "coverage", "gitleaks", "bicep-validate"} <= needs
+    assert {"promptops-mcp", "coverage", "gitleaks"} <= needs
+    # IaC must not be silently ungated: the dedicated workflow has to exist.
+    assert (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" /
+        "iac-validate.yml"
+    ).is_file(), (
+        "bicep-validate was removed from ci.yml; the replacement IaC gate "
+        "workflow is missing, so IaC is now ungated"
+    )
+
+
+def test_the_iac_gate_still_runs_the_validator(workflow: dict):
+    """The IaC gate must actually execute infra/validate.sh.
+
+    Removing the Bicep job left the repository with no IaC check at all unless
+    something still invokes the validator. Asserting the workflow calls it is
+    what stops "Terraform only" from becoming "no validation".
+    """
+    iac = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" /
+        "iac-validate.yml"
+    )
+    assert "./infra/validate.sh" in iac.read_text(encoding="utf-8")
+    assert (Path(__file__).resolve().parents[1] / "infra" / "validate.sh").is_file()
