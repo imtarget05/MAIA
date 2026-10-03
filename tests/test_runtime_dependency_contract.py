@@ -63,6 +63,15 @@ DISTRIBUTION_TO_IMPORT = {
     "python-multipart": "multipart",
     "passlib": "passlib",
     "langchain-core": "langchain_core",
+    # Distributions whose import name is not derivable by replacing "-" with
+    # "_". langgraph-checkpoint-postgres installs as a SUBPACKAGE of
+    # langgraph (langgraph.checkpoint.postgres), and llama-index-core installs
+    # as the top-level `llama_index` namespace it shares with
+    # llama-index-readers-file. Without these the contract test resolves
+    # "langgraph_checkpoint_postgres" and "llama_index_core", which no module
+    # provides, and reports both as phantom packages.
+    "langgraph-checkpoint-postgres": "langgraph.checkpoint.postgres",
+    "llama-index-core": "llama_index",
     "langgraph": "langgraph",
     "jsonschema": "jsonschema",
     "requests": "requests",
