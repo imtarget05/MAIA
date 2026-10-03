@@ -6,7 +6,7 @@ Context: temptation to route everything through LangGraph ("agent washing").
 
 Decision: plain policy Q&A stays a deterministic pipeline
 (`pipeline_query.py`: retrieve → gate → rerank → generate → grounding/PII
-checks). LangGraph (`agent/langgraph_agent.py`, StateGraph + SqliteSaver) is
+checks). LangGraph (`agent/langgraph_agent.py`, StateGraph + PostgresSaver) is
 used only for side-effect actions requiring interrupt/approve/resume.
 
 Tradeoffs: two paths to maintain, but the Q&A path stays debuggable and cheap,

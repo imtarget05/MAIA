@@ -64,7 +64,7 @@ No required row may be closed with `PARTIAL` / `PLANNED_ONLY` / `NOT_VERIFIED`.
 | 22 | 6A.5 RAG tenant isolation | **IMPLEMENTED_UNVERIFIED** | `src/maia/vector_store.py` tenant filter; runtime negative control not run | 6A |
 | 23 | 6A.6 No secrets in prompt / log / metric / trace | **UNMEASURED** | — | 6A |
 | 24 | 6B.1 Agent justification gate | **UNMEASURED** | — | 6B |
-| 25 | 6B.2 Durable checkpoint / resume (PostgreSQL) | **IMPLEMENTED_UNVERIFIED** | `langgraph_agent.py` uses SqliteSaver today → PG target | 6B |
+| 25 | 6B.2 Durable checkpoint / resume (PostgreSQL) | **IMPLEMENTED_TESTED** | `get_durable_graph()` uses PostgresSaver; two real OS processes proven by `tests/test_served_path_durability.py`. Azure multi-replica NOT verified | 6B |
 | 26 | 6B.3 Loop protection (steps / tool calls / tokens / cost) | **UNMEASURED** | — | 6B |
 | 27 | 6B.4 Least-privilege tools + HITL | **IMPLEMENTED_UNVERIFIED** | `langgraph_agent.py::node_propose_action` + interrupt | 6B |
 | 28 | 6B.5 Indirect injection (tool / document) | **IMPLEMENTED_UNVERIFIED** | `tests/test_prompt_injection.py` | 6B |

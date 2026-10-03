@@ -169,7 +169,7 @@ class Settings(BaseSettings):
     # that: MAX_SESSIONS evicts the least-recently-used thread once the map is
     # full, SESSION_TTL_SEC evicts anything idle for longer than the TTL.
     #
-    # Deliberately NOT applied to the durable (SqliteSaver) graph: a paused
+    # Deliberately NOT applied to the durable (PostgresSaver) graph: a paused
     # HITL run must survive until the human answers, however long that takes.
     MAX_STREAMING_SESSIONS: int = 512
     STREAMING_SESSION_TTL_SEC: int = 3600

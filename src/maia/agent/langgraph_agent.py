@@ -537,8 +537,14 @@ def build_graph(*, checkpointer=None):
     """Compile the full LangGraph agent.
 
     ``checkpointer`` enables durable execution (state persisted across nodes /
-    restarts).  Pass a ``MemorySaver``/``SqliteSaver`` for checkpointing, or
-    ``None`` for in-memory only.
+    restarts).  Pass a ``PostgresSaver`` for the served HITL path (see
+    ``get_durable_graph``), a ``MemorySaver`` for the ephemeral streaming path,
+    or ``None`` for in-memory only.
+
+    The two callers are deliberately different savers: SSE is a live connection
+    with nothing to resume afterwards, while an approval can sit open for hours
+    and must survive the process. See ``get_durable_graph`` for why the durable
+    one never falls back to anything local.
     """
     builder = StateGraph(AgentState)
 

@@ -18,7 +18,7 @@ Both are recorded in settings (``MAX_STREAMING_SESSIONS`` /
 ``STREAMING_SESSION_TTL_SEC``) so operators can tune them without a code change.
 
 Scope is deliberately narrow: this guards the **streaming** graph only. The
-durable (SqliteSaver) graph backs human-in-the-loop approval, where a paused
+durable (PostgresSaver) graph backs human-in-the-loop approval, where a paused
 run must survive until somebody answers — arbitrarily long — so it is never
 evicted from here. See ``langgraph_agent.get_durable_graph``.
 """

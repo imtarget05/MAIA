@@ -1336,7 +1336,7 @@ def action_pending(session_id: str, current_user: User = Depends(get_current_act
 # ---- LangGraph control-plane agent (/agent/chat) --------------------------
 # Mirrors the legacy ``POST /chat`` (EnterpriseAgent) but runs the compiled
 # LangGraph ``graph`` so the same request can stream node events, pause for
-# human approval (HITL interrupt), and resume across requests (SqliteSaver).
+# human approval (HITL interrupt), and resume across requests (PostgresSaver).
 
 class AgentChatReq(BaseModel):
     question: str

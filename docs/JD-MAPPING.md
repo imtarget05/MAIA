@@ -8,7 +8,7 @@ Bảng ánh xạ yêu cầu JD (ML/LLM Engineer) ↔ minh chứng trong repo. D�
 | Agent orchestration (LangGraph control plane, stateful routing) | `src/maia/agent/langgraph_agent.py` — classify→retrieve→rerank→generate→verify→propose/finalize | `pytest tests/test_langgraph_agent.py` |
 | Framework abstraction (LangChain adapter, LlamaIndex data plane) | `src/maia/langchain/llm.py` (`CloudflareLangChainAdapter`), `src/maia/llamaindex_store.py` | `pytest tests/test_llama_index_dataplane.py` |
 | Hybrid retrieval (dense + BM25, RRF k=60) | `src/maia/retriever.py::HybridRetriever`, `langgraph_agent.py::_llama_index_retrieve` | `tests/test_llama_index_dataplane.py::test_hybrid_retrieval_with_bm25_and_rrf` |
-| HITL approval (LangGraph interrupt + durable checkpoint) | `langgraph_agent.py::node_propose_action`, `get_durable_graph` (SqliteSaver) | `tests/test_agent_chat_api.py::test_agent_chat_resume_approved` |
+| HITL approval (LangGraph interrupt + durable checkpoint) | `langgraph_agent.py::node_propose_action`, `get_durable_graph` (PostgresSaver) | `tests/test_agent_chat_api.py::test_agent_chat_resume_approved`, `tests/test_served_path_durability.py` (two real OS processes) |
 | SSE streaming (stable `stream_mode="updates"`) | `src/maia/api.py::_agent_chat_stream` | `tests/test_agent_chat_api.py::test_agent_chat_stream_sse` |
 | Security: tenant isolation, prompt-injection defense, PII redaction | `src/maia/loops/guardrails.py`, `src/maia/vector_store.py` (tenant filter) | `pytest tests/test_security_audit.py tests/test_guardrails.py` |
 | Guardrails (input sanitize + output secret/PII + approval-claim) | `src/maia/loops/guardrails.py` (merged `OutputGuardrail`) | `tests/test_output_validation.py` |
