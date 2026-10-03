@@ -1317,7 +1317,15 @@ def chat_history_clear(session_id: str, current_user: User = Depends(get_current
 
 @app.post("/actions/confirm")
 def action_confirm(req: ConfirmReq, current_user: User = Depends(get_current_active_user)):
-    """Execute (approved=true) or cancel a pending side-effect action (C1)."""
+    """Execute (approved=true) or cancel a pending side-effect action (C1).
+
+    LEGACY PATH. Completes against the EnterpriseAgent ``session_store``
+    pending queue. Do NOT POST a LangGraph ``needs_approval`` result here: it
+    lives in the graph checkpoint, keyed ``{tenant}:{session}``, and is resumed
+    via POST /agent/chat with a ``resume`` payload. That mismatch returns
+    ``status=error`` ("no pending request"), not a silent success -- measured
+    on the live deployment 2026-10-03.
+    """
     from maia.agent.agent import EnterpriseAgent
     # Use authenticated user's tenant_id and employee_id for security (P1-1)
     agent = EnterpriseAgent(tenant_id=current_user.tenant_id)
@@ -1327,7 +1335,15 @@ def action_confirm(req: ConfirmReq, current_user: User = Depends(get_current_act
 
 @app.get("/actions/pending/{session_id}")
 def action_pending(session_id: str, current_user: User = Depends(get_current_active_user)):
-    """Inspect the pending action awaiting approval in a session."""
+    """Inspect the pending action awaiting approval in a session.
+
+    LEGACY PATH. This reads ``session_store`` (the EnterpriseAgent pending
+    queue), NOT the LangGraph interrupt. A LangGraph ``needs_approval`` result
+    from POST /agent/chat is resumed with ``{"resume": {...}}`` on THAT endpoint
+    (``Command(resume=...)`` against thread ``{tenant}:{session}``). POSTing it
+    here returns ``status=error`` ("no pending request") because the two
+    approval planes are disjoint -- measured on the live deployment 2026-10-03.
+    """
     from maia.agent.session import session_store
     pending = session_store.get_pending(session_id, tenant_id=current_user.tenant_id)
     return {"session_id": session_id, "pending": pending}
