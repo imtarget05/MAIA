@@ -1380,11 +1380,13 @@ def _agent_chat_stream(g, req, current_user, config: RunnableConfig):
 
     Streaming is an ephemeral live connection, so it deliberately uses the
     module-level in-memory graph (MemorySaver) rather than the durable
-    SqliteSaver one — SqliteSaver is sync-only, so async-capable streaming
-    stays on the MemorySaver path while HITL interrupt/resume stays on the
-    durable ``g`` path passed by the caller.  Splitting is intentional: a
-    stream cannot be resumed across requests, and an approval pause is
-    blocking (no stream to keep alive) anyway.
+    PostgresSaver one. The split is about lifecycle, not capability: a stream
+    has nothing to resume afterwards and is abandoned when the client
+    disconnects, whereas an approval pause can sit open for hours and must
+    outlive the process. Putting SSE on Postgres would mean paying for
+    durability it never uses on every token of every response.  Splitting is
+    intentional: a stream cannot be resumed across requests, and an approval
+    pause is blocking (no stream to keep alive) anyway.
 
     Because that checkpointer is process-wide and keyed by
     ``"{tenant_id}:{session_id}"``, every new session would otherwise leak a
