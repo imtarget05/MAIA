@@ -71,6 +71,13 @@ langgraph>=0.2
 langgraph-checkpoint-postgres>=3.0
 # PostgresSaver needs a driver. psycopg[binary] avoids a libpq build.
 psycopg[binary]>=3.2
+# LLAMA_INDEX_DATA_PLANE defaults to True, so node_retrieve takes the
+# _llama_index_retrieve branch on every request and imports llama_index lazily
+# at call time. The header note above lists llama-index as "lazy, not required
+# for startup" -- true for startup, wrong for serving: /agent/chat returned
+# ModuleNotFoundError while routing the first real query. Needed at runtime.
+# Pinned to the version verified in requirements.txt.
+llama-index-core==0.14.24
 jsonschema>=4.20
 requests>=2.31
 numpy>=1.26
