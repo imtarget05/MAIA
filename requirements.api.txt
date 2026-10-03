@@ -63,6 +63,14 @@ python-multipart>=0.0.9
 passlib>=1.7
 langchain-core>=0.3
 langgraph>=0.2
+# Durable HITL checkpoint authority (M2). The API image runs
+# langgraph_agent.get_durable_graph(), which imports PostgresSaver, so this is
+# REQUIRED for the served path -- it was missing here while present in
+# requirements.txt, which made the container fail at request time with
+# ModuleNotFoundError rather than at build time. Keep the two files in step.
+langgraph-checkpoint-postgres>=3.0
+# PostgresSaver needs a driver. psycopg[binary] avoids a libpq build.
+psycopg[binary]>=3.2
 jsonschema>=4.20
 requests>=2.31
 numpy>=1.26
