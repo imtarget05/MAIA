@@ -599,40 +599,93 @@ DEFAULT_TOOLS = ["check_leave_balance", "create_leave_request",
 
 
 # ---------------------------------------------------------------------------
-# Durable graph (SqliteSaver) — used by the FastAPI /agent/chat endpoint so
-# that an interrupted (approval-pending) run survives across requests.
+# Durable graph (PostgreSQL) — used by the FastAPI /agent/chat endpoint so
+# that an interrupted (approval-pending) run survives across requests AND
+# across process restarts.
 # ---------------------------------------------------------------------------
 
 _durable_graph = None
+_durable_cm = None  # the ExitStack owning the saver's live connection
+
+
+class DurableCheckpointUnavailable(RuntimeError):
+    """No usable durable checkpoint backend.
+
+    Raised instead of falling back to a local SQLite file. A silent fallback
+    is the failure this replaces: the HITL path looked durable in review, and
+    an approval-pending action was lost whenever the process restarted or the
+    request landed on another instance. Failing loudly keeps "durable" a
+    property of the deployment rather than an aspiration in a docstring.
+    """
 
 
 def get_durable_graph():
-    """Lazily build + cache a SqliteSaver-backed graph for the API layer.
+    """Build and cache the PostgreSQL-backed graph used by the HITL flow.
 
-    The same compiled instance is reused across requests so that
-    ``graph.invoke(Command(resume=...), config)`` can resume an interrupted
-    run from a prior request (the interrupt requires a checkpointer).
+    Why PostgreSQL is the authority: the checkpoint must outlive the process
+    that wrote it. A file on one host does not survive a restart, a reschedule
+    or a second replica; a shared PostgreSQL database does, and it is the same
+    store the rest of the durable application state will live in.
 
-    NOTE (SqliteSaver is sync-only): ``langgraph-checkpoint-sqlite`` does not
-    support async streaming (``astream_events``).  That is why the API keeps
-    two paths: (1) this durable graph for non-streaming HITL JSON
-    (interrupt/resume across requests), and (2) the module-level in-memory
-    ``graph`` (MemorySaver) for ``stream=true`` SSE via ``stream()``.  The
-    split is deliberate: streaming is an ephemeral live connection that does
-    not need cross-request resumption, and HITL approval is blocking anyway.
+    Why the connection is held open deliberately: ``PostgresSaver.from_conn_string``
+    is a context manager. Exiting it closes the connection, and a saver whose
+    connection is closed fails on the next write. So the context is entered once
+    and kept for the lifetime of the process, released by
+    ``close_durable_graph()``.
+
+    Raises:
+        DurableCheckpointUnavailable: when DATABASE_URL is unset or the database
+            cannot be reached. Never falls back to SQLite or any in-memory saver.
     """
-    global _durable_graph
-    if _durable_graph is None:
-        import sqlite3
-        from pathlib import Path
+    global _durable_graph, _durable_cm
+    if _durable_graph is not None:
+        return _durable_graph
 
-        from langgraph.checkpoint.sqlite import SqliteSaver
-        db_path = str(Path(settings.STORAGE_DIR) / "agent_checkpoints.db")
-        Path(settings.STORAGE_DIR).mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(db_path, check_same_thread=False)
-        SqliteSaver(conn).setup()
-        _durable_graph = build_graph(checkpointer=SqliteSaver(conn))
+    dsn = (settings.DATABASE_URL or "").strip()
+    if not dsn:
+        raise DurableCheckpointUnavailable(
+            "DATABASE_URL is not set. The HITL durable path requires PostgreSQL and "
+            "does not fall back to a local SQLite file: a process-local checkpoint "
+            "cannot survive a restart, which is exactly the guarantee this path "
+            "exists to provide. Set DATABASE_URL (see .env.example)."
+        )
+
+    from contextlib import ExitStack
+
+    from langgraph.checkpoint.postgres import PostgresSaver
+
+    stack = ExitStack()
+    try:
+        saver = stack.enter_context(PostgresSaver.from_conn_string(dsn))
+        # Required by the package: creates the checkpoint tables and runs
+        # migrations. Idempotent, so calling it on every process start is correct
+        # and keeps multi-replica startup races harmless.
+        saver.setup()
+    except Exception as exc:
+        stack.close()
+        raise DurableCheckpointUnavailable(
+            f"Could not initialise the PostgreSQL checkpoint backend: {exc}"
+        ) from exc
+
+    _durable_cm = stack
+    _durable_graph = build_graph(checkpointer=saver)
     return _durable_graph
+
+
+def close_durable_graph():
+    """Release the cached durable graph and its database connection.
+
+    Exists so tests (and a future shutdown hook) can prove a restart boundary:
+    after this returns, a subsequent ``get_durable_graph()`` constructs a brand
+    new connection, saver and graph, and nothing is served from process memory.
+    """
+    global _durable_graph, _durable_cm
+    if _durable_cm is not None:
+        try:
+            _durable_cm.close()
+        finally:
+            _durable_cm = None
+    _durable_graph = None
 
 
 def resume_from_approval(thread_id: str, approved: bool, employee_id: str | None = None) -> dict:

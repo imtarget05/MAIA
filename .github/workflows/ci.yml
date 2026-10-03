@@ -203,6 +203,12 @@ jobs:
       - name: Run unit tests (fast only — live/infra run in ci-live.yml)
         env:
           MAIA_EMBED_FORCE_HASH: "1"
+          # PostgreSQL is the durable HITL checkpoint authority (M2).
+          # tests/test_postgres_checkpoint.py skips without this, which would
+          # leave the durability proofs unexecuted and the job green. This DSN
+          # is the same throwaway CI service already used for migrations; it is
+          # not a production credential.
+          DATABASE_URL: postgresql://maia:maia@localhost:5432/maia_test
         # Test isolation: live/infra-marked tests need real infra/LLM endpoints
         # and never run in the default fast job (markers registered in
         # pyproject.toml [tool.pytest.ini_options], hence --strict-markers).
@@ -630,6 +636,10 @@ jobs:
       - name: Run tests with coverage (fast only, report-only)
         env:
           MAIA_EMBED_FORCE_HASH: "1"
+          # Same requirement as the unit-tests job. The HITL graph now fails
+          # closed when DATABASE_URL is unset, so without this the HITL suites
+          # in this job fail even though the postgres service is right there.
+          DATABASE_URL: postgresql://maia:maia@localhost:5432/maia_test
         run: pytest tests/ -m "not live and not infra" --strict-markers --cov=maia --cov-report=term-missing --cov-report=xml
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4

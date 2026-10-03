@@ -1,6 +1,36 @@
 """
 Durable persistence cho MAIA — ba tầng, tách biệt, KHÔNG trộn vào nhau.
 
+================================================================================
+PROBE-ONLY — NOT THE CANONICAL CHECKPOINT AUTHORITY
+================================================================================
+
+``AsyncPostgresSaver`` trong module này KHÔNG phục vụ request nào. Đây là
+điểm dễ nhầm của repo này, và nó đã tồn tại một thời gian: có bằng chứng
+restart bằng Postgres, nhưng ``POST /agent/chat`` dựng graph qua
+``langgraph_agent.get_durable_graph()`` — vốn KHÔNG gọi module này.
+
+Capability tồn tại KHÔNG có nghĩa runtime dùng capability. Đó chính là lý do
+``docs/_p8_process_restart_probe.py`` (probe gọi helper này) không đủ để
+chứng minh HITL bền vững trên served path.
+
+Canonical authority hiện tại:
+
+    POST /agent/chat
+      -> langgraph_agent.get_durable_graph()
+      -> PostgresSaver (SYNC, qua DATABASE_URL)
+
+và được kiểm chứng bởi ``docs/_p9_served_path_probe.py`` +
+``tests/test_served_path_durability.py``, chạy đúng hai hàm mà endpoint gọi.
+
+Module này được giữ lại vì:
+  * ``tests/test_persistence.py`` và probe _p8 dùng nó;
+  * async checkpointer là đường hướng hợp lệ khi API chuyển sang async end-to-end.
+
+Nếu API chuyển async, hãy WIRE module này vào api.py — hoặc xoá nó. Đừng để
+nó tiếp tục là "authority thứ hai" không ai gọi.
+================================================================================
+
 Ba tầng này trả lời ba câu hỏi khác nhau, và trộn chúng là nguồn bug kinh điển:
 
     1. Thread / checkpoint state  — "tao đang làm gì dở?"      -> PostgresSaver

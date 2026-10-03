@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
 """
+NOT THE CANONICAL DURABILITY PROBE.
+
+This script exercises `maia.persistence.durable_checkpointer`
+(`AsyncPostgresSaver`), which has no runtime caller. It proves PostgreSQL
+checkpointing works; it does NOT prove the served `POST /agent/chat` path uses
+it, because that endpoint builds its graph through
+`langgraph_agent.get_durable_graph()`.
+
+Kept because tests/test_persistence.py drives it, and because it stays the
+async reference if the API ever moves to async execution end-to-end.
+
+The served-path proof is `docs/_p9_served_path_probe.py`, which calls the same
+two functions the endpoint calls.
+
+Original module docstring follows.
+--------------------------------------------------------------------
+"""
+"""
 Process-restart probe for durable agent state (tier 1: thread/checkpoint).
 
 WHY THIS EXISTS AS A SEPARATE SCRIPT

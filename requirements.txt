@@ -24,10 +24,15 @@ pypdf>=4.0
 
 # LangChain + LangGraph (abstraction layer + agent orchestration / control plane)
 # Pinned to the verified Python 3.14 matrix (2026-09-09): langchain-core 1.6.2,
-# langgraph 1.2.11, langgraph-checkpoint-sqlite 3.1.1.
+# langgraph 1.2.11, langgraph-checkpoint-postgres 3.1.2.
 langchain-core==1.6.2
 langgraph==1.2.11
-langgraph-checkpoint-sqlite==3.1.1
+
+# Durable HITL checkpoint authority (M2). PostgreSQL, not SQLite: the
+# checkpoint has to outlive the process that wrote it, so a restart or a
+# second replica can still resume an approval-pending action.
+# Requires psycopg (below). See .env.example for DATABASE_URL.
+langgraph-checkpoint-postgres==3.1.2
 
 # Embeddings (HuggingFace via FastEmbed - ONNX, no torch required)
 fastembed>=0.3.0
