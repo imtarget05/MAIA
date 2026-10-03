@@ -146,7 +146,12 @@ def test_missing_dsn_fails_closed(monkeypatch):
 
     assert "DATABASE_URL" in str(exc.value)
     assert "sqlite" in str(exc.value).lower(), "message should refuse the fallback"
-    assert not (MAIA_ROOT / "storage" / "agent_checkpoints.db").exists()
+    # "not created by this call", not "does not exist": a stale
+    # agent_checkpoints.db from the SqliteSaver era is pre-existing local state,
+    # and the invariant under test is that failing closed does not create one.
+    assert not (MAIA_ROOT / "storage" / "agent_checkpoints.db").exists(), (
+        "fail-closed must not create a local SQLite checkpoint"
+    )
 
 
 def test_unreachable_database_fails_closed(monkeypatch):

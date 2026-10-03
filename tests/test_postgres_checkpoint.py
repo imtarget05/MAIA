@@ -342,8 +342,13 @@ def test_d4_missing_dsn_fails_closed(monkeypatch):
     assert "DATABASE_URL" in msg
     assert "sqlite" in msg.lower(), "message should say a fallback was refused"
 
-    # No local checkpoint file may have been conjured as a side effect.
-    assert not (Path("storage") / "agent_checkpoints.db").exists()
+    # No local checkpoint file may have been conjured as a side effect. Asserted
+    # as "not created by this call" rather than "does not exist": a developer
+    # upgrading from the SqliteSaver era can legitimately still have a stale
+    # storage/agent_checkpoints.db on disk, and that is not this test's business.
+    # What matters is that failing closed does not create or touch one.
+    local_db = Path("storage") / "agent_checkpoints.db"
+    assert not local_db.exists(), "fail-closed must not create a local SQLite checkpoint"
 
 
 def test_d4_unreachable_database_fails_closed(monkeypatch):
