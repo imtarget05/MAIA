@@ -26,6 +26,37 @@ Since this condition is violated:
 - Any threshold high enough to reject all no-answer queries ($\tau > 0.6957$) would simultaneously reject valid answerable queries with lower confidence ($0.3140 \le \text{score} \le 0.6957$).
 - Any threshold low enough to accept all genuine answers ($\tau \le 0.3140$) accepts 100% of out-of-corpus queries.
 
+### Signals actually measured, not just proposed
+
+The next-phase design above was a hypothesis. It was then measured against the
+labelled corpus (`docs/eval/proto_answerability_signals.py --signals`,
+2026-10-03) so the decision rests on data rather than intuition. Dataset:
+**9 no-answer rows, 85 answerable rows, 45 corpus chunks**.
+
+| Signal | no-answer mean | answerable mean | separable? |
+|---|---|---|---|
+| A topical overlap | 0.353 | 0.483 | **no** |
+| B type-supported (does the chunk carry a value of the asked type?) | 1.000 | 0.882 | **no** |
+| C subject coverage | 0.688 (max 1.000) | 0.739 (min 0.000) | **no** |
+| D subject + answer-type co-location in one sentence | 0.100 (max 0.500) | 0.347 (min 0.000) | **no** |
+
+Every cheap lexical signal overlaps. Signal D is the most promising — it drops
+no-answer from 0.688 to 0.100 — but it still fails:
+
+- At the best split `t=0.375`: no-answer abstention **0.778**, answerable
+  acceptance **0.576**. It rejects **36 of 85** genuine answerable questions,
+  including "Where do I report a security incident?" and "Cần hỗ trợ VPN thì
+  liên hệ ai?".
+- The rejected answerable rows have empty or corpus-missing `gold_keywords`,
+  i.e. the failures are exactly where the gold answer is an email address or an
+  identifier rather than prose. The signal is tuned against a dataset whose
+  answer format is too narrow to validate it on.
+
+That is the substantive reason this is closed as a limitation: the obvious
+cheap fixes were implemented and measured, and the one that works best still
+loses 42% of correct answers. Adopting it would trade a visible abstention
+defect for a quieter false-refusal defect.
+
 ## Decision
 
 1. **Refusal to Tune Artificially**: We explicitly reject tuning `SIMILARITY_THRESHOLD` or relabelling evaluation datasets to present an artificial "100% pass" metric. Fabricating a metric obscures architectural reality and constitutes poor engineering practice.
