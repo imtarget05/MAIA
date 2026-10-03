@@ -8,6 +8,7 @@ Covers:
 - resume_from_approval: approved -> action_completed, rejected -> action_cancelled
 - get_durable_graph returns a SqliteSaver-backed graph
 """
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -96,6 +97,10 @@ def test_node_propose_action_interrupts_with_proposal(fake_stack, monkeypatch):
     assert val["tool"] == "create_leave_request"
 
 
+@pytest.mark.skipif(
+    not (os.environ.get("DATABASE_URL") or "").strip(),
+    reason="DATABASE_URL not set; durable graph requires PostgreSQL",
+)
 def test_resume_from_approval_approved_executes_tool(fake_stack, monkeypatch):
     """Full HITL cycle on a durable graph: interrupt -> approve -> action_completed."""
     tmp = tempfile.mkdtemp()
@@ -133,6 +138,10 @@ def test_resume_from_approval_approved_executes_tool(fake_stack, monkeypatch):
     assert result["action_result"]["result"]["remaining_balance"] == 10
 
 
+@pytest.mark.skipif(
+    not (os.environ.get("DATABASE_URL") or "").strip(),
+    reason="DATABASE_URL not set; durable graph requires PostgreSQL",
+)
 def test_resume_from_approval_rejected_cancels(fake_stack, monkeypatch):
     """Full HITL cycle: interrupt -> reject -> action_cancelled."""
     tmp = tempfile.mkdtemp()
@@ -368,6 +377,10 @@ def test_is_approved_and_execute_tool():
     assert out["ok"] is False
 
 
+@pytest.mark.skipif(
+    not (os.environ.get("DATABASE_URL") or "").strip(),
+    reason="DATABASE_URL not set; durable graph requires PostgreSQL",
+)
 def test_resume_from_approval_helper(monkeypatch, tmp_path):
     tmp_db = str(tmp_path / "hr_mock2.json")
     old = settings.HR_MOCK_DB_PATH

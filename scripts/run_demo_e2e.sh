@@ -25,6 +25,7 @@ export LLM_PROVIDER="mock"
 export MAIA_LLM_PROVIDER="mock"
 export PYTHONPATH="src"
 export MAIA_PORT="${PORT}"
+export DATABASE_URL="${DATABASE_URL:-postgresql://maia:maia@127.0.0.1:5432/maia_test}"
 
 echo -e "${BOLD}${CYAN}============================================================${NC}"
 echo -e "${BOLD}${CYAN}   🧠 MAIA — Enterprise Agentic RAG Platform E2E Demo       ${NC}"
