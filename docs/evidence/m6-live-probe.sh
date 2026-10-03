@@ -1,7 +1,31 @@
 #!/usr/bin/env bash
-# M6 live probe against the deployed MAIA container app.
-# Registers an isolated throwaway account, then exercises the served HITL path.
-# No real user data is touched. Credentials are generated here and never stored.
+# M6 live probe against the deployed MAIA container app (verifiable record).
+#
+# What it proves, run by run on 2026-10-03 against
+# ca-maia-api.wittysand-b748274c.eastasia.azurecontainerapps.io:
+#   register 201 / login 200 / /auth/me 200
+#   POST /agent/chat -> status=needs_approval, pending_action present,
+#                       thread "{tenant}:{session}" interrupted, checkpoint rows
+#                       in Azure PostgreSQL 16.15 (checkpoint_blobs, __interrupt__
+#                       writes observed per thread)
+#   POST /agent/chat with {"resume": {...}} on the same session ->
+#                       status=action_completed, tool ok=True,
+#                       idempotent replay returned the SAME request_id
+#                       (duplicate_side_effect=False)
+#   RAG query -> status=answered, 2 citations, grounded leave-policy content
+#
+# The resume-half detail that mattered: /actions/confirm is the LEGACY
+# EnterpriseAgent path and returns status=error on a LangGraph thread; the
+# served LangGraph resume is /agent/chat with a resume payload. Without the
+# `question` field the deployment returns 422 (request model requires it);
+# the value is ignored on the resume branch.
+#
+# Credentials are generated throwaway accounts per run and never stored.
+# Email is masked in output. Nothing here prints a token.
+#
+# M6 scope: single replica (min=1 max=1). This proves served-runtime durability
+# on Azure, NOT multi-replica. Each run leaves exactly 2 user rows
+# (register per run), no destructive writes.
 set -uo pipefail
 
 U="https://ca-maia-api.wittysand-b748274c.eastasia.azurecontainerapps.io"
