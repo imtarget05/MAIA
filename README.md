@@ -34,7 +34,7 @@ Core workflow: `Find → Understand → Cite → Act`
 - **Hybrid RAG Pipeline with RRF**: Combines Dense (Qdrant) and Sparse (BM25) retrieval, fused via Reciprocal Rank Fusion (RRF), ensuring high recall across semantic and keyword queries.
 - **Evidence Gate (measured, currently failing)**: A similarity threshold (`SIMILARITY_THRESHOLD`, ≥ 0.3) gates answers on retrieved evidence. The gate is implemented and tested, and the abstention gate that measures it **exits 1**: it authorised 8 of 9 labelled no-answer queries. This is a published defect, not a claim — see the gate section below and `eval/README.md:16`.
 - **Citation projection, not guaranteed grounding**: Answers carry `[S1]`, `[S2]` citations pointing at a source file, section and snippet, and there is a grounding/citation check in the pipeline. A `citations` frame or footer is **not** evidence that an answer is grounded: the frame is empty when retrieval returns nothing, and the one live probe recorded `citations([])`.
-- **Human-in-the-Loop (HITL) Action Execution (C1)**: Built with LangGraph StateGraphs and SQLite checkpointing. Any action causing a side-effect triggers an interrupt, pending explicit human approval via the `/actions/confirm` endpoint before resuming.
+- **Human-in-the-Loop (HITL) Action Execution (C1)**: Built with LangGraph StateGraphs and **PostgreSQL** checkpointing (`PostgresSaver`). Any action causing a side-effect triggers an interrupt, pending explicit human approval before resuming. The LangGraph approval resumes via `POST /agent/chat` with a `resume` payload; `/actions/confirm` is the separate legacy EnterpriseAgent approval plane. Durable state is verified across process restarts locally and on the live Azure deployment.
 - **Enterprise Security & PII Protection**: 2-layer Personal Identifiable Information (PII) scanning (ingestion-time + output guardrail) prevents data leakage. Role-specific emails (e.g., `hr@`, `security@`) are allowlisted.
 - **Multi-Tenant Isolation**: Complete isolation of queries, retrieval, and session memory by `tenant_id` at the Qdrant payload and database level.
 - **Offline-First Development**: Runs with zero cloud dependencies when no Cloudflare credentials are set (every connector degrades to a local mock), and `MAIA_EMBED_FORCE_HASH=1` forces the deterministic hash embedder for tests.
@@ -85,7 +85,7 @@ graph TD
 - **Data & Vector Plane**: LlamaIndex Core, Qdrant (cosine metric), FastEmbed (ONNX), BM25Okapi
 - **LLM Engine**: Cloudflare Workers AI (Llama 3.1-8b-instruct) / Mock Mode (offline)
 - **Frontend UI**: Streamlit (Rich Chat UI, Dark/Light Mode, CSS Theming)
-- **Storage & State**: SQLite WAL (Auth, Workflow, Sessions, LTM, LangGraph Checkpoints)
+- **Storage & State**: PostgreSQL (LangGraph HITL checkpoints) + SQLite WAL (Auth, Workflow, Sessions, LTM)
 - **Authentication**: JWT + bcrypt + Google OAuth 2.0, RBAC (Admin/User)
 - **Infrastructure**: Docker, Docker Compose, Alembic Migrations; Azure Container Apps (current) via Bicep in `infra/`; Render Blueprints retained as superseded legacy
 - **Web Scraping**: Trafilatura (with SSRF protection)
@@ -128,7 +128,7 @@ The system provides 40+ endpoints. Here are the core services:
 |----------|-----------|-------------|
 | **Auth** | `/auth/login`, `/auth/google` | JWT authentication and OAuth2 integration. |
 | **RAG** | `/chat`, `/agent/chat` | Main interaction endpoints (single-turn & LangGraph agentic). |
-| **Streaming** | `POST /chat/stream` | SSE token streaming: `meta → token* → citations → done` (typed events, auth + tenant enforced, disconnect cancels, `approval_required` pauses HIGH_RISK instead of executing). See `docs/evidence/stream_closeout.md`. |
+| **Streaming** | `POST /chat/stream` | Real SSE with typed frames, incrementally delivered: `meta → token* → citations → done` (auth + tenant enforced, disconnect cancels, `approval_required` pauses HIGH_RISK instead of executing). **Not token-level**: the first byte is emitted after generation completes, so TTFT does not reflect model latency — see `docs/evidence/MAIA_SSE_STREAMING.md`. |
 | **Knowledge** | `/ingest/upload`, `/ingest/url` | Document ingestion with chunking and embedding. |
 | **Actions (HITL)** | `/actions/pending`, `/actions/confirm` | Manage and confirm pending side-effect executions. |
 | **Tools** | `/tools/leave/request`, `/tools/it/ticket` | Tool execution interfaces for the agent. |

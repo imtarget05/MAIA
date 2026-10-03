@@ -27,8 +27,9 @@ side-effect — offline-first for dev, multi-tenant by `tenant_id`.
 - Hybrid retrieval: Qdrant dense top-10 + BM25 sparse top-10 fused by RRF
   (k=60) → evidence gate (similarity ≥ 0.3) → cross-encoder rerank → citation
   assembly (`[S1]`, `[S2]` with file/section/snippet).
-- HITL: LangGraph StateGraph + SQLite checkpointing; side-effects interrupt and
-  resume only via `/actions/confirm`.
+- HITL: LangGraph StateGraph + PostgreSQL checkpointing; side-effects interrupt and
+  resume via the LangGraph interrupt (`POST /agent/chat` with a `resume` payload).
+  `/actions/confirm` is the separate legacy EnterpriseAgent approval plane.
 - Safety: 2-layer PII scan (ingest + output guardrail), role-allowlist emails,
   tenant isolation at Qdrant payload + DB, `MAIA_EMBED_FORCE_HASH=1`
   deterministic embedder for tests.
@@ -77,12 +78,19 @@ rather than a stricter threshold. Trade-off that is expected to remain: a higher
 non-answer rate on thin corpora, which is the honest signal to grow the corpus.
 
 **Q3: Why LangGraph interrupts instead of a simple approve-button callback?**
-Side-effects need durable pause/resume: server restarts must not lose or double
-execute the action. SQLite-checkpointed interrupts give exactly-once resume
-semantics via thread id. A stateless callback would re-execute on retry.
+Side-effects need durable pause/resume: the process that receives the approval
+may not be the one that paused. Interrupts are checkpointed in PostgreSQL
+(`PostgresSaver`, thread id `{tenant}:{session}`), so a **fresh process resumes
+the same run** — proven across two OS processes locally and against the live
+Azure deployment. A stateless callback would lose the pending action on restart.
+
+Precise claim: **idempotent-once for the tested scenarios**, not exactly-once.
+A replay of the same approval returns the same `request_id` (verified live:
+`duplicate_side_effect=False`). A crash *between* the external mutation and the
+idempotency write is not covered by that guarantee.
 
 **Q4: What is the SPOF / scaling limit?**
-Single Qdrant + SQLite checkpoint store per deployment; tenant isolation is
+Single Qdrant + PostgreSQL checkpoint store per deployment; tenant isolation is
 logical (payload filter), not physical. Multi-region or per-tenant hard
 isolation would need Qdrant collections per tenant + Postgres checkpointer —
 deferred until tenant count justifies it.
